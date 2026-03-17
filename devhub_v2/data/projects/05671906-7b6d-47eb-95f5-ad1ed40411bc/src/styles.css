@@ -1,0 +1,133 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color: #102033;
+  background:
+    radial-gradient(circle at top right, rgba(217, 119, 6, 0.24), transparent 24%),
+    linear-gradient(180deg, #fffaf2 0%, #f4efe7 100%);
+  font-family: 'Segoe UI', sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.85rem 1.2rem;
+  font: inherit;
+  cursor: pointer;
+  background: #c05621;
+  color: white;
+  box-shadow: 0 14px 24px rgba(192, 86, 33, 0.22);
+}
+
+button.secondary {
+  background: rgba(16, 32, 51, 0.08);
+  color: #102033;
+  box-shadow: none;
+}
+
+.page-shell {
+  width: min(1120px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 40px 0 64px;
+}
+
+.hero-card,
+.highlight-card,
+.status-card {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(16, 32, 51, 0.12);
+  border-radius: 28px;
+  box-shadow: 0 24px 64px rgba(16, 32, 51, 0.08);
+}
+
+.hero-card {
+  padding: 32px;
+}
+
+.eyebrow,
+.pill {
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.75rem;
+  color: #c05621;
+}
+
+.hero-card h1 {
+  margin: 0.6rem 0 0;
+  font-size: clamp(3rem, 7vw, 5.2rem);
+  line-height: 0.95;
+}
+
+.description,
+.highlight-card p,
+.status-card p {
+  color: #5b6678;
+  line-height: 1.6;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.highlight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 18px 0;
+}
+
+.highlight-card {
+  padding: 22px;
+}
+
+.status-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(280px, 1fr);
+  gap: 20px;
+  padding: 24px;
+}
+
+.terminal-card {
+  border-radius: 22px;
+  background: #111827;
+  color: #dbe6ff;
+  font-family: Consolas, monospace;
+  padding: 20px;
+}
+
+.terminal-card p {
+  margin: 0 0 0.7rem;
+  color: inherit;
+}
+
+@media (max-width: 720px) {
+  .page-shell {
+    width: min(100vw - 20px, 1120px);
+    padding-top: 20px;
+  }
+
+  .hero-card,
+  .highlight-card,
+  .status-card {
+    border-radius: 22px;
+  }
+
+  .hero-card {
+    padding: 24px;
+  }
+
+  .status-card {
+    grid-template-columns: 1fr;
+  }
+}

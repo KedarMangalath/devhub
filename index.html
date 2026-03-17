@@ -1,0 +1,1827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DevHub — Developer Intelligence Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak]{display:none!important}
+    .prose code{background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:.85em}
+    .prose pre{background:#1e293b;color:#e2e8f0;padding:16px;border-radius:8px;overflow-x:auto}
+    .prose pre code{background:transparent;padding:0}
+    .prose p{margin:0 0 8px 0}.prose p:last-child{margin:0}
+    .prose ul{padding-left:1.25rem;list-style:disc}.prose ol{padding-left:1.25rem;list-style:decimal}
+    .pipeline-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:16px;min-height:60vh}
+    .pipeline-col{min-width:190px;max-width:200px;flex-shrink:0}
+    .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900" x-data="devhub()" x-init="init()" x-cloak>
+
+<!-- Toast -->
+<div x-show="notification.show" x-transition
+  class="fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium max-w-sm"
+  :class="notification.type==='success'?'bg-green-600':notification.type==='error'?'bg-red-600':notification.type==='warning'?'bg-yellow-500':'bg-blue-600'">
+  <span x-text="notification.message"></span>
+</div>
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- ── Sidebar ── -->
+  <aside class="w-64 bg-slate-900 text-white flex flex-col shrink-0" style="height:100vh">
+    <div class="px-5 py-4 border-b border-slate-700">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">⚡</span>
+        <div>
+          <div class="font-bold text-lg leading-tight">DevHub</div>
+          <div class="text-xs text-slate-400">Developer Intelligence</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="px-4 py-3 border-b border-slate-700">
+      <label class="text-xs text-slate-400 uppercase tracking-wide">Your Role</label>
+      <select x-model="currentUser.role"
+        class="mt-1 w-full bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none">
+        <option value="developer">👤 Developer</option>
+        <option value="admin">🔑 Admin</option>
+        <option value="viewer">👁️ Viewer</option>
+      </select>
+    </div>
+
+    <nav class="flex-1 py-3 px-3">
+      <button @click="goHome()"
+        class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors mb-1"
+        :class="view==='home'?'bg-indigo-600 text-white':'text-slate-300 hover:bg-slate-800'">
+        <span>🏠</span> All Applications
+        <span x-show="apps.length>0" class="ml-auto bg-slate-700 text-xs px-2 py-0.5 rounded-full" x-text="apps.length"></span>
+      </button>
+
+      <template x-if="selectedApp">
+        <div>
+          <div class="px-3 py-2 mt-3 mb-1">
+            <div class="text-xs text-slate-500 uppercase tracking-wide">Current App</div>
+            <div class="text-sm font-semibold text-slate-200 truncate" x-text="selectedApp.name"></div>
+          </div>
+          <template x-for="item in appNavItems" :key="item.view">
+            <button @click="view=item.view"
+              class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors mb-0.5"
+              :class="view===item.view?'bg-indigo-600 text-white':'text-slate-300 hover:bg-slate-800'">
+              <span x-text="item.icon"></span>
+              <span x-text="item.label"></span>
+            </button>
+          </template>
+        </div>
+      </template>
+    </nav>
+
+    <div class="px-4 py-4 border-t border-slate-700">
+      <button @click="showAddAppModal=true"
+        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+        + Register App
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="flex-1 overflow-y-auto flex flex-col">
+
+    <!-- HOME -->
+    <div x-show="view==='home'" class="p-8">
+      <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-8 text-white mb-8">
+        <h1 class="text-3xl font-bold mb-2">⚡ DevHub</h1>
+        <p class="text-indigo-200 text-lg mb-1">Multi-Application Developer Intelligence Platform</p>
+        <p class="text-indigo-300 text-sm">Register any application → AI generates its blueprint → onboard developers → manage full SDLC — all from one dashboard.</p>
+      </div>
+
+      <div class="grid grid-cols-4 gap-4 mb-8">
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+          <div class="text-2xl font-bold text-indigo-600" x-text="apps.length"></div>
+          <div class="text-sm text-gray-500">Applications</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+          <div class="text-2xl font-bold text-blue-600" x-text="globalStats.total"></div>
+          <div class="text-sm text-gray-500">Total Features</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+          <div class="text-2xl font-bold text-green-600" x-text="globalStats.prod"></div>
+          <div class="text-sm text-gray-500">In Production</div>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+          <div class="text-2xl font-bold text-yellow-600" x-text="globalStats.active"></div>
+          <div class="text-sm text-gray-500">In Progress</div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-semibold">Registered Applications</h2>
+        <button @click="showAddAppModal=true"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg transition-colors">
+          + Register Application
+        </button>
+      </div>
+
+      <template x-if="apps.length===0 && !appsLoading">
+        <div class="text-center py-20 bg-white rounded-2xl border-2 border-dashed border-gray-200">
+          <div class="text-6xl mb-4">🚀</div>
+          <h3 class="text-xl font-semibold mb-2">No applications yet</h3>
+          <p class="text-gray-500 mb-6 max-w-md mx-auto">Register your first application. Paste a GitHub URL and AI will automatically generate a complete architecture blueprint.</p>
+          <button @click="showAddAppModal=true" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-medium">Register Your First Application</button>
+        </div>
+      </template>
+      <div x-show="appsLoading" class="text-center py-16 text-gray-400">Loading...</div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <template x-for="a in apps" :key="a.id">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer group" @click="selectApp(a)">
+            <div class="p-6">
+              <div class="flex items-start justify-between mb-3">
+                <div class="w-12 h-12 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-xl flex items-center justify-center text-white text-xl font-bold" x-text="a.name.charAt(0).toUpperCase()"></div>
+                <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">Active</span>
+              </div>
+              <h3 class="font-bold text-lg mb-1" x-text="a.name"></h3>
+              <p class="text-gray-500 text-sm mb-4 line-clamp-2" x-text="a.description"></p>
+              <div class="flex flex-wrap gap-1 mb-4">
+                <template x-for="(t,i) in a.tech_stack.slice(0,4)" :key="i">
+                  <span class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full" x-text="t"></span>
+                </template>
+                <span x-show="a.tech_stack.length>4" class="text-xs text-gray-400">+<span x-text="a.tech_stack.length-4"></span></span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-400">👥 <span x-text="a.team_members.length"></span> members</span>
+                <div class="flex gap-2 items-center">
+                  <button @click.stop="deleteApp(a.id)" class="text-xs text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">Delete</button>
+                  <span class="text-xs text-indigo-600 font-medium group-hover:underline">Open →</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- APP OVERVIEW -->
+    <div x-show="view==='app-overview'" class="p-8">
+      <template x-if="selectedApp">
+        <div>
+          <div class="flex items-start justify-between mb-6">
+            <div>
+              <div class="flex items-center gap-3 mb-1">
+                <h1 class="text-2xl font-bold" x-text="selectedApp.name"></h1>
+                <a x-show="selectedApp.github_url" :href="selectedApp.github_url" target="_blank"
+                  class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1 rounded-full transition-colors">GitHub →</a>
+              </div>
+              <p class="text-gray-500" x-text="selectedApp.description"></p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+              <div class="text-2xl font-bold text-blue-600" x-text="blueprint?.services?.length||0"></div>
+              <div class="text-sm text-gray-500">Services</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+              <div class="text-2xl font-bold text-purple-600" x-text="blueprint?.api_endpoints?.length||0"></div>
+              <div class="text-sm text-gray-500">API Endpoints</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+              <div class="text-2xl font-bold text-yellow-600" x-text="features.filter(f=>!['backlog','production'].includes(f.status)).length"></div>
+              <div class="text-sm text-gray-500">Active Features</div>
+            </div>
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+              <div class="text-2xl font-bold text-green-600" x-text="selectedApp.team_members?.length||0"></div>
+              <div class="text-sm text-gray-500">Team Members</div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-6">
+            <div class="col-span-1 space-y-5">
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-3">Tech Stack</h3>
+                <div class="flex flex-wrap gap-2">
+                  <template x-for="t in selectedApp.tech_stack" :key="t">
+                    <span class="bg-indigo-50 text-indigo-700 text-sm px-3 py-1 rounded-full" x-text="t"></span>
+                  </template>
+                  <span x-show="!selectedApp.tech_stack?.length" class="text-sm text-gray-400">Not specified</span>
+                </div>
+              </div>
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-3">Team</h3>
+                <div class="space-y-2">
+                  <template x-for="m in selectedApp.team_members" :key="m">
+                    <div class="flex items-center gap-3">
+                      <div class="w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center text-sm font-bold" x-text="m.charAt(0).toUpperCase()"></div>
+                      <span class="text-sm" x-text="m"></span>
+                    </div>
+                  </template>
+                  <span x-show="!selectedApp.team_members?.length" class="text-sm text-gray-400">No members listed</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-span-2 space-y-5">
+              <div class="grid grid-cols-2 gap-4">
+                <button @click="view='app-blueprint'" class="bg-white hover:bg-indigo-50 border border-gray-100 hover:border-indigo-200 rounded-xl p-4 text-left shadow-sm transition-all">
+                  <div class="text-2xl mb-2">🗺️</div><div class="font-semibold">Blueprint</div><div class="text-sm text-gray-500">Architecture & API docs</div>
+                </button>
+                <button @click="view='app-onboarding'" class="bg-white hover:bg-green-50 border border-gray-100 hover:border-green-200 rounded-xl p-4 text-left shadow-sm transition-all">
+                  <div class="text-2xl mb-2">🚀</div><div class="font-semibold">Onboarding</div><div class="text-sm text-gray-500">New developer guide</div>
+                </button>
+                <button @click="showAddFeatureModal=true" class="bg-white hover:bg-blue-50 border border-gray-100 hover:border-blue-200 rounded-xl p-4 text-left shadow-sm transition-all">
+                  <div class="text-2xl mb-2">✨</div><div class="font-semibold">New Feature</div><div class="text-sm text-gray-500">AI-generated spec</div>
+                </button>
+                <button @click="view='app-pipeline'" class="bg-white hover:bg-yellow-50 border border-gray-100 hover:border-yellow-200 rounded-xl p-4 text-left shadow-sm transition-all">
+                  <div class="text-2xl mb-2">🔄</div><div class="font-semibold">SDLC Pipeline</div><div class="text-sm text-gray-500">Track features to prod</div>
+                </button>
+              </div>
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-4">Recent Activity</h3>
+                <div x-show="recentActivity.length===0" class="text-sm text-gray-400">No activity yet. Create a feature to get started.</div>
+                <div class="space-y-3">
+                  <template x-for="(evt,i) in recentActivity" :key="i">
+                    <div class="flex items-start gap-3 text-sm">
+                      <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 font-bold"
+                        :class="evt.action==='created'?'bg-blue-100 text-blue-600':evt.action==='advanced'?'bg-green-100 text-green-600':evt.action==='rejected'?'bg-red-100 text-red-600':'bg-purple-100 text-purple-600'">
+                        <span x-text="evt.action==='created'?'+':evt.action==='advanced'?'→':evt.action==='rejected'?'✕':'✓'"></span>
+                      </span>
+                      <div>
+                        <span class="font-medium" x-text="evt.feature_title"></span>
+                        <span class="text-gray-400"> — <span x-text="evt.action"></span> → <span class="font-medium text-gray-600" x-text="evt.stage?.replace('_',' ')"></span></span>
+                        <span class="text-gray-400 text-xs ml-1">by <span x-text="evt.by"></span></span>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- BLUEPRINT -->
+    <div x-show="view==='app-blueprint'" class="p-8">
+      <h1 class="text-2xl font-bold mb-6">🗺️ Project Blueprint</h1>
+      <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 flex-wrap">
+        <template x-for="tab in blueprintTabs" :key="tab.id">
+          <button @click="blueprintTab=tab.id" class="px-4 py-2 text-sm rounded-lg transition-colors"
+            :class="blueprintTab===tab.id?'bg-white shadow-sm font-medium text-gray-900':'text-gray-500 hover:text-gray-700'">
+            <span x-text="tab.icon+' '+tab.label"></span>
+          </button>
+        </template>
+      </div>
+      <template x-if="!blueprint"><div class="text-center py-16 text-gray-400">Blueprint not available</div></template>
+      <template x-if="blueprint">
+        <div>
+          <!-- Overview -->
+          <div x-show="blueprintTab==='overview'" class="space-y-5">
+            <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <h3 class="font-semibold mb-3">Architecture Overview</h3>
+              <p class="text-gray-700 leading-relaxed whitespace-pre-line" x-text="blueprint.architecture_overview"></p>
+            </div>
+            <div class="grid grid-cols-2 gap-5">
+              <div class="bg-blue-50 rounded-xl p-5 border border-blue-100">
+                <h3 class="font-semibold mb-2">Data Flow</h3>
+                <p class="text-gray-700 text-sm leading-relaxed" x-text="blueprint.data_flow"></p>
+              </div>
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-3">Deployment</h3>
+                <div class="flex flex-wrap gap-2 mb-2">
+                  <template x-for="env in blueprint.deployment_info?.environments||[]" :key="env">
+                    <span class="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs" x-text="env"></span>
+                  </template>
+                </div>
+                <p class="text-sm text-gray-600 mb-1" x-text="blueprint.deployment_info?.ci_cd"></p>
+                <p class="text-sm text-gray-600" x-text="blueprint.deployment_info?.deployment_process"></p>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div class="px-6 py-4 border-b border-gray-100 font-semibold">Key Components</div>
+              <table class="w-full text-sm">
+                <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+                  <tr><th class="px-6 py-3 text-left">Component</th><th class="px-6 py-3 text-left">File Path</th><th class="px-6 py-3 text-left">Purpose</th><th class="px-6 py-3 text-left">Complexity</th></tr>
+                </thead>
+                <tbody>
+                  <template x-for="c in blueprint.key_components||[]" :key="c.name">
+                    <tr class="border-t border-gray-100 hover:bg-gray-50">
+                      <td class="px-6 py-3 font-medium" x-text="c.name"></td>
+                      <td class="px-6 py-3 font-mono text-xs text-gray-500" x-text="c.file_path"></td>
+                      <td class="px-6 py-3 text-gray-600" x-text="c.purpose"></td>
+                      <td class="px-6 py-3"><span class="px-2 py-1 rounded-full text-xs"
+                        :class="c.complexity==='high'?'bg-red-100 text-red-700':c.complexity==='medium'?'bg-yellow-100 text-yellow-700':'bg-green-100 text-green-700'"
+                        x-text="c.complexity"></span></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Services -->
+          <div x-show="blueprintTab==='services'" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <template x-for="s in blueprint.services||[]" :key="s.name">
+                <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                  <div class="flex items-center gap-3 mb-3">
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" :class="serviceColor(s.type)" x-text="serviceIcon(s.type)"></div>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-semibold" x-text="s.name"></div>
+                      <div class="flex items-center gap-2 flex-wrap mt-0.5">
+                        <span class="text-xs px-2 py-0.5 rounded-full" :class="serviceColor(s.type)" x-text="s.type"></span>
+                        <span x-show="s.protocol" class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full" x-text="s.protocol"></span>
+                        <span x-show="s.port" class="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full" x-text="':'+s.port"></span>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="text-sm text-gray-600 mb-3" x-text="s.description"></p>
+                  <div class="flex flex-wrap gap-1 mb-2">
+                    <span class="font-mono text-xs bg-gray-50 px-2 py-1 rounded text-gray-600" x-text="s.tech"></span>
+                  </div>
+                  <div x-show="s.health_check" class="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded mt-2">
+                    <span class="font-semibold">Health:</span> <span x-text="s.health_check"></span>
+                  </div>
+                  <div x-show="s.consumes?.length" class="mt-3 pt-3 border-t border-gray-50">
+                    <div class="text-xs text-gray-500 font-semibold mb-1">Calls:</div>
+                    <div class="flex flex-wrap gap-1">
+                      <template x-for="dep in s.consumes||[]" :key="dep">
+                        <span class="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full" x-text="dep"></span>
+                      </template>
+                    </div>
+                  </div>
+                  <div x-show="s.exposes?.length" class="mt-2">
+                    <div class="text-xs text-gray-500 font-semibold mb-1">Exposes:</div>
+                    <div class="flex flex-wrap gap-1">
+                      <template x-for="exp in s.exposes||[]" :key="exp">
+                        <span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full" x-text="exp"></span>
+                      </template>
+                    </div>
+                  </div>
+                  <div x-show="s.owns_data?.length" class="mt-2">
+                    <div class="text-xs text-gray-500 font-semibold mb-1">Owns Data:</div>
+                    <div class="flex flex-wrap gap-1">
+                      <template x-for="d in s.owns_data||[]" :key="d">
+                        <span class="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full" x-text="d"></span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- API -->
+          <div x-show="blueprintTab==='api'">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                <span class="font-semibold">API Endpoints</span>
+                <span class="text-sm text-gray-400" x-text="(blueprint.api_endpoints||[]).length+' endpoints — click to expand'"></span>
+              </div>
+              <div class="divide-y divide-gray-50">
+                <template x-for="(e,ei) in blueprint.api_endpoints||[]" :key="e.path+e.method">
+                  <div>
+                    <button @click="openApi===ei?openApi=-1:openApi=ei"
+                      class="w-full flex items-center gap-4 px-6 py-3 hover:bg-gray-50 text-left transition-colors">
+                      <span class="text-xs font-bold px-2 py-1 rounded shrink-0 w-16 text-center" :class="methodColor(e.method)" x-text="e.method"></span>
+                      <span class="font-mono text-xs text-gray-700 shrink-0 w-56 truncate" x-text="e.path"></span>
+                      <span class="text-sm text-gray-600 flex-1" x-text="e.description"></span>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <span x-show="e.auth_required" class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">Auth</span>
+                        <span x-show="!e.auth_required" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Public</span>
+                        <span x-show="e.rate_limited" class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">Rate Limited</span>
+                        <span class="text-gray-400 text-xs" x-text="openApi===ei?'▲':'▼'"></span>
+                      </div>
+                    </button>
+                    <div x-show="openApi===ei" class="px-6 pb-4 bg-gray-50 border-t border-gray-100">
+                      <div class="grid grid-cols-2 gap-4 pt-3">
+                        <div x-show="e.request_body && e.request_body!='{}' && e.request_body!=''">
+                          <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Request Body</div>
+                          <pre class="text-xs bg-gray-900 text-green-400 p-3 rounded overflow-x-auto" x-text="e.request_body"></pre>
+                        </div>
+                        <div x-show="e.response && e.response!='{}' && e.response!=''">
+                          <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Response</div>
+                          <pre class="text-xs bg-gray-900 text-blue-400 p-3 rounded overflow-x-auto" x-text="e.response"></pre>
+                        </div>
+                        <div x-show="e.query_params && e.query_params!=''">
+                          <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Query Params</div>
+                          <p class="text-xs text-gray-600" x-text="e.query_params"></p>
+                        </div>
+                        <div x-show="e.error_codes?.length">
+                          <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Error Codes</div>
+                          <div class="space-y-1">
+                            <template x-for="err in e.error_codes||[]" :key="err">
+                              <div class="text-xs bg-red-50 text-red-700 px-2 py-1 rounded font-mono" x-text="err"></div>
+                            </template>
+                          </div>
+                        </div>
+                        <div x-show="e.notes && e.notes!=''" class="col-span-2">
+                          <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Implementation Notes</div>
+                          <p class="text-xs text-gray-600 bg-yellow-50 px-3 py-2 rounded border border-yellow-100" x-text="e.notes"></p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <!-- Database -->
+          <div x-show="blueprintTab==='database'" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <template x-for="t in blueprint.database_schema||[]" :key="t.table">
+                <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="text-orange-500">🗄️</span>
+                    <span class="font-semibold font-mono" x-text="t.table"></span>
+                  </div>
+                  <p class="text-sm text-gray-600 mb-3" x-text="t.description"></p>
+                  <!-- key_fields: support both object array and string array -->
+                  <div class="mb-3">
+                    <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Fields</div>
+                    <div class="space-y-1">
+                      <template x-for="f in t.key_fields||[]" :key="typeof f==='object'?f.name:f">
+                        <div x-show="typeof f==='object'" class="flex items-start gap-2 text-xs">
+                          <span class="font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded shrink-0" x-text="f.name||f"></span>
+                          <span class="text-blue-600 shrink-0" x-text="f.type"></span>
+                          <span class="text-gray-500" x-text="f.description"></span>
+                          <span x-show="f.indexed" class="ml-auto bg-yellow-100 text-yellow-700 px-1.5 rounded shrink-0">idx</span>
+                        </div>
+                        <div x-show="typeof f==='string'" class="inline-block">
+                          <span class="text-xs bg-gray-100 font-mono text-gray-600 px-2 py-0.5 rounded" x-text="f"></span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                  <p class="text-xs text-gray-500 mb-2" x-text="t.relationships"></p>
+                  <div x-show="t.indexes?.length" class="mt-2 pt-2 border-t border-gray-50">
+                    <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Indexes</div>
+                    <template x-for="idx in t.indexes||[]" :key="idx">
+                      <div class="text-xs font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded mb-1" x-text="idx"></div>
+                    </template>
+                  </div>
+                  <div x-show="t.constraints?.length" class="mt-2">
+                    <div class="text-xs font-semibold text-gray-500 uppercase mb-1">Constraints</div>
+                    <template x-for="c in t.constraints||[]" :key="c">
+                      <div class="text-xs font-mono text-red-700 bg-red-50 px-2 py-0.5 rounded mb-1" x-text="c"></div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Setup -->
+          <div x-show="blueprintTab==='setup'" class="grid grid-cols-2 gap-6">
+            <div class="space-y-5">
+              <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-4">Setup Steps</h3>
+                <ol class="space-y-3">
+                  <template x-for="(s,i) in blueprint.setup_steps||[]" :key="i">
+                    <li class="flex gap-3 text-sm">
+                      <span class="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 font-bold" x-text="i+1"></span>
+                      <span class="text-gray-700" x-text="s"></span>
+                    </li>
+                  </template>
+                </ol>
+              </div>
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-3">Code Standards</h3>
+                <ul class="space-y-2">
+                  <template x-for="(s,i) in blueprint.code_quality_standards||[]" :key="i">
+                    <li class="flex gap-2 text-sm text-gray-700"><span class="text-green-500">✓</span><span x-text="s"></span></li>
+                  </template>
+                </ul>
+              </div>
+            </div>
+            <div class="space-y-5">
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-3">Environment Variables</h3>
+                <div class="space-y-3">
+                  <template x-for="v in blueprint.environment_variables||[]" :key="v.name">
+                    <div class="text-sm border-b border-gray-50 pb-3 last:border-0">
+                      <div class="flex items-center gap-2 mb-1">
+                        <span class="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded" x-text="v.name"></span>
+                        <span x-show="v.required" class="text-xs text-red-500 font-semibold">required</span>
+                        <span x-show="!v.required" class="text-xs text-gray-400">optional</span>
+                      </div>
+                      <p class="text-gray-600 text-xs mb-1" x-text="v.description"></p>
+                      <p x-show="v.example" class="font-mono text-xs text-green-600 mb-1" x-text="'e.g. '+v.example"></p>
+                      <p x-show="v.default" class="font-mono text-xs text-blue-500 mb-1" x-text="'default: '+v.default"></p>
+                      <p x-show="v.how_to_get" class="text-xs text-indigo-600 italic" x-text="'→ '+v.how_to_get"></p>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-3">Testing Strategy</h3>
+                <div class="space-y-2 text-sm">
+                  <div><strong>Unit:</strong> <span class="text-gray-600" x-text="blueprint.testing_strategy?.unit"></span></div>
+                  <div><strong>Integration:</strong> <span class="text-gray-600" x-text="blueprint.testing_strategy?.integration"></span></div>
+                  <div><strong>E2E:</strong> <span class="text-gray-600" x-text="blueprint.testing_strategy?.e2e"></span></div>
+                  <div><strong>Coverage:</strong> <span class="text-gray-600" x-text="blueprint.testing_strategy?.coverage_target"></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security -->
+          <div x-show="blueprintTab==='security'" class="grid grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <h3 class="font-semibold mb-4">🛡️ Security Considerations</h3>
+              <div class="space-y-3">
+                <template x-for="(s,i) in blueprint.security_considerations||[]" :key="i">
+                  <div class="flex gap-3 text-sm bg-yellow-50 border border-yellow-100 rounded-lg p-3">
+                    <span>⚠️</span><span class="text-gray-700" x-text="s"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <h3 class="font-semibold mb-4">⚡ Performance Notes</h3>
+              <ul class="space-y-2">
+                <template x-for="(p,i) in blueprint.performance_notes||[]" :key="i">
+                  <li class="text-sm text-gray-700 flex gap-2"><span class="text-blue-400">•</span><span x-text="p"></span></li>
+                </template>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Architecture -->
+          <div x-show="blueprintTab==='architecture'" class="space-y-6">
+
+            <!-- Service Dependency Graph -->
+            <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <h3 class="font-semibold mb-4">🔗 Service Dependency Graph</h3>
+              <div x-show="!(blueprint.service_dependency_graph?.length)" class="text-sm text-gray-400 italic">No dependency graph available — re-register the app to generate this data.</div>
+              <div class="space-y-2">
+                <template x-for="(dep,i) in blueprint.service_dependency_graph||[]" :key="i">
+                  <div class="flex items-start gap-3 p-3 rounded-lg border"
+                    :class="dep.criticality==='critical'?'border-red-200 bg-red-50':dep.criticality==='important'?'border-orange-200 bg-orange-50':'border-gray-100 bg-gray-50'">
+                    <div class="flex items-center gap-2 min-w-0 flex-1">
+                      <span class="font-semibold text-sm bg-white border border-gray-200 px-2 py-1 rounded shrink-0" x-text="dep.from"></span>
+                      <div class="flex flex-col items-center shrink-0">
+                        <span class="text-xs text-gray-500 font-mono" x-text="dep.protocol"></span>
+                        <span class="text-gray-400">→</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded-full"
+                          :class="dep.type==='sync'?'bg-blue-100 text-blue-700':dep.type==='async'?'bg-purple-100 text-purple-700':dep.type==='event'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-600'"
+                          x-text="dep.type"></span>
+                      </div>
+                      <span class="font-semibold text-sm bg-white border border-gray-200 px-2 py-1 rounded shrink-0" x-text="dep.to"></span>
+                      <span class="text-sm text-gray-600 ml-2" x-text="dep.description"></span>
+                    </div>
+                    <span class="text-xs px-2 py-0.5 rounded-full shrink-0"
+                      :class="dep.criticality==='critical'?'bg-red-200 text-red-800':dep.criticality==='important'?'bg-orange-200 text-orange-800':'bg-gray-200 text-gray-600'"
+                      x-text="dep.criticality||'optional'"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Key Components Deep Dive -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="font-semibold">📦 Key Components</h3>
+                <span class="text-sm text-gray-400" x-text="(blueprint.key_components||[]).length+' components'"></span>
+              </div>
+              <div class="divide-y divide-gray-50">
+                <template x-for="c in blueprint.key_components||[]" :key="c.name">
+                  <div class="px-6 py-4">
+                    <div class="flex items-start justify-between gap-4 mb-2">
+                      <div class="flex items-center gap-3">
+                        <span class="font-semibold" x-text="c.name"></span>
+                        <span class="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded" x-text="c.file_path"></span>
+                        <span class="text-xs px-2 py-0.5 rounded-full"
+                          :class="c.complexity==='high'?'bg-red-100 text-red-700':c.complexity==='medium'?'bg-yellow-100 text-yellow-700':'bg-green-100 text-green-700'"
+                          x-text="c.complexity+' complexity'"></span>
+                      </div>
+                      <span x-show="c.design_pattern" class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded shrink-0" x-text="c.design_pattern"></span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-2" x-text="c.purpose"></p>
+                    <div class="flex flex-wrap gap-3 text-xs">
+                      <div x-show="c.dependencies?.length">
+                        <span class="text-gray-500 font-semibold">Deps: </span>
+                        <template x-for="d in c.dependencies||[]" :key="d">
+                          <span class="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded mr-1" x-text="d"></span>
+                        </template>
+                      </div>
+                      <div x-show="c.entry_points?.length">
+                        <span class="text-gray-500 font-semibold">Read first: </span>
+                        <template x-for="ep in c.entry_points||[]" :key="ep">
+                          <span class="bg-emerald-50 text-emerald-700 font-mono px-1.5 py-0.5 rounded mr-1" x-text="ep"></span>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Sequence Flows -->
+            <div x-show="blueprint.sequence_flows?.length" class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <h3 class="font-semibold mb-4">🔄 Sequence Flows</h3>
+              <div class="space-y-4">
+                <template x-for="(flow,fi) in blueprint.sequence_flows||[]" :key="fi">
+                  <div class="border border-gray-100 rounded-xl overflow-hidden">
+                    <button @click="openFlow===fi?openFlow=-1:openFlow=fi"
+                      class="w-full flex items-center justify-between px-5 py-3 bg-gray-50 hover:bg-gray-100 transition-colors">
+                      <div class="flex items-center gap-3">
+                        <span class="w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold" x-text="fi+1"></span>
+                        <span class="font-medium" x-text="flow.name"></span>
+                        <span class="text-xs text-gray-500" x-text="flow.description"></span>
+                      </div>
+                      <span class="text-gray-400" x-text="openFlow===fi?'▲':'▼'"></span>
+                    </button>
+                    <div x-show="openFlow===fi" class="px-5 py-4">
+                      <div class="space-y-2">
+                        <template x-for="(step,si) in flow.steps||[]" :key="si">
+                          <div class="flex items-start gap-3 text-sm">
+                            <span class="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5" x-text="si+1"></span>
+                            <span class="text-gray-700 font-mono text-xs leading-relaxed" x-text="step"></span>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Infrastructure & Deployment -->
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-3">🚀 Deployment Info</h3>
+                <div class="space-y-2 text-sm">
+                  <div x-show="blueprint.deployment_info?.infrastructure">
+                    <span class="text-gray-500 font-semibold">Infrastructure: </span>
+                    <span class="text-gray-700" x-text="blueprint.deployment_info?.infrastructure"></span>
+                  </div>
+                  <div><span class="text-gray-500 font-semibold">CI/CD: </span><span class="text-gray-700" x-text="blueprint.deployment_info?.ci_cd"></span></div>
+                  <div><span class="text-gray-500 font-semibold">Deploy: </span><span class="text-gray-700 font-mono text-xs" x-text="blueprint.deployment_info?.deployment_process"></span></div>
+                  <div><span class="text-gray-500 font-semibold">Rollback: </span><span class="text-gray-700 font-mono text-xs" x-text="blueprint.deployment_info?.rollback_process"></span></div>
+                  <div x-show="blueprint.deployment_info?.monitoring">
+                    <span class="text-gray-500 font-semibold">Monitoring: </span>
+                    <span class="text-gray-700 text-xs" x-text="blueprint.deployment_info?.monitoring"></span>
+                  </div>
+                  <div x-show="blueprint.deployment_info?.logs">
+                    <span class="text-gray-500 font-semibold">Logs: </span>
+                    <span class="text-gray-700 font-mono text-xs" x-text="blueprint.deployment_info?.logs"></span>
+                  </div>
+                  <div class="flex flex-wrap gap-1 mt-2">
+                    <template x-for="env in blueprint.deployment_info?.environments||[]" :key="env">
+                      <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs" x-text="env"></span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h3 class="font-semibold mb-3">🧪 Testing Strategy</h3>
+                <div class="space-y-2 text-sm">
+                  <div><span class="text-gray-500 font-semibold">Unit: </span><span class="text-gray-600" x-text="blueprint.testing_strategy?.unit"></span></div>
+                  <div><span class="text-gray-500 font-semibold">Integration: </span><span class="text-gray-600" x-text="blueprint.testing_strategy?.integration"></span></div>
+                  <div><span class="text-gray-500 font-semibold">E2E: </span><span class="text-gray-600" x-text="blueprint.testing_strategy?.e2e"></span></div>
+                  <div><span class="text-gray-500 font-semibold">Coverage: </span><span class="text-gray-600" x-text="blueprint.testing_strategy?.coverage_target"></span></div>
+                  <div x-show="blueprint.testing_strategy?.ci_test_command" class="mt-2">
+                    <div class="font-mono text-xs bg-gray-900 text-green-400 px-3 py-2 rounded" x-text="blueprint.testing_strategy?.ci_test_command"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ONBOARDING -->
+    <div x-show="view==='app-onboarding'" class="p-8">
+      <div class="bg-gradient-to-r from-green-500 to-teal-500 rounded-2xl p-6 text-white mb-8">
+        <h1 class="text-2xl font-bold mb-1">Welcome to <span x-text="selectedApp?.name"></span>! 👋</h1>
+        <p class="text-green-100 mb-3">Your personalized onboarding guide — everything to get productive fast.</p>
+        <template x-if="blueprint">
+          <div class="bg-white/20 rounded-xl p-3 text-sm">
+            <span x-text="completedCount()"></span> of <span x-text="totalOnboardingTasks()"></span> tasks completed
+            <div class="mt-2 bg-white/30 rounded-full h-2">
+              <div class="bg-white rounded-full h-2 transition-all" :style="'width:'+onboardingProgress()+'%'"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <template x-if="blueprint">
+        <div class="space-y-6">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 class="font-semibold mb-4">🔧 Setup Steps</h3>
+            <ol class="space-y-3">
+              <template x-for="(s,i) in blueprint.setup_steps||[]" :key="i">
+                <li class="flex gap-3 items-start">
+                  <button @click="toggleTask('setup_'+i)"
+                    class="w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors"
+                    :class="isTaskDone('setup_'+i)?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-green-400'">
+                    <svg x-show="isTaskDone('setup_'+i)" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                  </button>
+                  <span class="text-sm text-gray-700" :class="isTaskDone('setup_'+i)?'line-through text-gray-400':''" x-text="s"></span>
+                </li>
+              </template>
+            </ol>
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 class="font-semibold mb-4">✅ Onboarding Checklist</h3>
+            <template x-for="cat in ['environment','codebase','processes','tools','team']" :key="cat">
+              <div x-show="(blueprint.onboarding_checklist||[]).some(t=>t.category===cat)" class="mb-4">
+                <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 capitalize" x-text="cat"></div>
+                <div class="space-y-2">
+                  <template x-for="(t,i) in (blueprint.onboarding_checklist||[]).filter(t=>t.category===cat)" :key="i">
+                    <div class="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
+                      <button @click="toggleTask('task_'+cat+'_'+i)"
+                        class="w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors"
+                        :class="isTaskDone('task_'+cat+'_'+i)?'bg-green-500 border-green-500 text-white':'border-gray-300 hover:border-green-400'">
+                        <svg x-show="isTaskDone('task_'+cat+'_'+i)" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                      </button>
+                      <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                          <span class="text-sm" :class="isTaskDone('task_'+cat+'_'+i)?'line-through text-gray-400':'text-gray-700'" x-text="t.task"></span>
+                          <span class="text-xs text-gray-400" x-text="t.estimated_time"></span>
+                        </div>
+                        <div class="flex items-center gap-3 mt-0.5">
+                          <p x-show="t.why_important" class="text-xs text-indigo-600" x-text="t.why_important"></p>
+                          <a x-show="t.resources" class="text-xs text-blue-500 hover:underline" :href="t.resources.startsWith('http')?t.resources:'#'" x-text="t.resources"></a>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 class="font-semibold mb-4">💡 Key Concepts</h3>
+            <div class="space-y-2">
+              <template x-for="(c,i) in blueprint.key_concepts||[]" :key="i">
+                <div class="border border-gray-100 rounded-xl overflow-hidden">
+                  <button @click="openConcept===i?openConcept=-1:openConcept=i"
+                    class="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 text-left">
+                    <span class="font-medium text-sm" x-text="c.concept"></span>
+                    <span class="text-gray-400 text-xs" x-text="openConcept===i?'▲':'▼'"></span>
+                  </button>
+                  <div x-show="openConcept===i" class="px-4 pb-4 space-y-2">
+                    <p class="text-sm text-gray-600" x-text="c.explanation"></p>
+                    <p x-show="c.why_important" class="text-xs text-indigo-700 bg-indigo-50 px-2 py-1 rounded" x-text="'Why it matters: '+c.why_important"></p>
+                    <p x-show="c.related_code" class="text-xs font-mono text-emerald-700 bg-emerald-50 px-2 py-1 rounded" x-text="'See: '+c.related_code"></p>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div x-show="blueprint.gotchas?.length" class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 class="font-semibold mb-4">⚠️ Watch Out For</h3>
+            <div class="space-y-2">
+              <template x-for="(g,i) in blueprint.gotchas||[]" :key="i">
+                <div class="flex gap-3 bg-yellow-50 border border-yellow-100 rounded-lg p-3 text-sm">
+                  <span>⚠️</span><span class="text-gray-700" x-text="g"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template x-if="!blueprint"><div class="text-center py-16 text-gray-400">Blueprint not loaded</div></template>
+    </div>
+
+    <!-- FEATURES -->
+    <div x-show="view==='app-features'" class="p-8">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-bold">✨ Features</h1>
+        <button x-show="currentUser.role!=='viewer'" @click="showAddFeatureModal=true"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg transition-colors">+ New Feature</button>
+      </div>
+
+      <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 w-fit">
+        <template x-for="tab in [['all','All'],['backlog','Backlog'],['active','Active'],['staging','Deployed']]" :key="tab[0]">
+          <button @click="featureFilter=tab[0]" class="px-4 py-1.5 text-sm rounded-lg transition-colors"
+            :class="featureFilter===tab[0]?'bg-white shadow-sm font-medium':'text-gray-500 hover:text-gray-700'">
+            <span x-text="tab[1]+' ('+filteredFeatureCount(tab[0])+')'"></span>
+          </button>
+        </template>
+      </div>
+
+      <template x-if="filteredFeatures.length===0">
+        <div class="text-center py-16 bg-white rounded-2xl border-2 border-dashed border-gray-200">
+          <div class="text-5xl mb-3">✨</div>
+          <h3 class="font-semibold mb-2">No features yet</h3>
+          <p class="text-gray-500 mb-4 text-sm">Describe a feature — AI generates a full technical spec automatically.</p>
+          <button @click="showAddFeatureModal=true" class="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm">Create Feature</button>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <template x-for="f in filteredFeatures" :key="f.id">
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer" @click="openFeatureDetail(f)">
+            <div class="p-5">
+              <div class="flex items-start justify-between mb-3">
+                <span class="text-xs px-2 py-1 rounded-full font-medium" :class="getStageColor(f.status)" x-text="f.status.replace('_',' ')"></span>
+                <span class="text-xs px-2 py-1 rounded-full"
+                  :class="f.spec?.estimated_complexity==='high'?'bg-red-100 text-red-600':f.spec?.estimated_complexity==='medium'?'bg-yellow-100 text-yellow-600':'bg-green-100 text-green-600'"
+                  x-text="f.spec?.estimated_complexity||'?'"></span>
+              </div>
+              <h3 class="font-semibold mb-2" x-text="f.title"></h3>
+              <p class="text-sm text-gray-500 mb-4 line-clamp-2" x-text="f.description"></p>
+              <div class="mb-3">
+                <div class="flex justify-between text-xs text-gray-400 mb-1">
+                  <span>Pipeline</span><span x-text="getPipelineProgress(f)+'%'"></span>
+                </div>
+                <div class="bg-gray-100 rounded-full h-1.5">
+                  <div class="bg-indigo-500 rounded-full h-1.5 transition-all" :style="'width:'+getPipelineProgress(f)+'%'"></div>
+                </div>
+              </div>
+              <div class="flex items-center justify-between text-xs text-gray-400">
+                <span x-text="f.created_by"></span>
+                <span x-text="formatDate(f.created_at)"></span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- PIPELINE -->
+    <div x-show="view==='app-pipeline'" class="p-8 flex flex-col">
+      <div class="flex items-center justify-between mb-5">
+        <h1 class="text-2xl font-bold">🔄 SDLC Pipeline</h1>
+        <button x-show="currentUser.role!=='viewer'" @click="showAddFeatureModal=true"
+          class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg">+ New Feature</button>
+      </div>
+      <div class="flex items-center gap-1 mb-5 flex-wrap">
+        <template x-for="(s,i) in pipelineStages" :key="s">
+          <div class="flex items-center gap-1">
+            <div class="px-2 py-1 rounded-lg text-xs font-medium" :class="getStageColor(s)" x-text="s.replace('_',' ')"></div>
+            <span x-show="i<pipelineStages.length-1" class="text-gray-300 text-xs">→</span>
+          </div>
+        </template>
+      </div>
+      <div class="pipeline-board flex-1">
+        <template x-for="stage in pipelineStages" :key="stage">
+          <div class="pipeline-col">
+            <div class="px-3 py-2 rounded-t-xl text-xs font-bold uppercase tracking-wide mb-2" :class="getStageDark(stage)">
+              <span x-text="stage.replace('_',' ')"></span>
+              <span class="ml-1 opacity-70">(<span x-text="getFeaturesInStage(stage).length"></span>)</span>
+            </div>
+            <div class="space-y-2">
+              <template x-for="f in getFeaturesInStage(stage)" :key="f.id">
+                <div class="bg-white rounded-xl p-3 shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                  <div class="font-medium text-sm mb-1 line-clamp-2 cursor-pointer hover:text-indigo-600" @click="openFeatureDetail(f)" x-text="f.title"></div>
+                  <div class="flex items-center gap-1 mb-2 flex-wrap">
+                    <span class="text-xs px-1.5 py-0.5 rounded"
+                      :class="f.spec?.estimated_complexity==='high'?'bg-red-100 text-red-600':f.spec?.estimated_complexity==='medium'?'bg-yellow-100 text-yellow-600':'bg-green-100 text-green-600'"
+                      x-text="f.spec?.estimated_complexity||'?'"></span>
+                    <template x-if="f.test_results">
+                      <span class="text-xs px-1.5 py-0.5 rounded"
+                        :class="f.test_results.overall_status==='passed'?'bg-green-100 text-green-600':f.test_results.overall_status==='failed'?'bg-red-100 text-red-600':'bg-yellow-100 text-yellow-600'"
+                        x-text="f.test_results.overall_status==='passed'?'✓ tests':'⚠ tests'"></span>
+                    </template>
+                  </div>
+                  <div x-show="advancingFeature===f.id" class="text-xs text-indigo-500 mb-2 animate-pulse">Processing...</div>
+                  <div class="flex flex-wrap gap-1" x-show="currentUser.role!=='viewer' && advancingFeature!==f.id && stage!=='staging'">
+                    <button @click.stop="advanceFeature(f)"
+                      class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2 py-1 rounded transition-colors">→ Advance</button>
+                    <button x-show="stage!=='backlog'" @click.stop="rejectFeature(f)"
+                      class="text-xs bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 rounded transition-colors">Reject</button>
+                    <button x-show="stage==='code_review' && currentUser.role==='admin'" @click.stop="approveFeature(f)"
+                      class="text-xs bg-green-50 hover:bg-green-100 text-green-700 px-2 py-1 rounded transition-colors">✓ Approve</button>
+                  </div>
+                  <div x-show="stage==='staging'" class="text-xs text-emerald-600 font-semibold">✅ Deployed to Staging</div>
+                </div>
+              </template>
+              <template x-if="getFeaturesInStage(stage).length===0">
+                <div class="text-center py-6 text-xs text-gray-300 border-2 border-dashed border-gray-100 rounded-xl">Empty</div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- CODE EXPLORER -->
+    <div x-show="view==='app-code'" class="flex h-full overflow-hidden">
+      <!-- File Tree Sidebar -->
+      <div class="w-64 bg-gray-900 text-gray-200 flex flex-col shrink-0 overflow-y-auto">
+        <div class="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
+          <span class="text-sm font-semibold">📂 Project Files</span>
+          <label class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 rounded cursor-pointer transition-colors">
+            Upload
+            <input type="file" webkitdirectory multiple class="hidden" x-ref="codeUploadInput"
+              @change="uploadFolder(selectedApp.id, $refs.codeUploadInput)">
+          </label>
+        </div>
+
+        <!-- Upload progress -->
+        <div x-show="uploadingFiles" class="px-4 py-2 text-xs text-indigo-300 animate-pulse" x-text="uploadProgress"></div>
+
+        <!-- Empty state -->
+        <template x-if="!hasFiles && !uploadingFiles">
+          <div class="flex-1 flex flex-col items-center justify-center text-center p-4">
+            <div class="text-3xl mb-2">📁</div>
+            <p class="text-xs text-gray-400 mb-3">No files uploaded yet</p>
+            <label class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded cursor-pointer">
+              Upload Folder
+              <input type="file" webkitdirectory multiple class="hidden"
+                @change="uploadFolder(selectedApp.id, $event.target)">
+            </label>
+          </div>
+        </template>
+
+        <!-- File tree -->
+        <div class="flex-1 overflow-y-auto py-2 text-xs" id="file-tree-root">
+          <template x-if="hasFiles">
+            <div>
+              <template x-for="item in fileTree" :key="item.path">
+                <div>
+                  <!-- Directory -->
+                  <template x-if="item.type==='dir'">
+                    <div>
+                      <div @click="expandedDirs[item.path]=!expandedDirs[item.path]"
+                        class="flex items-center gap-1 px-3 py-1 hover:bg-gray-800 cursor-pointer select-none">
+                        <span x-text="expandedDirs[item.path]===false?'📁':'📂'"></span>
+                        <span class="text-gray-300 truncate ml-1" x-text="item.name"></span>
+                      </div>
+                      <div x-show="expandedDirs[item.path]!==false" class="pl-3">
+                        <template x-for="child in item.children||[]" :key="child.path">
+                          <div>
+                            <template x-if="child.type==='file'">
+                              <div @click="openFile(child)"
+                                class="flex items-center gap-1 px-3 py-1 cursor-pointer hover:bg-gray-800"
+                                :class="selectedFile?.path===child.path?'bg-gray-700 text-white':'text-gray-400'">
+                                <span x-text="fileIcon(child.ext)"></span>
+                                <span class="truncate ml-1" x-text="child.name"></span>
+                              </div>
+                            </template>
+                            <template x-if="child.type==='dir'">
+                              <div>
+                                <div @click="expandedDirs[child.path]=!expandedDirs[child.path]"
+                                  class="flex items-center gap-1 px-3 py-1 hover:bg-gray-800 cursor-pointer">
+                                  <span x-text="expandedDirs[child.path]===false?'📁':'📂'"></span>
+                                  <span class="text-gray-300 truncate ml-1" x-text="child.name"></span>
+                                </div>
+                                <div x-show="expandedDirs[child.path]!==false" class="pl-3">
+                                  <template x-for="gc in child.children||[]" :key="gc.path">
+                                    <div @click="openFile(gc)"
+                                      class="flex items-center gap-1 px-3 py-1 cursor-pointer hover:bg-gray-800"
+                                      :class="selectedFile?.path===gc.path?'bg-gray-700 text-white':'text-gray-400'">
+                                      <span x-text="fileIcon(gc.ext)"></span>
+                                      <span class="truncate ml-1" x-text="gc.name"></span>
+                                    </div>
+                                  </template>
+                                </div>
+                              </div>
+                            </template>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                  <!-- Root-level file -->
+                  <template x-if="item.type==='file'">
+                    <div @click="openFile(item)"
+                      class="flex items-center gap-1 px-3 py-1 cursor-pointer hover:bg-gray-800"
+                      :class="selectedFile?.path===item.path?'bg-gray-700 text-white':'text-gray-400'">
+                      <span x-text="fileIcon(item.ext)"></span>
+                      <span class="truncate ml-1" x-text="item.name"></span>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Code Viewer -->
+      <div class="flex-1 flex flex-col overflow-hidden bg-gray-950">
+        <!-- No file selected -->
+        <template x-if="!selectedFile">
+          <div class="flex-1 flex flex-col items-center justify-center text-center text-gray-500">
+            <div class="text-5xl mb-3">👈</div>
+            <p class="text-sm">Select a file from the tree to view its code</p>
+            <p class="text-xs mt-1 text-gray-600" x-show="selectedApp" x-text="'Project: '+selectedApp?.name"></p>
+          </div>
+        </template>
+
+        <!-- File content -->
+        <template x-if="selectedFile">
+          <div class="flex flex-col h-full">
+            <!-- Tab bar -->
+            <div class="bg-gray-800 px-4 py-2 flex items-center gap-3 border-b border-gray-700 shrink-0">
+              <span x-text="fileIcon(selectedFile.ext)" class="text-sm"></span>
+              <span class="text-sm text-gray-200 font-mono" x-text="selectedFile.path"></span>
+              <span class="ml-auto text-xs text-gray-500" x-text="selectedFile.size ? Math.round(selectedFile.size/1024*10)/10+'KB' : ''"></span>
+            </div>
+            <!-- Code -->
+            <div x-show="fileLoading" class="flex-1 flex items-center justify-center text-gray-500 animate-pulse">Loading...</div>
+            <div x-show="!fileLoading" class="flex-1 overflow-auto">
+              <pre class="text-xs text-gray-300 p-4 leading-relaxed font-mono whitespace-pre" x-text="fileContent"></pre>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- AI CHAT -->
+    <div x-show="view==='app-chat'" class="flex flex-col h-full overflow-hidden">
+      <div class="px-8 py-5 border-b border-gray-200 bg-white flex items-center justify-between shrink-0">
+        <div>
+          <h1 class="text-xl font-bold">🤖 AI Assistant</h1>
+          <div class="text-xs text-gray-500 mt-0.5" x-show="blueprint">
+            Context: <span x-text="(blueprint?.services||[]).length"></span> services · <span x-text="(blueprint?.api_endpoints||[]).length"></span> endpoints · <span x-text="features.length"></span> features
+          </div>
+        </div>
+        <button @click="clearChat()" class="text-sm text-gray-400 hover:text-gray-600">Clear</button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-8 py-6 space-y-4" id="chat-messages">
+        <template x-if="chatMessages.length===0 && !chatLoading">
+          <div class="text-center py-10">
+            <div class="text-4xl mb-3">🤖</div>
+            <p class="text-gray-500 mb-6 text-sm">Ask me anything about <strong x-text="selectedApp?.name"></strong></p>
+            <div class="flex flex-wrap gap-2 justify-center max-w-lg mx-auto">
+              <template x-for="q in suggestedQuestions" :key="q">
+                <button @click="chatInput=q;sendChat()"
+                  class="text-sm bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 px-4 py-2 rounded-xl transition-colors" x-text="q"></button>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <template x-for="(msg,i) in chatMessages" :key="i">
+          <div class="flex" :class="msg.role==='user'?'justify-end':''">
+            <div class="max-w-2xl rounded-2xl px-5 py-3 text-sm"
+              :class="msg.role==='user'?'bg-indigo-600 text-white':'bg-white shadow-sm border border-gray-100 text-gray-800 prose prose-sm'">
+              <template x-if="msg.role==='user'"><span x-text="msg.content"></span></template>
+              <template x-if="msg.role==='assistant'"><div x-html="renderMarkdown(msg.content)"></div></template>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="chatLoading">
+          <div class="flex">
+            <div class="bg-white shadow-sm border border-gray-100 rounded-2xl px-5 py-4">
+              <div class="flex gap-1 items-center">
+                <span class="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style="animation-delay:0ms"></span>
+                <span class="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style="animation-delay:150ms"></span>
+                <span class="w-2 h-2 bg-gray-300 rounded-full animate-bounce" style="animation-delay:300ms"></span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="px-8 py-4 bg-white border-t border-gray-200 shrink-0">
+        <div class="flex gap-3">
+          <textarea x-model="chatInput" @keydown.enter.prevent="if(!$event.shiftKey)sendChat()"
+            placeholder="Ask anything... (Enter to send, Shift+Enter for newline)"
+            class="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" rows="2"></textarea>
+          <button @click="sendChat()" :disabled="!chatInput.trim()||chatLoading"
+            class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-5 rounded-xl self-end py-3 transition-colors">Send</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ADD APP MODAL -->
+<div x-show="showAddAppModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" @click.self="if(!analyzingApp)showAddAppModal=false">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]" @click.stop>
+    <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
+      <h2 class="text-xl font-bold">Register New Application</h2>
+      <button x-show="!analyzingApp" @click="showAddAppModal=false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+    </div>
+    <div class="p-6 overflow-y-auto flex-1">
+      <template x-if="!analyzingApp">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Application Name *</label>
+            <input x-model="addAppForm.name" type="text" placeholder="My Awesome App"
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Description *</label>
+            <textarea x-model="addAppForm.description" rows="3" placeholder="What does this application do?"
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"></textarea>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-4 space-y-3">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Source — choose one or more</div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">🔗 GitHub URL <span class="text-gray-400 font-normal text-xs">(auto-fetches README for AI analysis)</span></label>
+              <input x-model="addAppForm.github_url" type="url" placeholder="https://github.com/org/repo"
+                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="flex-1 border-t border-gray-200"></div>
+              <span class="text-xs text-gray-400">or</span>
+              <div class="flex-1 border-t border-gray-200"></div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">📂 Upload Project Folder <span class="text-gray-400 font-normal text-xs">(browse actual code — shown to new developers)</span></label>
+              <label class="flex items-center gap-3 border-2 border-dashed border-gray-200 hover:border-indigo-400 rounded-xl px-4 py-3 cursor-pointer transition-colors bg-white group">
+                <span class="text-2xl">📁</span>
+                <div class="flex-1">
+                  <div class="text-sm font-medium text-gray-700 group-hover:text-indigo-600" x-text="addAppForm.folderName || 'Click to select project folder'"></div>
+                  <div class="text-xs text-gray-400" x-text="addAppForm.fileCount ? addAppForm.fileCount+' files selected' : 'All files will be uploaded and shown in Code Explorer'"></div>
+                </div>
+                <input type="file" webkitdirectory multiple class="hidden" x-ref="folderInput"
+                  @change="addAppForm.folderName = $event.target.files[0]?.webkitRelativePath?.split('/')[0] || 'Folder selected';
+                           addAppForm.fileCount = $event.target.files.length">
+              </label>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="flex-1 border-t border-gray-200"></div>
+              <span class="text-xs text-gray-400">or</span>
+              <div class="flex-1 border-t border-gray-200"></div>
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1.5">🗂️ Local Path <span class="text-gray-400 font-normal text-xs">(server-side scan for AI analysis)</span></label>
+              <input x-model="addAppForm.local_path" type="text" placeholder="C:\Users\you\projects\myapp"
+                class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-mono">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Tech Stack <span class="text-gray-400 font-normal text-xs">(comma-separated)</span></label>
+            <input x-model="addAppForm.tech_stack_input" type="text" placeholder="Python, FastAPI, PostgreSQL, React"
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Team Members <span class="text-gray-400 font-normal text-xs">(comma-separated)</span></label>
+            <input x-model="addAppForm.team_input" type="text" placeholder="Alice, Bob, Charlie"
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+      </template>
+      <template x-if="analyzingApp">
+        <div class="text-center py-10">
+          <div class="text-5xl mb-4 animate-pulse">🤖</div>
+          <div class="font-semibold mb-2">Analyzing project with AI...</div>
+          <p class="text-sm text-gray-500">Generating architecture blueprint, service map, API docs, onboarding guide. This takes 30–60 seconds.</p>
+          <div class="flex justify-center gap-1 mt-5">
+            <div class="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:0ms"></div>
+            <div class="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:150ms"></div>
+            <div class="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-bounce" style="animation-delay:300ms"></div>
+          </div>
+        </div>
+      </template>
+    </div>
+    <div x-show="!analyzingApp" class="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end shrink-0 bg-white rounded-b-2xl">
+      <button @click="showAddAppModal=false" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-xl">Cancel</button>
+      <button @click="addApp()" :disabled="!addAppForm.name||!addAppForm.description"
+        class="px-6 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-medium transition-colors">
+        Analyze &amp; Register
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD FEATURE MODAL -->
+<div x-show="showAddFeatureModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" @click.self="if(!creatingFeature)showAddFeatureModal=false">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg" @click.stop>
+    <div class="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+      <h2 class="text-xl font-bold">New Feature Request</h2>
+      <button x-show="!creatingFeature" @click="showAddFeatureModal=false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+    </div>
+    <div class="p-6">
+      <p class="text-sm text-gray-500 mb-5">Describe your feature in plain language — AI generates a full technical specification.</p>
+      <template x-if="!creatingFeature">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Feature Title *</label>
+            <input x-model="featureForm.title" type="text" placeholder="e.g. User authentication with OAuth"
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Description *</label>
+            <textarea x-model="featureForm.description" rows="5"
+              placeholder="Describe what you want to build, why it's needed, and any specific requirements..."
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Your Name</label>
+            <input x-model="featureForm.created_by" type="text"
+              class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+      </template>
+      <template x-if="creatingFeature">
+        <div class="text-center py-10">
+          <div class="text-5xl mb-4 animate-pulse">🤖</div>
+          <div class="font-semibold mb-2">Generating AI specification...</div>
+          <p class="text-sm text-gray-500">Creating user stories, acceptance criteria, technical approach and more.</p>
+        </div>
+      </template>
+    </div>
+    <div x-show="!creatingFeature" class="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+      <button @click="showAddFeatureModal=false" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-xl">Cancel</button>
+      <button @click="createFeature()" :disabled="!featureForm.title||!featureForm.description"
+        class="px-6 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-medium">Create Feature</button>
+    </div>
+  </div>
+</div>
+
+<!-- FEATURE DETAIL MODAL -->
+<div x-show="showFeatureDetail && selectedFeature" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" @click.self="showFeatureDetail=false">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" @click.stop>
+    <template x-if="selectedFeature">
+      <div class="flex flex-col overflow-hidden max-h-[90vh]">
+        <div class="px-6 py-5 border-b border-gray-100 shrink-0">
+          <div class="flex items-start justify-between">
+            <div class="flex-1 pr-4">
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium" :class="getStageColor(selectedFeature.status)" x-text="selectedFeature.status.replace('_',' ')"></span>
+                <span class="text-xs px-2 py-0.5 rounded-full"
+                  :class="selectedFeature.spec?.estimated_complexity==='high'?'bg-red-100 text-red-600':selectedFeature.spec?.estimated_complexity==='medium'?'bg-yellow-100 text-yellow-600':'bg-green-100 text-green-600'"
+                  x-text="selectedFeature.spec?.estimated_complexity"></span>
+                <span x-show="selectedFeature.spec?.estimated_effort" class="text-xs text-gray-400" x-text="selectedFeature.spec?.estimated_effort"></span>
+              </div>
+              <h2 class="text-xl font-bold" x-text="selectedFeature.title"></h2>
+              <p class="text-sm text-gray-500 mt-1" x-text="selectedFeature.description"></p>
+            </div>
+            <button @click="showFeatureDetail=false" class="text-gray-400 hover:text-gray-600 text-2xl leading-none shrink-0">×</button>
+          </div>
+          <div class="flex gap-1 mt-4 flex-wrap">
+            <template x-for="tab in [['spec','📋 Spec'],['tests','🧪 Tests'],['history','📅 History'],['comments','💬 Comments'],['suggestions','🤖 AI Guide']]" :key="tab[0]">
+              <button @click="featureDetailTab=tab[0]" class="px-3 py-1.5 text-xs rounded-lg transition-colors"
+                :class="featureDetailTab===tab[0]?'bg-indigo-600 text-white':'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                x-text="tab[1]"></button>
+            </template>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6">
+          <!-- SPEC -->
+          <div x-show="featureDetailTab==='spec'" class="space-y-5 text-sm">
+            <div class="bg-indigo-50 border-l-4 border-indigo-400 rounded-r-xl p-4">
+              <div class="text-xs font-semibold text-indigo-400 uppercase mb-1">User Story</div>
+              <p class="text-gray-700" x-text="selectedFeature.spec?.user_story"></p>
+            </div>
+            <div>
+              <div class="font-semibold mb-2">Acceptance Criteria</div>
+              <ul class="space-y-1.5">
+                <template x-for="(c,i) in selectedFeature.spec?.acceptance_criteria||[]" :key="i">
+                  <li class="flex gap-2 text-gray-700"><span class="text-green-500 shrink-0">✓</span><span x-text="c"></span></li>
+                </template>
+              </ul>
+            </div>
+            <div>
+              <div class="font-semibold mb-2">Technical Approach</div>
+              <p class="text-gray-700 bg-gray-50 rounded-xl p-4" x-text="selectedFeature.spec?.technical_approach"></p>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <div class="font-semibold mb-2">Files to Modify</div>
+                <div class="flex flex-wrap gap-1">
+                  <template x-for="f in selectedFeature.spec?.files_to_modify||[]" :key="f">
+                    <span class="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded" x-text="f"></span>
+                  </template>
+                </div>
+              </div>
+              <div>
+                <div class="font-semibold mb-2">New Files</div>
+                <div class="flex flex-wrap gap-1">
+                  <template x-for="f in selectedFeature.spec?.new_files_needed||[]" :key="f">
+                    <span class="font-mono text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded" x-text="f"></span>
+                  </template>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="font-semibold mb-2">Database Changes</div>
+              <p class="text-gray-600" x-text="selectedFeature.spec?.database_changes||'None'"></p>
+            </div>
+            <div>
+              <div class="font-semibold mb-2">Potential Risks</div>
+              <ul class="space-y-1">
+                <template x-for="(r,i) in selectedFeature.spec?.potential_risks||[]" :key="i">
+                  <li class="flex gap-2 text-yellow-700"><span>⚠️</span><span x-text="r"></span></li>
+                </template>
+              </ul>
+            </div>
+            <div>
+              <div class="font-semibold mb-2">Definition of Done</div>
+              <ul class="space-y-1">
+                <template x-for="(d,i) in selectedFeature.spec?.definition_of_done||[]" :key="i">
+                  <li class="flex gap-2 text-gray-700"><span class="text-indigo-400">□</span><span x-text="d"></span></li>
+                </template>
+              </ul>
+            </div>
+          </div>
+
+          <!-- TESTS -->
+          <div x-show="featureDetailTab==='tests'">
+            <template x-if="selectedFeature.test_results">
+              <div class="space-y-4">
+                <div class="flex items-center gap-4 p-4 rounded-xl border"
+                  :class="selectedFeature.test_results.overall_status==='passed'?'bg-green-50 border-green-200':selectedFeature.test_results.overall_status==='failed'?'bg-red-50 border-red-200':'bg-yellow-50 border-yellow-200'">
+                  <div class="text-4xl" x-text="selectedFeature.test_results.overall_status==='passed'?'✅':selectedFeature.test_results.overall_status==='failed'?'❌':'⚠️'"></div>
+                  <div>
+                    <div class="font-semibold capitalize" x-text="selectedFeature.test_results.overall_status"></div>
+                    <p class="text-sm text-gray-600" x-text="selectedFeature.test_results.summary"></p>
+                    <div class="flex gap-3 mt-1 text-sm">
+                      <span class="font-medium" x-text="'Score: '+selectedFeature.test_results.score+'%'"></span>
+                      <span class="text-gray-400" x-text="'Coverage: '+selectedFeature.test_results.coverage+'%'"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <template x-for="t in selectedFeature.test_results.tests||[]" :key="t.name">
+                    <div class="bg-white border border-gray-100 rounded-xl p-4 flex items-start gap-3">
+                      <span x-text="t.status==='passed'?'✅':t.status==='failed'?'❌':'⚠️'"></span>
+                      <div class="flex-1">
+                        <div class="font-medium text-sm" x-text="t.name"></div>
+                        <p class="text-xs text-gray-500 mt-0.5" x-text="t.details"></p>
+                        <div x-show="t.total" class="text-xs text-gray-400 mt-0.5" x-text="t.passed+'/'+t.total+' passed'"></div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <div x-show="selectedFeature.test_results.suggestions?.length">
+                  <div class="font-semibold text-sm mb-2">Suggestions</div>
+                  <ul class="space-y-1">
+                    <template x-for="s in selectedFeature.test_results.suggestions||[]" :key="s">
+                      <li class="text-sm text-gray-600 flex gap-2"><span>💡</span><span x-text="s"></span></li>
+                    </template>
+                  </ul>
+                </div>
+              </div>
+            </template>
+            <template x-if="!selectedFeature.test_results">
+              <div class="text-center py-12 text-gray-400">
+                <div class="text-4xl mb-3">🧪</div>
+                <p>Tests run automatically when the feature advances to the <strong>Testing</strong> stage.</p>
+              </div>
+            </template>
+          </div>
+
+          <!-- HISTORY -->
+          <div x-show="featureDetailTab==='history'" class="space-y-3">
+            <template x-for="(h,i) in selectedFeature.pipeline_history||[]" :key="i">
+              <div class="flex gap-4 items-start">
+                <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 font-bold"
+                  :class="h.action==='created'?'bg-blue-100 text-blue-600':h.action==='advanced'?'bg-green-100 text-green-600':h.action==='rejected'?'bg-red-100 text-red-600':'bg-purple-100 text-purple-600'">
+                  <span x-text="h.action==='created'?'+':h.action==='advanced'?'→':h.action==='rejected'?'✕':'✓'"></span>
+                </div>
+                <div>
+                  <div class="text-sm font-medium capitalize"><span x-text="h.action"></span> → <span x-text="(h.stage||'').replace('_',' ')"></span></div>
+                  <div class="text-xs text-gray-400">by <span x-text="h.by"></span> · <span x-text="formatDate(h.at)"></span></div>
+                  <p x-show="h.comment" class="text-xs text-gray-500 mt-1 italic" x-text="h.comment"></p>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- COMMENTS -->
+          <div x-show="featureDetailTab==='comments'">
+            <div class="space-y-3 mb-4">
+              <div x-show="!selectedFeature.comments?.length" class="text-sm text-gray-400">No comments yet.</div>
+              <template x-for="c in selectedFeature.comments||[]" :key="c.id">
+                <div class="bg-gray-50 rounded-xl p-4">
+                  <div class="flex items-center gap-2 mb-2">
+                    <div class="w-7 h-7 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold" x-text="c.author.charAt(0).toUpperCase()"></div>
+                    <span class="font-medium text-sm" x-text="c.author"></span>
+                    <span class="text-xs text-gray-400" x-text="formatDate(c.at)"></span>
+                  </div>
+                  <p class="text-sm text-gray-700" x-text="c.text"></p>
+                </div>
+              </template>
+            </div>
+            <div class="flex gap-2" x-show="currentUser.role!=='viewer'">
+              <input x-model="commentInput" type="text" placeholder="Add a comment..."
+                class="flex-1 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                @keydown.enter="addComment()">
+              <button @click="addComment()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm">Add</button>
+            </div>
+          </div>
+
+          <!-- AI SUGGESTIONS -->
+          <div x-show="featureDetailTab==='suggestions'">
+            <template x-if="!selectedFeature.suggestions && !suggestionsLoading">
+              <div class="text-center py-10">
+                <div class="text-4xl mb-3">🤖</div>
+                <p class="text-gray-600 mb-4 text-sm">Get step-by-step implementation guidance with code examples.</p>
+                <button @click="getSuggestions()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-medium text-sm">Get Implementation Guide</button>
+              </div>
+            </template>
+            <div x-show="suggestionsLoading" class="text-center py-10 text-gray-400 animate-pulse">🤖 AI is generating implementation guide...</div>
+            <template x-if="selectedFeature.suggestions && !suggestionsLoading">
+              <div class="prose prose-sm max-w-none" x-html="renderMarkdown(selectedFeature.suggestions)"></div>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="currentUser.role!=='viewer'" class="px-6 py-4 border-t border-gray-100 flex items-center justify-between shrink-0 bg-gray-50 rounded-b-2xl">
+          <div class="text-xs text-gray-400">by <span x-text="selectedFeature?.created_by"></span> · <span x-text="formatDate(selectedFeature?.created_at)"></span></div>
+          <div class="flex gap-2">
+            <button x-show="selectedFeature?.status!=='production' && selectedFeature?.status!=='backlog'" @click="rejectFeature(selectedFeature);showFeatureDetail=false"
+              class="px-4 py-2 text-sm bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors">Reject</button>
+            <button x-show="(selectedFeature?.status==='code_review'||selectedFeature?.status==='staging') && currentUser.role==='admin'"
+              @click="approveFeature(selectedFeature)"
+              class="px-4 py-2 text-sm bg-green-50 hover:bg-green-100 text-green-700 rounded-xl transition-colors">Approve ✓</button>
+            <button x-show="selectedFeature?.status!=='production'" @click="advanceFeature(selectedFeature);showFeatureDetail=false"
+              class="px-5 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors">Advance →</button>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+function devhub() {
+  return {
+    currentUser: { name: 'Developer', role: 'developer' },
+    notification: { show: false, message: '', type: 'success' },
+    apps: [], appsLoading: false,
+    selectedApp: null, blueprint: null, features: [], chatMessages: [],
+    view: 'home', blueprintTab: 'overview', featureFilter: 'all',
+    showAddAppModal: false, showAddFeatureModal: false,
+    showFeatureDetail: false, selectedFeature: null, featureDetailTab: 'spec',
+    analyzingApp: false, creatingFeature: false, chatLoading: false,
+    suggestionsLoading: false, advancingFeature: null, openConcept: -1, openFlow: -1, openApi: -1,
+    addAppForm: { name:'', description:'', github_url:'', local_path:'', tech_stack_input:'', team_input:'' },
+    featureForm: { title:'', description:'', created_by:'Developer' },
+    chatInput: '', commentInput: '', completedTasks: {},
+    globalStats: { total: 0, prod: 0, active: 0 },
+    fileTree: [], hasFiles: false, selectedFile: null, fileContent: '', fileLoading: false,
+    uploadingFiles: false, uploadProgress: '',
+    expandedDirs: {},
+
+    pipelineStages: ['backlog','development','testing','code_review','staging'],
+    blueprintTabs: [
+      {id:'overview',icon:'📐',label:'Overview'},{id:'services',icon:'🔧',label:'Services'},
+      {id:'api',icon:'🔌',label:'API'},{id:'database',icon:'🗄️',label:'Database'},
+      {id:'setup',icon:'⚙️',label:'Setup'},{id:'security',icon:'🛡️',label:'Security'},
+      {id:'architecture',icon:'🏗️',label:'Architecture'},
+    ],
+    appNavItems: [
+      {view:'app-overview',icon:'🏠',label:'Overview'},{view:'app-blueprint',icon:'🗺️',label:'Blueprint'},
+      {view:'app-onboarding',icon:'🚀',label:'Onboarding'},{view:'app-features',icon:'✨',label:'Features'},
+      {view:'app-pipeline',icon:'🔄',label:'Pipeline'},{view:'app-code',icon:'📂',label:'Code Explorer'},
+      {view:'app-chat',icon:'🤖',label:'AI Chat'},
+    ],
+    suggestedQuestions: [
+      'Explain the system architecture','How do I set up my dev environment?',
+      'What are the main API endpoints?','What are common pitfalls to avoid?','How do I add a new feature?',
+    ],
+
+    get recentActivity() {
+      const events = [];
+      this.features.forEach(f => {
+        (f.pipeline_history||[]).forEach(h => events.push({...h, feature_title: f.title}));
+      });
+      return events.sort((a,b) => new Date(b.at)-new Date(a.at)).slice(0,8);
+    },
+    get filteredFeatures() {
+      if (this.featureFilter==='all') return this.features;
+      if (this.featureFilter==='active') return this.features.filter(f=>!['backlog','staging'].includes(f.status));
+      return this.features.filter(f=>f.status===this.featureFilter);
+    },
+    filteredFeatureCount(filter) {
+      if (filter==='all') return this.features.length;
+      if (filter==='active') return this.features.filter(f=>!['backlog','staging'].includes(f.status)).length;
+      return this.features.filter(f=>f.status===filter).length;
+    },
+
+    async init() { await this.loadApps(); },
+
+    async loadApps() {
+      this.appsLoading = true;
+      try {
+        const r = await fetch('/api/apps');
+        this.apps = await r.json();
+        this.computeGlobalStats();
+      } catch(e) { this.showToast('Failed to load apps','error'); }
+      this.appsLoading = false;
+    },
+
+    async computeGlobalStats() {
+      // Just use cached features data
+      let total = 0, prod = 0, active = 0;
+      this.features.forEach(f => { total++; if(f.status==='staging') prod++; if(!['backlog','staging'].includes(f.status)) active++; });
+      this.globalStats = { total, prod, active };
+    },
+
+    async selectApp(app) {
+      this.selectedApp = app; this.view = 'app-overview';
+      this.features = []; this.blueprint = null; this.chatMessages = [];
+      this.loadTasksFromStorage();
+      await Promise.all([this.loadBlueprint(), this.loadFeatures(), this.loadChatHistory(), this.loadFileTree()]);
+    },
+
+    goHome() {
+      this.selectedApp = null; this.blueprint = null; this.features = []; this.chatMessages = [];
+      this.view = 'home'; this.loadApps();
+    },
+
+    async loadBlueprint() {
+      if (!this.selectedApp) return;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}`);
+        const d = await r.json(); this.selectedApp = d.app; this.blueprint = d.blueprint;
+      } catch(e) {}
+    },
+
+    async loadFeatures() {
+      if (!this.selectedApp) return;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/features`);
+        this.features = await r.json(); this.computeGlobalStats();
+      } catch(e) {}
+    },
+
+    async loadChatHistory() {
+      if (!this.selectedApp) return;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/chat/history`);
+        this.chatMessages = await r.json();
+      } catch(e) {}
+    },
+
+    async addApp() {
+      if (!this.addAppForm.name || !this.addAppForm.description) return;
+      this.analyzingApp = true;
+      try {
+        const r = await fetch('/api/apps', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            name: this.addAppForm.name, description: this.addAppForm.description,
+            github_url: this.addAppForm.github_url || null,
+            local_path: this.addAppForm.local_path || null,
+            tech_stack: this.addAppForm.tech_stack_input.split(',').map(s=>s.trim()).filter(Boolean),
+            team_members: this.addAppForm.team_input.split(',').map(s=>s.trim()).filter(Boolean),
+            role: this.currentUser.role,
+          })
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const d = await r.json();
+        this.apps.push(d.app); this.showAddAppModal = false;
+        // Upload folder files if selected
+        if (this.$refs.folderInput && this.$refs.folderInput.files.length > 0) {
+          await this.uploadFolder(d.app.id, this.$refs.folderInput);
+        }
+        this.addAppForm = { name:'', description:'', github_url:'', local_path:'', tech_stack_input:'', team_input:'', folderName:'', fileCount:0 };
+        this.showToast('Application registered!','success');
+        await this.selectApp(d.app);
+      } catch(e) { this.showToast('Failed: '+e.message,'error'); }
+      this.analyzingApp = false;
+    },
+
+    async deleteApp(appId) {
+      if (!confirm('Delete this application? This cannot be undone.')) return;
+      try {
+        await fetch(`/api/apps/${appId}`, {method:'DELETE'});
+        this.apps = this.apps.filter(a=>a.id!==appId);
+        this.showToast('Deleted','success');
+      } catch(e) { this.showToast('Failed','error'); }
+    },
+
+    async createFeature() {
+      if (!this.featureForm.title || !this.featureForm.description) return;
+      this.creatingFeature = true;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/features`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            title: this.featureForm.title, description: this.featureForm.description,
+            created_by: this.featureForm.created_by || this.currentUser.name, role: this.currentUser.role,
+          })
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const f = await r.json();
+        this.features.push(f); this.showAddFeatureModal = false;
+        this.featureForm = { title:'', description:'', created_by: this.currentUser.name };
+        this.showToast('Feature created with AI spec!','success');
+        this.openFeatureDetail(f);
+      } catch(e) { this.showToast('Failed: '+e.message,'error'); }
+      this.creatingFeature = false;
+    },
+
+    openFeatureDetail(feature) {
+      this.selectedFeature = feature; this.showFeatureDetail = true;
+      this.featureDetailTab = 'spec'; this.suggestionsLoading = false; this.commentInput = '';
+    },
+
+    async advanceFeature(feature) {
+      if (this.advancingFeature) return;
+      this.advancingFeature = feature.id;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/pipeline/action`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({feature_id:feature.id, action:'advance', by:this.currentUser.name, role:this.currentUser.role})
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const updated = await r.json();
+        this.updateFeatureInList(updated);
+        if (this.selectedFeature?.id===feature.id) this.selectedFeature = updated;
+        this.showToast('Advanced to '+updated.status.replace('_',' '),'success');
+      } catch(e) { this.showToast('Failed','error'); }
+      this.advancingFeature = null;
+    },
+
+    async rejectFeature(feature) {
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/pipeline/action`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({feature_id:feature.id, action:'reject', by:this.currentUser.name, role:this.currentUser.role})
+        });
+        const updated = await r.json();
+        this.updateFeatureInList(updated);
+        if (this.selectedFeature?.id===feature.id) this.selectedFeature = updated;
+        this.showToast('Sent back to backlog','warning');
+      } catch(e) { this.showToast('Failed','error'); }
+    },
+
+    async approveFeature(feature) {
+      if (this.currentUser.role!=='admin') { this.showToast('Only admins can approve','error'); return; }
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/pipeline/action`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({feature_id:feature.id, action:'approve', by:this.currentUser.name, role:this.currentUser.role})
+        });
+        const updated = await r.json();
+        this.updateFeatureInList(updated);
+        if (this.selectedFeature?.id===feature.id) this.selectedFeature = updated;
+        this.showToast('Approved!','success');
+      } catch(e) { this.showToast('Failed','error'); }
+    },
+
+    updateFeatureInList(updated) {
+      const i = this.features.findIndex(f=>f.id===updated.id);
+      if (i>=0) this.features[i] = updated;
+      else this.features.push(updated);
+    },
+
+    async getSuggestions() {
+      if (!this.selectedFeature) return;
+      this.suggestionsLoading = true;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/features/${this.selectedFeature.id}/suggest`, {method:'POST'});
+        const d = await r.json();
+        this.selectedFeature = {...this.selectedFeature, suggestions: d.suggestions};
+        this.updateFeatureInList(this.selectedFeature);
+      } catch(e) { this.showToast('Failed','error'); }
+      this.suggestionsLoading = false;
+    },
+
+    async addComment() {
+      if (!this.commentInput.trim()) return;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/features/${this.selectedFeature.id}/comment`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({text:this.commentInput, author:this.currentUser.name})
+        });
+        const updated = await r.json();
+        this.selectedFeature = updated; this.updateFeatureInList(updated); this.commentInput = '';
+      } catch(e) { this.showToast('Failed','error'); }
+    },
+
+    async sendChat() {
+      if (!this.chatInput.trim() || this.chatLoading) return;
+      const msg = this.chatInput.trim(); this.chatInput = '';
+      this.chatMessages.push({role:'user', content:msg, at:new Date().toISOString()});
+      this.chatLoading = true;
+      this.$nextTick(() => { const el=document.getElementById('chat-messages'); if(el) el.scrollTop=el.scrollHeight; });
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/chat`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({message:msg, username:this.currentUser.name})
+        });
+        const d = await r.json();
+        this.chatMessages.push({role:'assistant', content:d.response, at:new Date().toISOString()});
+      } catch(e) {
+        this.chatMessages.push({role:'assistant', content:'Error — please try again.', at:new Date().toISOString()});
+      }
+      this.chatLoading = false;
+      this.$nextTick(() => { const el=document.getElementById('chat-messages'); if(el) el.scrollTop=el.scrollHeight; });
+    },
+
+    async clearChat() {
+      if (!confirm('Clear chat history?')) return;
+      await fetch(`/api/apps/${this.selectedApp.id}/chat/history`, {method:'DELETE'});
+      this.chatMessages = [];
+    },
+
+    loadTasksFromStorage() {
+      if (!this.selectedApp) return;
+      try { this.completedTasks = JSON.parse(localStorage.getItem('devhub_tasks_'+this.selectedApp.id)||'{}'); }
+      catch(e) { this.completedTasks = {}; }
+    },
+    toggleTask(id) {
+      this.completedTasks[id] = !this.completedTasks[id];
+      if (this.selectedApp) localStorage.setItem('devhub_tasks_'+this.selectedApp.id, JSON.stringify(this.completedTasks));
+    },
+    isTaskDone(id) { return !!this.completedTasks[id]; },
+    totalOnboardingTasks() {
+      if (!this.blueprint) return 0;
+      return (this.blueprint.setup_steps||[]).length + (this.blueprint.onboarding_checklist||[]).length;
+    },
+    completedCount() { return Object.values(this.completedTasks).filter(Boolean).length; },
+    onboardingProgress() {
+      const t = this.totalOnboardingTasks(); return t ? Math.round((this.completedCount()/t)*100) : 0;
+    },
+
+    getFeaturesInStage(stage) { return this.features.filter(f=>f.status===stage); },
+    getPipelineProgress(f) {
+      const i = this.pipelineStages.indexOf(f.status);
+      return Math.round(((i+1)/this.pipelineStages.length)*100);
+    },
+    getStageColor(s) {
+      return {backlog:'bg-gray-100 text-gray-700',development:'bg-blue-100 text-blue-700',
+        testing:'bg-yellow-100 text-yellow-700',code_review:'bg-orange-100 text-orange-700',
+        staging:'bg-emerald-100 text-emerald-800'}[s]||'bg-gray-100 text-gray-600';
+    },
+    getStageDark(s) {
+      return {backlog:'bg-gray-200 text-gray-800',development:'bg-blue-200 text-blue-800',
+        testing:'bg-yellow-200 text-yellow-800',code_review:'bg-orange-200 text-orange-800',
+        staging:'bg-emerald-200 text-emerald-900'}[s]||'bg-gray-200 text-gray-700';
+    },
+    methodColor(m) {
+      return {GET:'bg-green-100 text-green-700',POST:'bg-blue-100 text-blue-700',PUT:'bg-yellow-100 text-yellow-700',
+        DELETE:'bg-red-100 text-red-700',PATCH:'bg-purple-100 text-purple-700'}[m]||'bg-gray-100 text-gray-600';
+    },
+    serviceColor(t) {
+      return {frontend:'bg-blue-100 text-blue-700',backend:'bg-green-100 text-green-700',database:'bg-orange-100 text-orange-700',
+        cache:'bg-red-100 text-red-700',queue:'bg-purple-100 text-purple-700',external:'bg-gray-100 text-gray-700',mobile:'bg-pink-100 text-pink-700'}[t]||'bg-gray-100 text-gray-600';
+    },
+    serviceIcon(t) {
+      return {frontend:'🖥️',backend:'⚙️',database:'🗄️',cache:'⚡',queue:'📬',external:'🌐',mobile:'📱'}[t]||'🔧';
+    },
+    renderMarkdown(text) {
+      if (!text) return '';
+      try { return marked.parse(text); } catch(e) { return text.replace(/\n/g,'<br>'); }
+    },
+    formatDate(iso) {
+      if (!iso) return '';
+      try { return new Date(iso).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+      catch(e) { return iso; }
+    },
+    async uploadFolder(appId, inputEl) {
+      const files = inputEl.files;
+      if (!files || files.length === 0) return;
+      this.uploadingFiles = true;
+      this.uploadProgress = `Uploading ${files.length} files...`;
+      const BATCH = 20;
+      let uploaded = 0;
+      for (let i = 0; i < files.length; i += BATCH) {
+        const fd = new FormData();
+        for (let j = i; j < Math.min(i+BATCH, files.length); j++) {
+          const f = files[j];
+          const relPath = f.webkitRelativePath || f.name;
+          // strip leading folder name (first segment) so tree starts at project root
+          const parts = relPath.split('/');
+          const cleanPath = parts.length > 1 ? parts.slice(1).join('/') : relPath;
+          if (cleanPath) fd.append('files', f, cleanPath);
+        }
+        await fetch(`/api/apps/${appId}/upload`, { method: 'POST', body: fd });
+        uploaded += Math.min(BATCH, files.length - i);
+        this.uploadProgress = `Uploaded ${uploaded}/${files.length} files...`;
+      }
+      this.uploadingFiles = false;
+      this.uploadProgress = '';
+      await this.loadFileTree();
+      this.showToast(`${files.length} files uploaded!`, 'success');
+    },
+
+    async loadFileTree() {
+      if (!this.selectedApp) return;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/files`);
+        const d = await r.json();
+        this.fileTree = d.tree; this.hasFiles = d.has_files;
+      } catch(e) {}
+    },
+
+    async openFile(file) {
+      if (file.type === 'dir') { this.expandedDirs[file.path] = !this.expandedDirs[file.path]; return; }
+      this.selectedFile = file; this.fileContent = ''; this.fileLoading = true;
+      try {
+        const r = await fetch(`/api/apps/${this.selectedApp.id}/file?path=${encodeURIComponent(file.path)}`);
+        this.fileContent = r.ok ? await r.text() : 'Cannot display this file.';
+      } catch(e) { this.fileContent = 'Error loading file.'; }
+      this.fileLoading = false;
+    },
+
+    fileIcon(ext) {
+      const m = {'.py':'🐍','.js':'🟨','.ts':'🔷','.tsx':'🔷','.jsx':'🟨','.html':'🌐','.css':'🎨','.json':'📋',
+        '.md':'📝','.yaml':'⚙️','.yml':'⚙️','.go':'🔵','.java':'☕','.sql':'🗃️','.sh':'⚡','.env':'🔒','.dockerfile':'🐳'};
+      return m[ext] || '📄';
+    },
+
+    showToast(message, type='success') {
+      this.notification = {show:true, message, type};
+      setTimeout(()=>{ this.notification.show=false; }, 4000);
+    },
+  }
+}
+</script>
+</body>
+</html>
