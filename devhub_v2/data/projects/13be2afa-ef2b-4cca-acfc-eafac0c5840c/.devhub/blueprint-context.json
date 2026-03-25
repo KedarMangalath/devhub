@@ -1,0 +1,70 @@
+{
+  "cache_version": 2,
+  "fingerprint": "e2debef554e7b698114ed90af84be58255ae95fb",
+  "file_count": 3,
+  "directory_counts": {
+    ".": 3
+  },
+  "indexed_paths": [
+    "package.json",
+    "README.md",
+    "vite.config.js"
+  ],
+  "important_files": [
+    {
+      "path": "package.json",
+      "language": "json",
+      "lines": 19,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "excerpt": "{\n  \"name\": \"budget-pilot\",\n  \"private\": true,\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite --host 127.0.0.1 --port 4173\",\n    \"build\": \"vite build\",\n    \"preview\": \"vite preview --host 127.0.0.1 --port 4173\"\n  },\n  \"dependencies\": {\n    \"react\": \"^18.3.1\",\n    \"react-dom\": \"^18.3.1\"\n  },\n  \"devDependencies\": {\n    \"@vitejs/plugin-react\": \"^4.3.4\",\n    \"vite\": \"^5.4.10\"\n  }\n}\n",
+      "brief": "package.json (json, config)",
+      "summary": "package.json is a json file with about 19 lines. Likely role: config."
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "lines": 14,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "docs",
+        "config"
+      ],
+      "excerpt": "# Budget Pilot\n\nAn expense tracker for startup operating costs\n\n## Run locally\n\n```bash\nnpm install\nnpm run dev\n```\n\nThen open [http://127.0.0.1:4173](http://127.0.0.1:4173).\n\nThis starter includes a working expense tracker with totals and entry management.\n",
+      "brief": "README.md (markdown, docs, config)",
+      "summary": "README.md is a markdown file with about 14 lines. Likely role: docs, config."
+    },
+    {
+      "path": "vite.config.js",
+      "language": "javascript",
+      "lines": 14,
+      "symbol": "",
+      "imports": [
+        "import { defineConfig } from 'vite';",
+        "import react from '@vitejs/plugin-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "excerpt": "import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n  server: {\n    host: '127.0.0.1',\n    port: 4173,\n  },\n  preview: {\n    host: '127.0.0.1',\n    port: 4173,\n  },\n});\n",
+      "brief": "vite.config.js (javascript, config)",
+      "summary": "vite.config.js is a javascript file with about 14 lines. Key imports: import { defineConfig } from 'vite';, import react from '@vitejs/plugin-react';. Likely role: config."
+    }
+  ],
+  "routes": [],
+  "data_models": [],
+  "readme_excerpt": "# Budget Pilot\n\nAn expense tracker for startup operating costs\n\n## Run locally\n\n```bash\nnpm install\nnpm run dev\n```\n\nThen open [http://127.0.0.1:4173](http://127.0.0.1:4173).\n\nThis starter includes a working expense tracker with totals and entry management.\n",
+  "instruction_files": [],
+  "repo_tree": "Budget Pilot/\n|- package.json\n|- README.md\n`- vite.config.js",
+  "compact_summary": "Project: Budget Pilot\nFingerprint: e2debef554e7b698114ed90af84be58255ae95fb\nIndexed files: 3\nTop directories:\n- .: 3 files\nImportant files:\n- package.json: package.json is a json file with about 19 lines. Likely role: config.\n- README.md: README.md is a markdown file with about 14 lines. Likely role: docs, config.\n- vite.config.js: vite.config.js is a javascript file with about 14 lines. Key imports: import { defineConfig } from 'vite';, import react from '@vitejs/plugin-react';. Likely role: config."
+}

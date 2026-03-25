@@ -3,13 +3,14 @@ import json
 
 
 class FeatureAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, ai_config: dict | None = None):
         super().__init__(
             role="Feature Implementation Engineer",
             system_instruction="""You are a Senior Feature Implementation Engineer.
 Your role is to analyze feature requirements and generate detailed technical specifications.
 You will be provided with a feature title, description, the project's tech stack, and 
-architecture blueprint. Output ONLY valid JSON with no markdown formatting."""
+architecture blueprint. Output ONLY valid JSON with no markdown formatting.""",
+            ai_config=ai_config,
         )
 
     def generate_spec(self, feature_title: str, feature_desc: str, tech_stack: str, blueprint: str) -> dict:

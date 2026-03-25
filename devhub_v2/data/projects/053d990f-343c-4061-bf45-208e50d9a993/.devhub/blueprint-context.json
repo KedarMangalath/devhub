@@ -1,0 +1,189 @@
+{
+  "cache_version": 2,
+  "fingerprint": "8e3e8e5bbb3847a263b8a5f22e38a5e2d4b3d370",
+  "file_count": 9,
+  "directory_counts": {
+    ".": 4,
+    "backend": 2,
+    "src": 3
+  },
+  "indexed_paths": [
+    "app.js",
+    "index.html",
+    "README.md",
+    "styles.css",
+    "backend/urls.py",
+    "backend/views.py",
+    "src/App.js",
+    "src/components/Button.js",
+    "src/components/Calculator.js"
+  ],
+  "important_files": [
+    {
+      "path": "src/App.js",
+      "language": "javascript",
+      "lines": 15,
+      "symbol": "App",
+      "imports": [
+        "import React from 'react';",
+        "import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';",
+        "import Calculator from './components/Calculator';"
+      ],
+      "routes": [
+        "/"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "excerpt": "import React from 'react';\nimport { BrowserRouter as Router, Route, Switch } from 'react-router-dom';\nimport Calculator from './components/Calculator';\n\nfunction App() {\n  return (\n    <Router>\n      <Switch>\n        <Route path='/' component={Calculator} />\n      </Switch>\n    </Router>\n  );\n}\n\nexport default App;",
+      "brief": "src/App.js (javascript, api)",
+      "summary": "src/App.js is a javascript file with about 15 lines. Primary symbol: App. Key imports: import React from 'react';, import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';, import Calculator from './components/Calculator';. Routes/endpoints: /. Likely role: api."
+    },
+    {
+      "path": "backend/urls.py",
+      "language": "python",
+      "lines": 6,
+      "symbol": "",
+      "imports": [
+        "from django.urls import path",
+        "from .views import calculate"
+      ],
+      "routes": [
+        "api/calculate"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "excerpt": "from django.urls import path\nfrom .views import calculate\n\nurlpatterns = [\n    path('api/calculate', calculate, name='calculate'),\n]",
+      "brief": "backend/urls.py (python, api)",
+      "summary": "backend/urls.py is a python file with about 6 lines. Key imports: from django.urls import path, from .views import calculate. Routes/endpoints: api/calculate. Likely role: api."
+    },
+    {
+      "path": "backend/views.py",
+      "language": "python",
+      "lines": 16,
+      "symbol": "calculate",
+      "imports": [
+        "from rest_framework.decorators import api_view",
+        "from rest_framework.response import Response",
+        "from rest_framework import status",
+        "import sympy as sp",
+        "import html"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "routing"
+      ],
+      "excerpt": "from rest_framework.decorators import api_view\nfrom rest_framework.response import Response\nfrom rest_framework import status\nimport sympy as sp\nimport html\n\n@api_view(['POST'])\ndef calculate(request):\n    expression = request.data.get('expression')\n    if not expression:\n        return Response({'error': 'No expression provided'}, status=status.HTTP_400_BAD_REQUEST)\n    try:\n        result = sp.sympify(expression).evalf()\n        return Response({'result': result}, status=status.HTTP_200_OK)\n    except Exception as e:\n        return Response({'error': html.escape('Invalid expression: ' + str(e))}, status=status.HTTP_400_BAD_REQUEST)",
+      "brief": "backend/views.py (python, routing)",
+      "summary": "backend/views.py is a python file with about 16 lines. Primary symbol: calculate. Key imports: from rest_framework.decorators import api_view, from rest_framework.response import Response, from rest_framework import status, import sympy as sp, import html. Likely role: routing."
+    },
+    {
+      "path": "src/components/Button.js",
+      "language": "javascript",
+      "lines": 9,
+      "symbol": "Button",
+      "imports": [
+        "import React from 'react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "excerpt": "import React from 'react';\n\nconst Button = ({ value, onClick }) => {\n  return (\n    <button onClick={() => onClick(value)}>{value}</button>\n  );\n};\n\nexport default Button;",
+      "brief": "src/components/Button.js (javascript, ui)",
+      "summary": "src/components/Button.js is a javascript file with about 9 lines. Primary symbol: Button. Key imports: import React from 'react';. Likely role: ui."
+    },
+    {
+      "path": "src/components/Calculator.js",
+      "language": "javascript",
+      "lines": 47,
+      "symbol": "Calculator",
+      "imports": [
+        "import React, { useState } from 'react';",
+        "import Button from './Button';",
+        "import axios from 'axios';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "excerpt": "import React, { useState } from 'react';\nimport Button from './Button';\nimport axios from 'axios';\n\nconst Calculator = () => {\n  const [input, setInput] = useState('');\n  const [result, setResult] = useState('');\n  const [error, setError] = useState('');\n  const [loading, setLoading] = useState(false);\n\n  const handleButtonClick = (value) => {\n    if (value === '=') {\n      handleCalculate();\n    } else {\n      setInput(input + value);\n      setError('');\n    }\n  };\n\n  const handleCalculate = async () => {\n    setLoading(true);\n    setError('');\n    try {\n      const response = await axios.post('/api/calculate', { expression: input });\n      setResult(response.data.result);\n    } catch (error) {\n      setError('Invalid expression');\n      setResult('');\n    } finally {\n      setLoading(false);\n    }\n  };\n\n  return (\n    <div className='calculator'>\n      <div className='display'>{loading ? <span className='spinner'>Loading...</span> : (result || input)}</div>\n      {error && <div className='error'>{error}</div>}\n      <div className='buttons'>\n        {['1', '2', '3', '+', '4', '5', '6', '-', '7', '8', '9', '*', '0', '=', '/'].map((value) => (\n          <Button key={value} value={value} onClick={handleButtonClick} />\n        ))}\n      </div>\n    </div>\n  );\n};\n\nexport default Calculator;",
+      "brief": "src/components/Calculator.js (javascript, ui)",
+      "summary": "src/components/Calculator.js is a javascript file with about 47 lines. Primary symbol: Calculator. Key imports: import React, { useState } from 'react';, import Button from './Button';, import axios from 'axios';. Likely role: ui."
+    },
+    {
+      "path": "README.md",
+      "language": "markdown",
+      "lines": 8,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "docs",
+        "config"
+      ],
+      "excerpt": "# Chat-requested calculator\n\nsimple calculator app\n\nRun locally:\npython -m http.server 4173\n\nThen open http://localhost:4173\n",
+      "brief": "README.md (markdown, docs, config)",
+      "summary": "README.md is a markdown file with about 8 lines. Likely role: docs, config."
+    },
+    {
+      "path": "app.js",
+      "language": "javascript",
+      "lines": 5,
+      "symbol": "",
+      "imports": [
+        "import React from 'react';",
+        "import ReactDOM from 'react-dom';",
+        "import App from './App';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "excerpt": "import React from 'react';\nimport ReactDOM from 'react-dom';\nimport App from './App';\n\nReactDOM.render(<App />, document.getElementById('calculator'));",
+      "brief": "app.js (javascript)",
+      "summary": "app.js is a javascript file with about 5 lines. Key imports: import React from 'react';, import ReactDOM from 'react-dom';, import App from './App';."
+    },
+    {
+      "path": "index.html",
+      "language": "html",
+      "lines": 26,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "excerpt": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"UTF-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />\n    <title>Simple Calculator</title>\n    <link rel=\"stylesheet\" href=\"./styles.css\" />\n  </head>\n  <body>\n    <main class=\"shell\">\n      <section class=\"hero\">\n        <p class=\"eyebrow\">Simple Calculator</p>\n        <h1>Simple Calculator App</h1>\n        <p>Perform basic arithmetic operations quickly and efficiently.</p>\n      </section>\n      <section class=\"calculator-container\">\n        <div class=\"calculator\"></div>\n      </section>\n      <section class=\"card\">\n        <h2>Status</h2>\n        <pre id=\"status-panel\">Starter ready.</pre>\n      </section>\n    </main>\n    <script type=\"module\" src=\"./app.js\"></script>\n  </body>\n</html>",
+      "brief": "index.html (html)",
+      "summary": "index.html is a html file with about 26 lines."
+    },
+    {
+      "path": "styles.css",
+      "language": "css",
+      "lines": 38,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "excerpt": "* { box-sizing: border-box; }\n:root {\n  --bg: #ffffff;\n  --ink: #172033;\n  --accent: #1f6feb;\n  --card: rgba(255, 255, 255, 0.84);\n  --border: rgba(23, 32, 51, 0.12);\n}\nbody {\n  margin: 0;\n  min-height: 100vh;\n  font-family: \"Segoe UI\", sans-serif;\n  background: white;\n  color: var(--ink);\n}\n.shell { width: min(1100px, calc(100vw - 32px)); margin: 0 auto; padding: 48px 0 64px; }\n.hero, .calculator {\n  padding: 24px;\n  border-radius: 24px;\n  background: var(--card);\n  border: 1px solid var(--border);\n  box-shadow: 0 24px 60px rgba(23, 32, 51, 0.08);\n}\n.eyebrow { margin: 0 0 12px; font-size: 0.8rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }\nh1 { margin: 0 0 12px; font-size: clamp(2.8rem, 5vw, 4.6rem); line-height: 0.95; }\n.calculator { display: flex; flex-direction: column; align-items: center; }\n.display { font-size: 2rem; margin-bottom: 20px; }\n.error { color: red; font-size: 1rem; margin-top: 10px; }\n.buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }\nbutton { border: 0; border-radius: 999px; padding: 12px 20px; font: inherit; cursor: pointer; background: var(--accent); color: white; }\nbutton.secondary { background: rgba(23, 32, 51, 0.08); color: var(--ink); }\npre { white-space: pre-wrap; font-family: Consolas, monospace; }\n.spinner { display: inline-block; border: 4px solid rgba(23, 32, 51, 0.08); border-top: 4px soli",
+      "brief": "styles.css (css)",
+      "summary": "styles.css is a css file with about 38 lines."
+    }
+  ],
+  "routes": [
+    "/",
+    "api/calculate"
+  ],
+  "data_models": [],
+  "readme_excerpt": "# Chat-requested calculator\n\nsimple calculator app\n\nRun locally:\npython -m http.server 4173\n\nThen open http://localhost:4173\n",
+  "instruction_files": [],
+  "repo_tree": "My awesome calculatior/\n|- backend\n|  |- urls.py\n|  `- views.py\n|- src\n|  |- components\n|  |  |- Button.js\n|  |  `- Calculator.js\n|  `- App.js\n|- app.js\n|- index.html\n|- README.md\n`- styles.css",
+  "compact_summary": "Project: My awesome calculatior\nFingerprint: 8e3e8e5bbb3847a263b8a5f22e38a5e2d4b3d370\nIndexed files: 9\nTop directories:\n- .: 4 files\n- src: 3 files\n- backend: 2 files\nImportant files:\n- src/App.js: src/App.js is a javascript file with about 15 lines. Primary symbol: App. Key imports: import React from 'react';, import { BrowserRouter as Router, Route, Switch } from 'react-router-dom';, import Calculator from './components/Calculator';. Routes/endpoints: /. Likely role: api.\n- backend/urls.py: backend/urls.py is a python file with about 6 lines. Key imports: from django.urls import path, from .views import calculate. Routes/endpoints: api/calculate. Likely role: api.\n- backend/views.py: backend/views.py is a python file with about 16 lines. Primary symbol: calculate. Key imports: from rest_framework.decorators import api_view, from rest_framework.response import Response, from rest_framework import status, import sympy as sp, import html. Likely role: routing.\n- src/components/Button.js: src/components/Button.js is a javascript file with about 9 lines. Primary symbol: Button. Key imports: import React from 'react';. Likely role: ui.\n- src/components/Calculator.js: src/components/Calculator.js is a javascript file with about 47 lines. Primary symbol: Calculator. Key imports: import React, { useState } from 'react';, import Button from './Button';, import axios from 'axios';. Likely role: ui.\n- README.md: README.md is a markdown file with about 8 lines. Likely role: docs, config.\n- app.js: app.js is a javascript file with about 5 lines. Key imports: import React from 'react';, import ReactDOM from 'react-dom';, import App from './App';.\n- index.html: index.html is a html file with about 26 lines.\n- styles.css: styles.css is a css file with about 38 lines.\nDetected routes/endpoints:\n- /\n- api/calculate"
+}

@@ -5,18 +5,32 @@ interface Props {
   id?: string;
 }
 
-/**
- * Renders a Mermaid diagram by loading the Mermaid library from CDN
- * and rendering the provided chart string into SVG.
- */
+function normalizeMermaid(chart: string) {
+  let cleanChart = (chart || '')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '  ')
+    .trim();
+
+  if (/^erDiagram/i.test(cleanChart)) {
+    cleanChart = cleanChart.replace(/^erDiagram\s*;?/i, 'erDiagram\n').replace(/;\s*/g, '\n');
+  } else if (/^sequenceDiagram/i.test(cleanChart)) {
+    cleanChart = cleanChart.replace(/^sequenceDiagram\s*;?/i, 'sequenceDiagram\n').replace(/;\s*/g, '\n');
+  } else if (/^(graph|flowchart)\s/i.test(cleanChart)) {
+    cleanChart = cleanChart.replace(/;\s*/g, '\n');
+  }
+
+  return cleanChart;
+}
+
 export default function MermaidDiagram({ chart, id = 'mermaid' }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [svg, setSvg] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  const [svg, setSvg] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!chart || !chart.trim()) {
       setSvg('');
+      setError('');
       return;
     }
 
@@ -24,13 +38,11 @@ export default function MermaidDiagram({ chart, id = 'mermaid' }: Props) {
 
     const renderChart = async () => {
       try {
-        // Dynamically import mermaid from CDN if not already loaded
         if (!(window as any).mermaid) {
           await new Promise<void>((resolve, reject) => {
-            // Check if script is already being loaded
             const existing = document.querySelector('script[data-mermaid-cdn]');
             if (existing) {
-              existing.addEventListener('load', () => resolve());
+              existing.addEventListener('load', () => resolve(), { once: true });
               if ((window as any).mermaid) resolve();
               return;
             }
@@ -52,12 +64,7 @@ export default function MermaidDiagram({ chart, id = 'mermaid' }: Props) {
           er: { useMaxWidth: true },
         });
 
-        // Clean chart text — fix escaped newlines from JSON
-        let cleanChart = chart
-          .replace(/\\n/g, '\n')
-          .replace(/\\t/g, '  ')
-          .trim();
-
+        const cleanChart = normalizeMermaid(chart);
         const uniqueId = `mermaid-${id}-${Date.now()}`;
         const { svg: renderedSvg } = await mermaid.render(uniqueId, cleanChart);
 
@@ -74,12 +81,14 @@ export default function MermaidDiagram({ chart, id = 'mermaid' }: Props) {
     };
 
     renderChart();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [chart, id]);
 
   if (!chart || !chart.trim()) {
     return (
-      <div className="bg-slate-50 border border-dashed border-slate-200 rounded-lg p-6 text-center text-xs text-slate-400">
+      <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-400">
         No diagram data available
       </div>
     );
@@ -87,12 +96,12 @@ export default function MermaidDiagram({ chart, id = 'mermaid' }: Props) {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-xs text-red-600 font-medium mb-1">Diagram render error</p>
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <p className="mb-1 text-xs font-medium text-red-600">Diagram render error</p>
         <p className="text-[10px] text-red-500">{error}</p>
         <details className="mt-2">
-          <summary className="text-[10px] text-slate-400 cursor-pointer">Raw diagram code</summary>
-          <pre className="mt-1 text-[10px] bg-slate-800 text-green-400 p-2 rounded overflow-auto max-h-40 whitespace-pre-wrap">{chart}</pre>
+          <summary className="cursor-pointer text-[10px] text-slate-400">Raw diagram code</summary>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-slate-800 p-2 text-[10px] text-green-400">{chart}</pre>
         </details>
       </div>
     );
@@ -100,9 +109,9 @@ export default function MermaidDiagram({ chart, id = 'mermaid' }: Props) {
 
   if (!svg) {
     return (
-      <div className="bg-slate-50 rounded-lg p-8 text-center">
-        <div className="inline-block w-5 h-5 border-2 border-slate-300 border-t-black rounded-full animate-spin" />
-        <p className="text-xs text-slate-400 mt-2">Rendering diagram…</p>
+      <div className="rounded-lg bg-slate-50 p-8 text-center">
+        <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-black" />
+        <p className="mt-2 text-xs text-slate-400">Rendering diagram...</p>
       </div>
     );
   }
@@ -110,7 +119,7 @@ export default function MermaidDiagram({ chart, id = 'mermaid' }: Props) {
   return (
     <div
       ref={containerRef}
-      className="bg-white rounded-lg border border-slate-200 p-4 overflow-auto"
+      className="overflow-auto rounded-lg border border-slate-200 bg-white p-4"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

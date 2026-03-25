@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Check, ChevronDown, ChevronRight, Code2, FileCode, Loader2, Play, Plus, Sparkles, X, XCircle, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Code2, FileCode, Loader2, PencilLine, Play, Plus, Sparkles, X, XCircle, Trash2 } from 'lucide-react';
 
 import BlueprintPanel from '../components/BlueprintPanel';
 import CodeWorkspace from '../components/CodeWorkspace';
+import DocumentationPanel from '../components/DocumentationPanel';
 import MermaidDiagram from '../components/MermaidDiagram';
 import OnboardingPanel from '../components/OnboardingPanel';
 
@@ -19,7 +20,8 @@ function getImplementationHistory(feature: any) {
 export default function ProjectView() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('code');
+  const [activeTab, setActiveTab] = useState('overview');
+  const [workItemsView, setWorkItemsView] = useState<'list' | 'board'>('list');
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [features, setFeatures] = useState<any[]>([]);
@@ -30,28 +32,46 @@ export default function ProjectView() {
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentResult, setAgentResult] = useState<any>(null);
+  const [deepDocsProgress, setDeepDocsProgress] = useState<{ pct: number; section: string; completed: number; total: number } | null>(null);
+  const [documentationRunning, setDocumentationRunning] = useState(false);
   const [expandedFeature, setExpandedFeature] = useState<string | null>(null);
+  const [expandedPipelineFeature, setExpandedPipelineFeature] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [savingProject, setSavingProject] = useState(false);
+  const [projectForm, setProjectForm] = useState({ name: '', description: '', github_url: '', tech_stack: '' });
   const [implementationRun, setImplementationRun] = useState<{ featureId: string; featureTitle: string; baselineCount: number; startedSeen: boolean } | null>(null);
   const [implementationProgress, setImplementationProgress] = useState(0);
   const [completionPrompt, setCompletionPrompt] = useState<{ type: 'success' | 'error'; title: string; text: string } | null>(null);
   const implementationPollRef = useRef<number | null>(null);
   const implementationProgressRef = useRef<number | null>(null);
+  const deepDocsPollRef = useRef<number | null>(null);
+  const initialTabAppliedRef = useRef(false);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
   const tabs = [
-    { id: 'code', label: 'Workspace', icon: 'WS' },
-    { id: 'overview', label: 'Overview', icon: 'OV' },
-    { id: 'features', label: 'Features', icon: 'FT' },
-    { id: 'pipeline', label: 'Pipeline', icon: 'PL' },
-    { id: 'blueprint', label: 'Blueprint', icon: 'BP' },
-    { id: 'onboarding', label: 'Onboarding', icon: 'ON' },
+    { id: 'overview', label: 'Overview', icon: 'OV', helper: 'Project health and next steps' },
+    { id: 'onboarding', label: 'Onboarding', icon: 'ON', helper: 'Understand this codebase first' },
+    { id: 'blueprint', label: 'Blueprint', icon: 'BP', helper: 'Deep architecture wiki' },
+    { id: 'docs', label: 'Docs', icon: 'DC', helper: 'Evidence-backed repo reference' },
+    { id: 'work_items', label: 'Work Items', icon: 'WI', helper: 'List and board for the same work' },
+    { id: 'code', label: 'Workspace', icon: 'WS', helper: 'Code, preview, and AI edits' },
   ];
 
   const fetchProject = () => {
     fetch(`${API}/projects/${id}/`)
       .then((r) => r.json())
       .then((data) => {
-        if (!data.error) { setProject(data); setFeatures(data.features || []); }
+        if (!data.error) {
+          setProject(data);
+          setFeatures(data.features || []);
+          setProjectForm({
+            name: data.name || '',
+            description: data.description || '',
+            github_url: data.github_url || '',
+            tech_stack: Array.isArray(data.tech_stack) ? data.tech_stack.join(', ') : '',
+          });
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -60,11 +80,66 @@ export default function ProjectView() {
   useEffect(() => { fetchProject(); }, [id]);
 
   useEffect(() => {
+    initialTabAppliedRef.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    if (!project || initialTabAppliedRef.current) return;
+    const recommended = project.recommended_start_tab || 'overview';
+    setActiveTab(recommended);
+    initialTabAppliedRef.current = true;
+  }, [project]);
+
+  useEffect(() => {
+    if (contentScrollRef.current) {
+      contentScrollRef.current.scrollTop = 0;
+    }
+  }, [activeTab, project?.id]);
+
+  useEffect(() => {
     return () => {
       if (implementationPollRef.current) window.clearInterval(implementationPollRef.current);
       if (implementationProgressRef.current) window.clearInterval(implementationProgressRef.current);
+      if (deepDocsPollRef.current) window.clearInterval(deepDocsPollRef.current);
     };
   }, []);
+
+  const applyDeepDocsProgressEvent = (event: any) => {
+    if (!event || event.status === 'idle') return;
+    const sectionLabels: Record<string, string> = {
+      build_context: 'Preparing codebase context',
+      services: 'Services & Components',
+      api: 'API Reference',
+      database: 'Database Schema',
+      workflows: 'Workflows & Sequences',
+      setup: 'Setup & Environment',
+      quality: 'Quality & Security',
+      knowledge: 'Knowledge Base',
+      complete: 'Blueprint complete',
+    };
+
+    if (event.status === 'done') {
+      setDeepDocsProgress(null);
+      return;
+    }
+
+    if (event.status === 'failed') {
+      setAgentResult({ error: event.error || 'Deep documentation generation failed.' });
+      setDeepDocsProgress(null);
+      if (deepDocsPollRef.current) {
+        window.clearInterval(deepDocsPollRef.current);
+        deepDocsPollRef.current = null;
+      }
+      return;
+    }
+
+    setDeepDocsProgress({
+      pct: event.progress_pct || 0,
+      section: event.section_label || sectionLabels[event.section_key] || event.section_key || 'Generating...',
+      completed: event.completed_sections || 0,
+      total: event.total_sections || 7,
+    });
+  };
 
   useEffect(() => {
     if (!implementationRun) {
@@ -185,12 +260,121 @@ export default function ProjectView() {
 
   const startAgent = async () => {
     if (agentRunning) return;
-    setAgentRunning(true); setAgentResult(null);
+    setAgentRunning(true);
+    setAgentResult(null);
+    setDeepDocsProgress({ pct: 0, section: 'Initializing...', completed: 0, total: 7 });
     try {
-      const response = await fetch(`${API}/projects/${id}/agent/start/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agent_type: 'architect' }) });
-      setAgentResult(await response.json()); fetchProject();
-    } catch { setAgentResult({ error: 'Failed' }); }
-    finally { setAgentRunning(false); }
+      const pollProgress = async () => {
+        try {
+          const progressResponse = await fetch(`${API}/projects/${id}/agent/deep-docs/progress/`);
+          if (!progressResponse.ok) return;
+          const progressData = await progressResponse.json();
+          applyDeepDocsProgressEvent(progressData);
+        } catch {
+          // keep stream as the primary channel; polling is a fallback
+        }
+      };
+
+      if (deepDocsPollRef.current) window.clearInterval(deepDocsPollRef.current);
+      void pollProgress();
+      deepDocsPollRef.current = window.setInterval(() => {
+        void pollProgress();
+      }, 1000);
+
+      const response = await fetch(`${API}/projects/${id}/agent/deep-docs/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        setAgentResult({ error: errData.error || 'Deep documentation generation failed.' });
+        setDeepDocsProgress(null);
+        setAgentRunning(false);
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let streamFailed = false;
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.status === 'failed' && event.section_key === 'build_context') {
+                streamFailed = true;
+                setAgentResult({ error: event.error || 'Deep documentation generation failed.' });
+                setDeepDocsProgress(null);
+              } else {
+                const isStarted = event.status === 'started';
+                applyDeepDocsProgressEvent(event);
+                if (!isStarted) {
+                  // Update blueprint incrementally only when section data is available.
+                  setProject((prev: any) => {
+                    if (!prev) return prev;
+                    const bp = { ...(prev.blueprint || {}) };
+                    const data = event.section_data || {};
+                    for (const [key, val] of Object.entries(data)) {
+                      if (key !== '_error') bp[key] = val;
+                    }
+                    return { ...prev, blueprint: bp };
+                  });
+                }
+              }
+            } catch (e) {
+              // skip malformed events
+            }
+          }
+        }
+      }
+
+      if (!streamFailed) {
+        setAgentResult({ message: 'Deep documentation generated successfully.' });
+        fetchProject();
+      }
+    } catch {
+      setAgentResult({ error: 'Failed to connect to deep documentation endpoint.' });
+    } finally {
+      if (deepDocsPollRef.current) {
+        window.clearInterval(deepDocsPollRef.current);
+        deepDocsPollRef.current = null;
+      }
+      setAgentRunning(false);
+      setDeepDocsProgress(null);
+    }
+  };
+
+  const generateDocumentation = async () => {
+    if (documentationRunning) return;
+    setDocumentationRunning(true);
+    setActionFeedback(null);
+    try {
+      const response = await fetch(`${API}/projects/${id}/documentation/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setActionFeedback({ type: 'error', text: data.error || 'Documentation generation failed.' });
+        return;
+      }
+      setActionFeedback({ type: 'success', text: 'Codebase reference generated successfully.' });
+      fetchProject();
+    } catch {
+      setActionFeedback({ type: 'error', text: 'Documentation generation failed because the server could not be reached.' });
+    } finally {
+      setDocumentationRunning(false);
+    }
   };
 
   const deleteProject = async () => {
@@ -201,6 +385,34 @@ export default function ProjectView() {
       navigate('/');
     } catch {
       setIsDeleting(false);
+    }
+  };
+
+  const saveProjectSettings = async () => {
+    setSavingProject(true);
+    try {
+      const response = await fetch(`${API}/projects/${id}/update/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projectForm.name.trim(),
+          description: projectForm.description.trim(),
+          github_url: projectForm.github_url.trim(),
+          tech_stack: projectForm.tech_stack.split(',').map((item) => item.trim()).filter(Boolean),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setActionFeedback({ type: 'error', text: data.error || 'Unable to update project settings.' });
+        return;
+      }
+      setShowProjectSettings(false);
+      setActionFeedback({ type: 'success', text: 'Project details updated. Blueprint regeneration has started.' });
+      fetchProject();
+    } catch {
+      setActionFeedback({ type: 'error', text: 'Unable to update project settings.' });
+    } finally {
+      setSavingProject(false);
     }
   };
 
@@ -217,6 +429,8 @@ export default function ProjectView() {
   }[status] || 'bg-[#f5f1ec] text-slate-600');
 
   const bp = project?.blueprint;
+  const sourceType = project?.source_type || 'starter';
+  const onboardingSummary = project?.onboarding_summary || {};
 
   return (
     <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,246,248,0.98)_42%,_#eef1f4_100%)] text-slate-900 font-sans flex flex-col">
@@ -234,10 +448,32 @@ export default function ProjectView() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowProjectSettings(true)}
+              className="inline-flex h-8 items-center gap-2 rounded-xl border border-black/5 bg-white/80 px-3 text-xs font-medium text-slate-600 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-colors hover:bg-white"
+            >
+              <PencilLine className="h-3.5 w-3.5" />
+              Edit Project
+            </button>
+            <button
+              onClick={deleteProject}
+              className="inline-flex h-8 items-center gap-2 rounded-xl bg-[#fff1f1] px-3 text-xs font-medium text-red-600 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-colors hover:bg-[#ffe4e4]"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
             {activeTab === 'blueprint' && (
               <button onClick={startAgent} disabled={agentRunning} className="h-8 px-3 rounded-md bg-black text-white text-xs font-medium shadow-md inline-flex items-center gap-2 disabled:opacity-50 hover:bg-slate-800">
                 {agentRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                {agentRunning ? 'Generating...' : 'Regenerate Blueprint'}
+                {agentRunning
+                  ? (deepDocsProgress ? `${deepDocsProgress.section} (${deepDocsProgress.completed}/${deepDocsProgress.total})` : 'Generating...')
+                  : 'Regenerate Blueprint'}
+              </button>
+            )}
+            {activeTab === 'docs' && (
+              <button onClick={generateDocumentation} disabled={documentationRunning} className="h-8 px-3 rounded-md bg-black text-white text-xs font-medium shadow-md inline-flex items-center gap-2 disabled:opacity-50 hover:bg-slate-800">
+                {documentationRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileCode className="w-3.5 h-3.5" />}
+                {documentationRunning ? 'Generating...' : 'Generate Docs'}
               </button>
             )}
           </div>
@@ -293,21 +529,33 @@ export default function ProjectView() {
       )}
 
       <main className="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row max-w-[2000px] w-full mx-auto px-4 sm:px-6 py-4 gap-4 overflow-hidden">
-        <nav className="w-full lg:w-48 shrink-0 flex lg:flex-col gap-1 lg:gap-0.5 pb-3 lg:pb-0 lg:pr-3 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0">
+        <nav className="w-full lg:w-60 shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 lg:pr-3 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-8rem)]">
           <div className="hidden lg:block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">Views</div>
           {tabs.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`shrink-0 lg:w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-black text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}>
-              <span>{tab.icon}</span>{tab.label}
+              className={`shrink-0 lg:w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-black text-white shadow-[0_18px_38px_rgba(15,23,42,0.18)]' : 'border border-transparent text-slate-600 hover:bg-white hover:border-black/5'}`}>
+              <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold ${activeTab === tab.id ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}>{tab.icon}</span>
+              <span className="min-w-0">
+                <span className="block text-xs font-semibold">{tab.label}</span>
+                <span className={`hidden lg:block truncate text-[10px] ${activeTab === tab.id ? 'text-white/70' : 'text-slate-400'}`}>{tab.helper}</span>
+              </span>
             </button>
           ))}
         </nav>
 
-        <section className="flex-1 min-h-0 min-w-0 overflow-hidden rounded-[30px] border border-black/5 bg-white/82 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-2xl flex flex-col">
-          <div className="flex h-12 shrink-0 items-center border-b border-black/5 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,249,252,0.82))] px-5">
-            <span className="text-xs font-semibold tracking-[0.08em] text-slate-600 uppercase">{tabs.find((tab) => tab.id === activeTab)?.label}</span>
-          </div>
-          <div className={`flex-1 min-h-0 min-w-0 overflow-auto overflow-x-hidden ${activeTab === 'code' ? 'p-0 bg-[#1e1e1e]' : 'p-4 sm:p-6'}`}>
+        <section
+          className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col bg-transparent"
+        >
+          <div
+            ref={contentScrollRef}
+            className={`project-scroll-shell flex-1 min-h-0 min-w-0 overflow-auto overflow-x-hidden ${
+              activeTab === 'code'
+                ? 'p-0 bg-[#1e1e1e]'
+                : activeTab === 'onboarding'
+                  ? 'p-0'
+                  : 'p-4 sm:p-6'
+            }`}
+          >
             {activeTab === 'code' && (
               <CodeWorkspace
                 workspaceId={project?.workspace_id ?? null}
@@ -364,7 +612,7 @@ export default function ProjectView() {
                     { label: 'Services', val: bp?.services?.length || 0, sub: 'Architecture', color: 'text-[#365fa8] bg-[#edf4ff] border-[#dce7ff]' },
                     { label: 'Endpoints', val: bp?.api_endpoints?.length || 0, sub: 'API Surface', color: 'text-[#8b5ec1] bg-[#f4efff] border-[#eadfff]' },
                     { label: 'DB Tables', val: bp?.database_schema?.length || 0, sub: 'Data Layer', color: 'text-[#be6a2f] bg-[#fff4ea] border-[#ffe4cc]' },
-                    { label: 'Features', val: features.length, sub: `${features.filter((f: any) => f.status === 'staging').length} shipped`, color: 'text-[#2f7d5a] bg-[#ecfaf2] border-[#d5f0df]' },
+                    { label: 'Work Items', val: features.length, sub: `${features.filter((f: any) => f.status === 'staging').length} in staging`, color: 'text-[#2f7d5a] bg-[#ecfaf2] border-[#d5f0df]' },
                     { label: 'Components', val: bp?.key_components?.length || 0, sub: 'Key Modules', color: 'text-[#a27729] bg-[#fff9e8] border-[#f7e8bb]' },
                   ].map((s) => (
                     <div key={s.label} className={`rounded-[24px] border p-4 text-center shadow-[0_18px_40px_rgba(15,23,42,0.06)] ${s.color}`}>
@@ -402,7 +650,7 @@ export default function ProjectView() {
                       <div className="space-y-2">
                         {[
                           { label: 'Open Workspace', desc: 'Edit code & run terminal', tab: 'code', icon: 'WS' },
-                          { label: 'Create Feature', desc: 'Plan & implement with AI', tab: 'features', icon: 'AI' },
+                          { label: 'Open Work Items', desc: 'Plan, review, and implement work', tab: 'work_items', icon: 'WI' },
                           { label: 'View Blueprint', desc: 'Architecture wiki', tab: 'blueprint', icon: 'BP' },
                           { label: 'Start Onboarding', desc: 'Guided setup walk-through', tab: 'onboarding', icon: 'ON' },
                         ].map(a => (
@@ -471,27 +719,58 @@ export default function ProjectView() {
               </div>
             )}
 
-            {activeTab === 'blueprint' && <BlueprintPanel blueprint={project?.blueprint} />}
-            {activeTab === 'onboarding' && <OnboardingPanel blueprint={project?.blueprint} projectName={project?.name || 'Project'} />}
+            {activeTab === 'blueprint' && <BlueprintPanel projectId={id ?? ''} blueprint={project?.blueprint} scrollContainer={contentScrollRef.current} deepDocsProgress={deepDocsProgress} />}
+            {activeTab === 'docs' && (
+              <DocumentationPanel
+                documentation={project?.documentation}
+                onGenerate={generateDocumentation}
+                generating={documentationRunning}
+              />
+            )}
+            {activeTab === 'onboarding' && (
+              <OnboardingPanel
+                blueprint={project?.blueprint}
+                projectName={project?.name || 'Project'}
+                sourceType={sourceType}
+                workItems={features}
+                runtime={project?.runtime}
+                workspaceReady={Boolean(project?.workspace_id)}
+                onboardingSummary={onboardingSummary}
+                onNavigateToTab={(tabId: string) => {
+                  if (tabId === 'features' || tabId === 'pipeline') {
+                    setActiveTab('work_items');
+                    return;
+                  }
+                  setActiveTab(tabId);
+                }}
+              />
+            )}
 
             {/* ═════════════════════ FEATURES (Full Lifecycle) ═════════════════════ */}
-            {activeTab === 'features' && (
+            {activeTab === 'work_items' && workItemsView === 'list' && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold">Features</h2>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Execution Surface</p>
+                    <h2 className="text-lg font-semibold">Work Items</h2>
                     <p className="text-xs text-slate-400 mt-0.5">{features.length} total · {features.filter((f: any) => f.status === 'development').length} in development</p>
                   </div>
-                  <button onClick={() => setShowAddFeature(true)} className="h-8 px-3 rounded-lg bg-black text-white text-xs font-medium inline-flex items-center gap-1.5 shadow-sm">
-                    <Plus className="w-3.5 h-3.5" /> New Feature
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-2xl border border-black/5 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                      <button type="button" onClick={() => setWorkItemsView('list')} className={`rounded-xl px-3 py-2 text-xs font-medium ${workItemsView === 'list' ? 'bg-black text-white' : 'text-slate-500'}`}>List</button>
+                      <button type="button" onClick={() => setWorkItemsView('board')} className="rounded-xl px-3 py-2 text-xs font-medium text-slate-500">Board</button>
+                    </div>
+                    <button onClick={() => setShowAddFeature(true)} className="h-8 px-3 rounded-lg bg-black text-white text-xs font-medium inline-flex items-center gap-1.5 shadow-sm">
+                      <Plus className="w-3.5 h-3.5" /> New Work Item
+                    </button>
+                  </div>
                 </div>
                 {features.length === 0 && (
                   <div className="text-center py-16 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                     <div className="text-4xl mb-3">✨</div>
-                    <p className="font-medium text-slate-500">No features yet</p>
-                    <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Create a feature and AI will generate a spec, implementation plan, and can implement it directly into your workspace.</p>
-                    <button onClick={() => setShowAddFeature(true)} className="mt-4 px-4 py-2 bg-black text-white text-xs rounded-lg font-medium">Create First Feature</button>
+                    <p className="font-medium text-slate-500">No work items yet</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">Create a work item and DevHub will generate a spec, implementation plan, and shared delivery state for it.</p>
+                    <button onClick={() => setShowAddFeature(true)} className="mt-4 px-4 py-2 bg-black text-white text-xs rounded-lg font-medium">Create First Work Item</button>
                   </div>
                 )}
                 {features.map((feature: any) => {
@@ -658,21 +937,21 @@ export default function ProjectView() {
                           {/* Action bar at bottom of expanded */}
                           <div className="flex flex-wrap gap-2 px-5 py-3 border-t border-slate-100 bg-white">
                             {feature.status !== 'staging' && (
-                              <button onClick={() => pipelineAction(feature.id, 'implement')} disabled={actionLoading === feature.id + 'implement'} className="h-8 px-4 rounded-lg bg-black text-white text-xs font-medium inline-flex items-center gap-1.5 disabled:opacity-50 hover:bg-slate-800">
+                              <button onClick={() => pipelineAction(feature.id, 'implement')} disabled={actionLoading === feature.id + 'implement'} className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-black px-4 text-xs font-medium text-white shadow-[0_12px_24px_rgba(15,23,42,0.14)] disabled:opacity-50 hover:bg-slate-800">
                                 {actionLoading === feature.id + 'implement' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />} AI Implement
                               </button>
                             )}
                             {feature.status !== 'staging' && (
-                              <button onClick={() => pipelineAction(feature.id, 'advance')} disabled={actionLoading === feature.id + 'advance'} className="h-8 px-3 rounded-lg bg-blue-600 text-white text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50">
-                                <ChevronRight className="w-3 h-3" /> Advance Stage
+                              <button onClick={() => pipelineAction(feature.id, 'advance')} disabled={actionLoading === feature.id + 'advance'} className="inline-flex h-8 items-center gap-1 rounded-xl bg-[#eef4ff] px-3 text-xs font-medium text-[#3458a5] disabled:opacity-50 hover:bg-[#e3edff]">
+                                <ChevronRight className="w-3 h-3" /> Move Forward
                               </button>
                             )}
-                            <button onClick={() => pipelineAction(feature.id, 'approve')} disabled={actionLoading === feature.id + 'approve'} className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50">
+                            <button onClick={() => pipelineAction(feature.id, 'approve')} disabled={actionLoading === feature.id + 'approve'} className="inline-flex h-8 items-center gap-1 rounded-xl bg-[#edf8f1] px-3 text-xs font-medium text-[#2f7d5a] disabled:opacity-50 hover:bg-[#e2f3e8]">
                               <Check className="w-3 h-3" /> Approve
                             </button>
                             {feature.status !== 'backlog' && (
-                              <button onClick={() => pipelineAction(feature.id, 'reject')} disabled={actionLoading === feature.id + 'reject'} className="h-8 px-3 rounded-lg bg-red-600 text-white text-xs font-medium inline-flex items-center gap-1 disabled:opacity-50">
-                                <XCircle className="w-3 h-3" /> Reject
+                              <button onClick={() => pipelineAction(feature.id, 'reject')} disabled={actionLoading === feature.id + 'reject'} className="inline-flex h-8 items-center gap-1 rounded-xl bg-[#fff1f1] px-3 text-xs font-medium text-[#b24a4a] disabled:opacity-50 hover:bg-[#ffe5e5]">
+                                <XCircle className="w-3 h-3" /> Send Back
                               </button>
                             )}
                           </div>
@@ -688,11 +967,11 @@ export default function ProjectView() {
                             </button>
                           )}
                           {feature.status !== 'staging' && (
-                            <button onClick={(e) => { e.stopPropagation(); pipelineAction(feature.id, 'advance'); }} disabled={actionLoading === feature.id + 'advance'} className="h-7 px-3 rounded bg-blue-600 text-white text-[10px] font-medium inline-flex items-center gap-1 disabled:opacity-50">
-                              <ChevronRight className="w-3 h-3" /> Advance
+                            <button onClick={(e) => { e.stopPropagation(); pipelineAction(feature.id, 'advance'); }} disabled={actionLoading === feature.id + 'advance'} className="inline-flex h-7 items-center gap-1 rounded-xl bg-[#eef4ff] px-3 text-[10px] font-medium text-[#3458a5] disabled:opacity-50">
+                              <ChevronRight className="w-3 h-3" /> Forward
                             </button>
                           )}
-                          <button onClick={(e) => { e.stopPropagation(); pipelineAction(feature.id, 'approve'); }} disabled={actionLoading === feature.id + 'approve'} className="h-7 px-3 rounded bg-emerald-600 text-white text-[10px] font-medium inline-flex items-center gap-1 disabled:opacity-50">
+                          <button onClick={(e) => { e.stopPropagation(); pipelineAction(feature.id, 'approve'); }} disabled={actionLoading === feature.id + 'approve'} className="inline-flex h-7 items-center gap-1 rounded-xl bg-[#edf8f1] px-3 text-[10px] font-medium text-[#2f7d5a] disabled:opacity-50">
                             <Check className="w-3 h-3" /> Approve
                           </button>
                         </div>
@@ -704,15 +983,21 @@ export default function ProjectView() {
             )}
 
             {/* ═════════════════════ PIPELINE (Rich Kanban) ═════════════════════ */}
-            {activeTab === 'pipeline' && (
+            {activeTab === 'work_items' && workItemsView === 'board' && (
               <div className="flex h-full min-h-0 flex-col">
-                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Delivery Flow</p>
-                    <h2 className="mt-1 text-xl font-semibold text-slate-900">SDLC Pipeline</h2>
-                    <p className="mt-1 text-sm text-slate-500">Each lane keeps its own breathing room so specs, actions and status stay readable.</p>
+                    <h2 className="mt-1 text-xl font-semibold text-slate-900">Work Items Board</h2>
+                    <p className="mt-1 text-sm text-slate-500">Board view of the same work items shown in the list.</p>
                   </div>
-                  <span className="rounded-full border border-black/5 bg-[#f8fafc] px-3 py-1 text-xs font-medium text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">{features.length} features total</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-2xl border border-black/5 bg-white p-1 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                      <button type="button" onClick={() => setWorkItemsView('list')} className="rounded-xl px-3 py-2 text-xs font-medium text-slate-500">List</button>
+                      <button type="button" onClick={() => setWorkItemsView('board')} className={`rounded-xl px-3 py-2 text-xs font-medium ${workItemsView === 'board' ? 'bg-black text-white' : 'text-slate-500'}`}>Board</button>
+                    </div>
+                    <span className="rounded-full border border-black/5 bg-[#f8fafc] px-3 py-1 text-xs font-medium text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">{features.length} work items total</span>
+                  </div>
                 </div>
                 <div className="grid min-h-0 grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto overflow-y-hidden pb-4 pr-1">
                   {PIPELINE_STAGES.map((stage) => {
@@ -729,14 +1014,25 @@ export default function ProjectView() {
                         <div className="flex-1 min-h-[320px] space-y-3 overflow-y-auto bg-[#fbfcfe] p-3">
                           {stageFeatures.map((feature: any) => {
                             const spec = feature.spec || {};
+                            const isExpanded = expandedPipelineFeature === feature.id;
+                            const latestHistory = Array.isArray(feature.pipeline_history) && feature.pipeline_history.length
+                              ? feature.pipeline_history[feature.pipeline_history.length - 1]
+                              : null;
                             return (
-                              <div key={feature.id} className="min-w-0 overflow-hidden rounded-[24px] border border-black/5 bg-white p-4 shadow-[0_16px_34px_rgba(15,23,42,0.06)] transition-transform duration-200 hover:-translate-y-0.5">
-                                <h4 className="mb-1 break-words text-sm font-semibold leading-5 text-slate-900 line-clamp-2">{feature.title}</h4>
-                                {feature.description && <p className="mb-3 break-words text-[11px] leading-5 text-slate-500 line-clamp-3">{feature.description}</p>}
+                              <div key={feature.id} className="min-w-0 overflow-hidden rounded-[24px] border border-black/5 bg-white p-4 shadow-[0_16px_34px_rgba(15,23,42,0.06)]">
+                                <button type="button" onClick={() => setExpandedPipelineFeature(isExpanded ? null : feature.id)} className="w-full text-left">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <h4 className="mb-1 break-words text-sm font-semibold leading-5 text-slate-900">{feature.title}</h4>
+                                      {feature.description && <p className={`break-words text-[11px] leading-5 text-slate-500 ${isExpanded ? '' : 'line-clamp-2'}`}>{feature.description}</p>}
+                                    </div>
+                                    <span className="rounded-full bg-[#f5f7fb] px-2 py-1 text-[10px] font-medium text-slate-400">{isExpanded ? 'Hide' : 'Expand'}</span>
+                                  </div>
+                                </button>
 
                                 {/* Spec preview */}
                                 {spec.technical_approach && (
-                                  <p className="mb-3 overflow-hidden break-words rounded-2xl bg-[#f8fafc] p-3 text-[11px] italic leading-5 text-slate-500 line-clamp-4">
+                                  <p className={`mb-3 overflow-hidden break-words rounded-2xl bg-[#f8fafc] p-3 text-[11px] italic leading-5 text-slate-500 ${isExpanded ? '' : 'line-clamp-4'}`}>
                                     {spec.technical_approach}
                                   </p>
                                 )}
@@ -760,10 +1056,52 @@ export default function ProjectView() {
                                   )}
                                 </div>
 
+                                {latestHistory?.comment && (
+                                  <div className="mb-3 rounded-2xl bg-[#fbfcfe] px-3 py-2 text-[11px] leading-5 text-slate-500">
+                                    {latestHistory.comment}
+                                  </div>
+                                )}
+
                                 {/* Test results badge */}
                                 {feature.test_results && (
                                   <div className={`mb-3 rounded-2xl px-3 py-2 text-[10px] font-medium ${feature.test_results.overall_status === 'passed' ? 'bg-[#e7f6ef] text-[#2f7d5a]' : feature.test_results.overall_status === 'failed' ? 'bg-[#ffe8e8] text-[#b24a4a]' : 'bg-[#fff2dc] text-[#a56a1f]'}`}>
                                     Tests: {feature.test_results.overall_status} ({feature.test_results.score}/100)
+                                  </div>
+                                )}
+
+                                {isExpanded && (
+                                  <div className="mb-4 space-y-3 border-t border-black/5 pt-4">
+                                    {(spec.files_to_modify || []).length > 0 && (
+                                      <div className="rounded-2xl bg-[#fbfcfe] p-3">
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Files In Scope</p>
+                                        <div className="mt-2 space-y-1.5">
+                                          {(spec.files_to_modify || []).slice(0, 4).map((item: any, index: number) => (
+                                            <div key={`${feature.id}-pipeline-file-${index}`} className="text-[11px] text-slate-600">
+                                              <code className="rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-700">{item.path}</code>
+                                              {item.changes && <p className="mt-1 break-words text-slate-500">{item.changes}</p>}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setActiveTab('work_items');
+                                          setWorkItemsView('list');
+                                          setExpandedFeature(feature.id);
+                                        }}
+                                        className="rounded-xl bg-[#f3f6fb] px-3 py-2 text-[11px] font-medium text-slate-600 transition-colors hover:bg-[#e9eef5]"
+                                      >
+                                        Open List View
+                                      </button>
+                                      <button
+                                        onClick={() => setActiveTab('code')}
+                                        className="rounded-xl bg-[#f9f5ff] px-3 py-2 text-[11px] font-medium text-[#7f53aa] transition-colors hover:bg-[#f1e8ff]"
+                                      >
+                                        Go To Workspace
+                                      </button>
+                                    </div>
                                   </div>
                                 )}
 
@@ -779,17 +1117,23 @@ export default function ProjectView() {
                                   {stage !== 'staging' && (
                                     <button
                                       onClick={() => pipelineAction(feature.id, 'advance')}
-                                      className="w-full min-w-0 rounded-xl bg-[#e8f0ff] px-3 py-2 text-center text-[11px] font-medium text-[#3458a5] transition-colors hover:bg-[#dbe7ff]"
+                                      className="w-full min-w-0 rounded-xl bg-[#eef4ff] px-3 py-2 text-center text-[11px] font-medium text-[#3458a5] transition-colors hover:bg-[#e3edff]"
                                     >
-                                      Advance
+                                      Move Forward
                                     </button>
                                   )}
+                                  <button
+                                    onClick={() => pipelineAction(feature.id, 'approve')}
+                                    className="w-full min-w-0 rounded-xl bg-[#edf8f1] px-3 py-2 text-center text-[11px] font-medium text-[#2f7d5a] transition-colors hover:bg-[#e2f3e8]"
+                                  >
+                                    Approve
+                                  </button>
                                   {stage !== 'backlog' && (
                                     <button
                                       onClick={() => pipelineAction(feature.id, 'reject')}
-                                      className="w-full min-w-0 rounded-xl bg-[#ffecec] px-3 py-2 text-center text-[11px] font-medium text-[#b24a4a] transition-colors hover:bg-[#ffe1e1] sm:col-span-2"
+                                      className="w-full min-w-0 rounded-xl bg-[#fff1f1] px-3 py-2 text-center text-[11px] font-medium text-[#b24a4a] transition-colors hover:bg-[#ffe5e5]"
                                     >
-                                      Reject
+                                      Send Back
                                     </button>
                                   )}
                                 </div>
@@ -798,7 +1142,7 @@ export default function ProjectView() {
                           })}
                           {stageFeatures.length === 0 && (
                             <div className="rounded-[22px] border border-dashed border-black/5 bg-white/75 px-4 py-12 text-center text-[11px] text-slate-400">
-                              No features
+                              No work items
                             </div>
                           )}
                         </div>
@@ -829,6 +1173,78 @@ export default function ProjectView() {
               <button onClick={() => setShowAddFeature(false)} className="px-3 py-1.5 text-xs text-slate-600 rounded-lg hover:bg-slate-200">Cancel</button>
               <button onClick={createFeature} disabled={creatingFeature || !featureForm.title.trim()} className="px-4 py-1.5 text-xs text-white bg-black rounded-lg disabled:opacity-50 inline-flex items-center gap-1">
                 {creatingFeature && <Loader2 className="w-3 h-3 animate-spin" />} Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showProjectSettings && (
+        <div className="fixed inset-0 z-[105] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/18 backdrop-blur-md" onClick={() => setShowProjectSettings(false)} />
+          <div className="relative max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-[32px] border border-white/80 bg-white/88 shadow-[0_32px_90px_rgba(15,23,42,0.18)] backdrop-blur-2xl">
+            <div className="flex items-center justify-between border-b border-black/5 px-6 py-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Project Settings</p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">Edit project details</h3>
+              </div>
+              <button onClick={() => setShowProjectSettings(false)} className="rounded-full bg-[#f5f7fb] p-2 text-slate-500 transition-colors hover:bg-[#ebeff5]">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-4 px-6 py-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Project Name</label>
+                  <input
+                    type="text"
+                    value={projectForm.name}
+                    onChange={(event) => setProjectForm((current) => ({ ...current, name: event.target.value }))}
+                    className="h-11 w-full rounded-2xl border border-black/10 bg-white px-4 text-sm text-slate-700 outline-none transition-shadow focus:shadow-[0_0_0_4px_rgba(15,23,42,0.06)]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">Tech Stack</label>
+                  <input
+                    type="text"
+                    value={projectForm.tech_stack}
+                    onChange={(event) => setProjectForm((current) => ({ ...current, tech_stack: event.target.value }))}
+                    placeholder="React, Django, PostgreSQL"
+                    className="h-11 w-full rounded-2xl border border-black/10 bg-white px-4 text-sm text-slate-700 outline-none transition-shadow focus:shadow-[0_0_0_4px_rgba(15,23,42,0.06)]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">Description</label>
+                <textarea
+                  rows={4}
+                  value={projectForm.description}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))}
+                  className="w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition-shadow focus:shadow-[0_0_0_4px_rgba(15,23,42,0.06)]"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">GitHub URL</label>
+                <input
+                  type="text"
+                  value={projectForm.github_url}
+                  onChange={(event) => setProjectForm((current) => ({ ...current, github_url: event.target.value }))}
+                  placeholder="Optional repository URL"
+                  className="h-11 w-full rounded-2xl border border-black/10 bg-white px-4 text-sm text-slate-700 outline-none transition-shadow focus:shadow-[0_0_0_4px_rgba(15,23,42,0.06)]"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-black/5 px-6 py-4">
+              <button onClick={() => setShowProjectSettings(false)} className="rounded-2xl px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-[#f3f5f8]">
+                Cancel
+              </button>
+              <button
+                onClick={saveProjectSettings}
+                disabled={savingProject || !projectForm.name.trim()}
+                className="inline-flex items-center gap-2 rounded-2xl bg-black px-5 py-2.5 text-sm font-medium text-white shadow-[0_16px_30px_rgba(15,23,42,0.18)] transition-colors hover:bg-slate-800 disabled:opacity-50"
+              >
+                {savingProject && <Loader2 className="h-4 w-4 animate-spin" />}
+                {savingProject ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>

@@ -10,6 +10,7 @@ class Project(models.Model):
     workspace_id = models.CharField(max_length=255, null=True, blank=True)
     tech_stack = models.JSONField(default=list)
     team_members = models.JSONField(default=list)
+    ai_config = models.JSONField(default=dict)
     blueprint = models.JSONField(default=dict)
     status = models.CharField(max_length=50, default="active")
     registered_at = models.DateTimeField(auto_now_add=True)
@@ -92,6 +93,7 @@ class ChatMessage(models.Model):
     project = models.ForeignKey(Project, related_name='chat_messages', on_delete=models.CASCADE)
     role = models.CharField(max_length=50) # user or assistant
     content = models.TextField()
+    metadata = models.JSONField(default=dict)
     created_at = models.DateTimeField(auto_now_add=True)
 
 
@@ -132,3 +134,38 @@ class SemanticMemory(models.Model):
 
     class Meta:
         unique_together = ('project', 'file_path', 'chunk_index')
+
+
+class DocumentationRun(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, related_name='documentation_runs', on_delete=models.CASCADE)
+    mode = models.CharField(max_length=100, default='codebase_reference')
+    status = models.CharField(max_length=50, default='pending')
+    target_fingerprint = models.CharField(max_length=120, blank=True)
+    summary = models.TextField(blank=True)
+    output_path = models.CharField(max_length=1000, blank=True)
+    error = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict)
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-started_at']
+
+
+class DocumentationSection(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(DocumentationRun, related_name='sections', on_delete=models.CASCADE)
+    key = models.CharField(max_length=100)
+    title = models.CharField(max_length=255)
+    order = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=50, default='pending')
+    summary = models.TextField(blank=True)
+    markdown = models.TextField(blank=True)
+    evidence = models.JSONField(default=list)
+    metadata = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'title']
+        unique_together = ('run', 'key')

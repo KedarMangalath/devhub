@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class CoderAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, ai_config: dict | None = None):
         super().__init__(
             role="Senior Software Engineer",
             system_instruction=(
@@ -33,6 +33,7 @@ class CoderAgent(BaseAgent):
                 "7. Preserve the existing runnable scaffold and runtime conventions unless the request explicitly asks for a migration.\n"
                 "8. If the project already uses React/Vite, Django, FastAPI, or another framework structure, do not fall back to ad-hoc top-level HTML/CSS/JS files."
             ),
+            ai_config=ai_config,
         )
 
     def implement_feature(

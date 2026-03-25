@@ -53,6 +53,12 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
   * {
     border-color: hsl(var(--border) / 1);
   }
@@ -62,7 +68,36 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
+}
+
+.project-scroll-shell {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.9) transparent;
+}
+
+.project-scroll-shell::-webkit-scrollbar {
+  width: 12px;
+}
+
+.project-scroll-shell::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.project-scroll-shell::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.85);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.project-scroll-shell::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.95);
+  background-clip: padding-box;
 }
 
 /* Glassmorphism utilities */

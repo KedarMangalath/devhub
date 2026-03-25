@@ -4,13 +4,14 @@ from agents.base import BaseAgent
 
 
 class PlannerAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, ai_config: dict | None = None):
         super().__init__(
             role="Implementation Planner",
             system_instruction="""You are a senior staff engineer planning code changes for an autonomous coding system.
 You receive a full project context pack including project memory, feature specs, recent changes, and a file inventory.
 Your job is to identify which files matter, what must stay consistent, and what success looks like before coding starts.
 Return ONLY valid JSON with no markdown.""",
+            ai_config=ai_config,
         )
 
     def create_plan(
@@ -19,6 +20,7 @@ Return ONLY valid JSON with no markdown.""",
         request_title: str,
         request_text: str,
         project_memory: str,
+        codebase_summary: str,
         file_inventory: str,
         blueprint_summary: str,
         supporting_context: str,
@@ -31,6 +33,9 @@ Request: {request_text}
 
 Project Memory:
 {project_memory}
+
+Cached Codebase Summary:
+{codebase_summary}
 
 Blueprint Summary:
 {blueprint_summary}
@@ -70,6 +75,7 @@ Return ONLY a JSON object with this exact structure:
 
 Rules:
 - Prefer the smallest file set that still keeps the app consistent.
+- Treat Cached Codebase Summary as the primary compressed context and use File Inventory mostly for path selection.
 - If a request changes UI behavior, include related styles, scripts/components, and docs when needed.
 - If there are existing relevant files, prefer modifying them over inventing parallel structure.
 - Keep the existing runtime and project scaffold intact unless the request explicitly asks for a migration.
