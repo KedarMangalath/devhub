@@ -4,9 +4,10 @@ import { Check, ChevronDown, ChevronRight, Code2, FileCode, Loader2, PencilLine,
 
 import BlueprintPanel from '../components/BlueprintPanel';
 import CodeWorkspace from '../components/CodeWorkspace';
-import DocumentationPanel from '../components/DocumentationPanel';
 import MermaidDiagram from '../components/MermaidDiagram';
 import OnboardingPanel from '../components/OnboardingPanel';
+import ProjectChatPanel from '../components/ProjectChatPanel';
+import ToastStack from '../components/ToastStack';
 
 const API = 'http://localhost:8000/api';
 const PIPELINE_STAGES = ['backlog', 'development', 'testing', 'code_review', 'staging'];
@@ -31,6 +32,7 @@ export default function ProjectView() {
   const [actionLoading, setActionLoading] = useState('');
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
+  const [blueprintRunTarget, setBlueprintRunTarget] = useState<string | null>(null);
   const [agentResult, setAgentResult] = useState<any>(null);
   const [deepDocsProgress, setDeepDocsProgress] = useState<{ pct: number; section: string; completed: number; total: number } | null>(null);
   const [documentationRunning, setDocumentationRunning] = useState(false);
@@ -46,6 +48,7 @@ export default function ProjectView() {
   const implementationPollRef = useRef<number | null>(null);
   const implementationProgressRef = useRef<number | null>(null);
   const deepDocsPollRef = useRef<number | null>(null);
+  const contextInitPollRef = useRef<number | null>(null);
   const initialTabAppliedRef = useRef(false);
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -53,8 +56,8 @@ export default function ProjectView() {
     { id: 'overview', label: 'Overview', icon: 'OV', helper: 'Project health and next steps' },
     { id: 'onboarding', label: 'Onboarding', icon: 'ON', helper: 'Understand this codebase first' },
     { id: 'blueprint', label: 'Blueprint', icon: 'BP', helper: 'Deep architecture wiki' },
-    { id: 'docs', label: 'Docs', icon: 'DC', helper: 'Evidence-backed repo reference' },
     { id: 'work_items', label: 'Work Items', icon: 'WI', helper: 'List and board for the same work' },
+    { id: 'chat', label: 'Chat', icon: 'CH', helper: 'Project-level AI assistant' },
     { id: 'code', label: 'Workspace', icon: 'WS', helper: 'Code, preview, and AI edits' },
   ];
 
@@ -97,16 +100,26 @@ export default function ProjectView() {
   }, [activeTab, project?.id]);
 
   useEffect(() => {
+    if (activeTab === 'docs') {
+      setActiveTab('blueprint');
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
     return () => {
       if (implementationPollRef.current) window.clearInterval(implementationPollRef.current);
       if (implementationProgressRef.current) window.clearInterval(implementationProgressRef.current);
       if (deepDocsPollRef.current) window.clearInterval(deepDocsPollRef.current);
+      if (contextInitPollRef.current) window.clearInterval(contextInitPollRef.current);
     };
   }, []);
 
   const applyDeepDocsProgressEvent = (event: any) => {
     if (!event || event.status === 'idle') return;
     const sectionLabels: Record<string, string> = {
+      design_doc: 'Design Doc',
+      overview: 'Overview',
+      repository: 'Repository',
       build_context: 'Preparing codebase context',
       services: 'Services & Components',
       api: 'API Reference',
@@ -170,6 +183,36 @@ export default function ProjectView() {
       implementationProgressRef.current = null;
     };
   }, [implementationRun]);
+
+  useEffect(() => {
+    if (!project?.context_initializing) {
+      if (contextInitPollRef.current) window.clearInterval(contextInitPollRef.current);
+      contextInitPollRef.current = null;
+      return;
+    }
+
+    if (contextInitPollRef.current) window.clearInterval(contextInitPollRef.current);
+    contextInitPollRef.current = window.setInterval(() => {
+      fetchProject();
+    }, 2500);
+
+    return () => {
+      if (contextInitPollRef.current) window.clearInterval(contextInitPollRef.current);
+      contextInitPollRef.current = null;
+    };
+  }, [project?.context_initializing, id]);
+
+  useEffect(() => {
+    if (!agentResult) return undefined;
+    const timeout = window.setTimeout(() => setAgentResult(null), agentResult.error ? 2600 : 1800);
+    return () => window.clearTimeout(timeout);
+  }, [agentResult]);
+
+  useEffect(() => {
+    if (!actionFeedback) return undefined;
+    const timeout = window.setTimeout(() => setActionFeedback(null), actionFeedback.type === 'error' ? 2600 : 1800);
+    return () => window.clearTimeout(timeout);
+  }, [actionFeedback]);
 
   useEffect(() => {
     if (!implementationRun) return;
@@ -258,11 +301,30 @@ export default function ProjectView() {
     }
   };
 
-  const startAgent = async () => {
+  const startAgent = async (sectionKey?: string) => {
     if (agentRunning) return;
+    const requestedSection = sectionKey?.trim() || '';
+    const sectionLabels: Record<string, string> = {
+      design_doc: 'Design Doc',
+      overview: 'Overview',
+      repository: 'Repository',
+      services: 'Services',
+      api: 'API',
+      database: 'Database',
+      workflows: 'Workflows',
+      setup: 'Setup',
+      quality: 'Quality',
+      knowledge: 'Knowledge',
+    };
     setAgentRunning(true);
+    setBlueprintRunTarget(requestedSection || '__all__');
     setAgentResult(null);
-    setDeepDocsProgress({ pct: 0, section: 'Initializing...', completed: 0, total: 7 });
+    setDeepDocsProgress({
+      pct: 0,
+      section: requestedSection ? `Preparing ${sectionLabels[requestedSection] || requestedSection}` : 'Initializing...',
+      completed: 0,
+      total: requestedSection ? 1 : 7,
+    });
     try {
       const pollProgress = async () => {
         try {
@@ -284,6 +346,7 @@ export default function ProjectView() {
       const response = await fetch(`${API}/projects/${id}/agent/deep-docs/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestedSection ? { section_key: requestedSection } : {}),
       });
 
       if (!response.ok) {
@@ -339,7 +402,7 @@ export default function ProjectView() {
       }
 
       if (!streamFailed) {
-        setAgentResult({ message: 'Deep documentation generated successfully.' });
+        setAgentResult({ message: requestedSection ? `${sectionLabels[requestedSection] || requestedSection} regenerated successfully.` : 'Deep documentation generated successfully.' });
         fetchProject();
       }
     } catch {
@@ -350,6 +413,7 @@ export default function ProjectView() {
         deepDocsPollRef.current = null;
       }
       setAgentRunning(false);
+      setBlueprintRunTarget(null);
       setDeepDocsProgress(null);
     }
   };
@@ -417,7 +481,7 @@ export default function ProjectView() {
   };
 
   if (loading || isDeleting) {
-    return <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>;
+    return <div className="min-h-[var(--app-vh)] bg-[#f8f9fa] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>;
   }
 
   const stageColor = (status: string) => ({
@@ -433,7 +497,33 @@ export default function ProjectView() {
   const onboardingSummary = project?.onboarding_summary || {};
 
   return (
-    <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,246,248,0.98)_42%,_#eef1f4_100%)] text-slate-900 font-sans flex flex-col">
+    <div className="h-[var(--app-vh)] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,246,248,0.98)_42%,_#eef1f4_100%)] text-slate-900 font-sans flex flex-col">
+      <ToastStack
+        items={[
+          ...(agentResult
+            ? [
+                {
+                  id: 'agent-result',
+                  type: (agentResult.error ? 'error' : 'success') as 'error' | 'success',
+                  text: String(agentResult.error || agentResult.message || 'Blueprint refreshed successfully.'),
+                },
+              ]
+            : []),
+          ...(actionFeedback
+            ? [
+                {
+                  id: 'action-feedback',
+                  type: actionFeedback.type,
+                  text: actionFeedback.text,
+                },
+              ]
+            : []),
+        ]}
+        onDismiss={(toastId) => {
+          if (toastId === 'agent-result') setAgentResult(null);
+          if (toastId === 'action-feedback') setActionFeedback(null);
+        }}
+      />
       <header className="sticky top-0 z-50 w-full border-b border-white/70 bg-white/65 backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <div className="flex h-14 items-center px-6 justify-between max-w-[2000px] mx-auto">
           <div className="flex items-center gap-3">
@@ -463,37 +553,29 @@ export default function ProjectView() {
               Delete
             </button>
             {activeTab === 'blueprint' && (
-              <button onClick={startAgent} disabled={agentRunning} className="h-8 px-3 rounded-md bg-black text-white text-xs font-medium shadow-md inline-flex items-center gap-2 disabled:opacity-50 hover:bg-slate-800">
+              <button onClick={() => startAgent()} disabled={agentRunning} className="h-8 px-3 rounded-md bg-black text-white text-xs font-medium shadow-md inline-flex items-center gap-2 disabled:opacity-50 hover:bg-slate-800">
                 {agentRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                 {agentRunning
-                  ? (deepDocsProgress ? `${deepDocsProgress.section} (${deepDocsProgress.completed}/${deepDocsProgress.total})` : 'Generating...')
+                  ? (blueprintRunTarget === '__all__'
+                      ? (deepDocsProgress ? `${deepDocsProgress.section} (${deepDocsProgress.completed}/${deepDocsProgress.total})` : 'Generating...')
+                      : (deepDocsProgress ? deepDocsProgress.section : 'Generating...'))
                   : 'Regenerate Blueprint'}
-              </button>
-            )}
-            {activeTab === 'docs' && (
-              <button onClick={generateDocumentation} disabled={documentationRunning} className="h-8 px-3 rounded-md bg-black text-white text-xs font-medium shadow-md inline-flex items-center gap-2 disabled:opacity-50 hover:bg-slate-800">
-                {documentationRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileCode className="w-3.5 h-3.5" />}
-                {documentationRunning ? 'Generating...' : 'Generate Docs'}
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {agentResult && (
+      {project?.context_initializing && (
         <div className="max-w-[2000px] mx-auto w-full px-6 mt-2">
-          <div className={`p-3 rounded-lg text-sm flex items-center justify-between ${agentResult.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-            <span>{agentResult.error || 'Blueprint refreshed successfully.'}</span>
-            <button onClick={() => setAgentResult(null)} className="p-0.5 rounded hover:bg-black/5"><X className="w-4 h-4" /></button>
-          </div>
-        </div>
-      )}
-
-      {actionFeedback && (
-        <div className="max-w-[2000px] mx-auto w-full px-6 mt-2">
-          <div className={`p-3 rounded-2xl text-sm flex items-center justify-between border backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)] ${actionFeedback.type === 'error' ? 'bg-white/80 text-red-700 border-red-100' : 'bg-white/80 text-emerald-700 border-emerald-100'}`}>
-            <span>{actionFeedback.text}</span>
-            <button onClick={() => setActionFeedback(null)} className="p-0.5 rounded hover:bg-black/5"><X className="w-4 h-4" /></button>
+          <div className="p-3 rounded-2xl text-sm flex items-center justify-between border border-blue-100 bg-white/80 text-slate-700 backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <span>
+              DevHub is auto-generating the blueprint{project?.source_type === 'starter' ? '' : ', onboarding context, and repository docs'} for this project.
+            </span>
+            <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Syncing
+            </span>
           </div>
         </div>
       )}
@@ -529,7 +611,7 @@ export default function ProjectView() {
       )}
 
       <main className="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row max-w-[2000px] w-full mx-auto px-4 sm:px-6 py-4 gap-4 overflow-hidden">
-        <nav className="w-full lg:w-60 shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 lg:pr-3 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-8rem)]">
+        <nav className="w-full lg:w-60 shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 lg:pr-3 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(var(--app-vh)-8rem)]">
           <div className="hidden lg:block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">Views</div>
           {tabs.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -551,9 +633,11 @@ export default function ProjectView() {
             className={`project-scroll-shell flex-1 min-h-0 min-w-0 overflow-auto overflow-x-hidden ${
               activeTab === 'code'
                 ? 'p-0 bg-[#1e1e1e]'
-                : activeTab === 'onboarding'
-                  ? 'p-0'
-                  : 'p-4 sm:p-6'
+                : activeTab === 'chat'
+                  ? 'p-0 bg-white'
+                  : activeTab === 'onboarding'
+                    ? 'p-0'
+                    : 'p-4 sm:p-6'
             }`}
           >
             {activeTab === 'code' && (
@@ -563,6 +647,19 @@ export default function ProjectView() {
                 projectPath={project?.local_path}
                 onProjectChanged={fetchProject}
               />
+            )}
+
+            {activeTab === 'chat' && (
+              <div className="flex flex-col h-full w-full bg-white">
+                <ProjectChatPanel
+                  projectId={id ?? ''}
+                  mode="standalone"
+                  selectedFile={null}
+                  fileContent={""}
+                  treeNodes={[]}
+                  onCodeApplied={fetchProject}
+                />
+              </div>
             )}
 
             {/* ═════════════════════ OVERVIEW (Rich Dashboard) ═════════════════════ */}
@@ -719,12 +816,18 @@ export default function ProjectView() {
               </div>
             )}
 
-            {activeTab === 'blueprint' && <BlueprintPanel projectId={id ?? ''} blueprint={project?.blueprint} scrollContainer={contentScrollRef.current} deepDocsProgress={deepDocsProgress} />}
-            {activeTab === 'docs' && (
-              <DocumentationPanel
+            {activeTab === 'blueprint' && (
+              <BlueprintPanel
+                projectId={id ?? ''}
+                blueprint={project?.blueprint}
                 documentation={project?.documentation}
-                onGenerate={generateDocumentation}
-                generating={documentationRunning}
+                scrollContainer={contentScrollRef.current}
+                deepDocsProgress={deepDocsProgress}
+                onRegenerateSection={(section) => void startAgent(section)}
+                onGenerateDocumentation={generateDocumentation}
+                documentationGenerating={documentationRunning}
+                regeneratingSection={blueprintRunTarget === '__all__' ? null : blueprintRunTarget}
+                blueprintBusy={agentRunning}
               />
             )}
             {activeTab === 'onboarding' && (

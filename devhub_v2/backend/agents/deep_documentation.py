@@ -30,6 +30,9 @@ SECTION_ORDER = [
 ]
 
 SECTION_LABELS = {
+    'overview': 'Overview',
+    'repository': 'Repository',
+    'design_doc': 'Design Doc',
     'services': 'Services & Components',
     'api': 'API Reference',
     'database': 'Database Schema',
@@ -53,7 +56,7 @@ class DeepDocumentationAgent(BaseAgent):
                 "If information is not clearly visible in the provided source files, say so explicitly. "
                 "Return ONLY valid JSON with no markdown wrappers."
             ),
-            model=(ai_config or {}).get("model") or os.environ.get("DEVHUB_BLUEPRINT_MODEL", "gpt-4o-mini"),
+            model=(ai_config or {}).get("model") or os.environ.get("DEVHUB_BLUEPRINT_MODEL", "gemini-3.1-pro-preview"),
             ai_config=ai_config,
         )
 
@@ -110,8 +113,49 @@ class DeepDocumentationAgent(BaseAgent):
 
     # ── section generators ──────────────────────────────────────────────
 
+    def _important_file_context(self, cache: dict, workspace_path: Path, limit: int = 10) -> str:
+        return self._file_context_block(workspace_path, list((cache.get('important_files') or [])[:limit]))
+
+    def generate_overview(self, project_name: str, cache: dict, workspace_path: Path) -> dict:
+        file_context = self._important_file_context(cache, workspace_path, limit=10)
+        base_context = self._base_context(cache)
+
+        prompt = f"""Analyze the following codebase for the project `{project_name}` and produce a DETAILED overview and architecture summary.
+
+{base_context}
+
+SOURCE FILES (read carefully, these are FULL file contents):
+{file_context}
+
+Return ONLY this JSON:
+{{
+  "project_summary": "Detailed overview of what the project is, who it serves, and the main product surface.",
+  "architecture_overview": "Detailed architecture explanation covering frontend/backend/services/data layers and how they fit together.",
+  "mermaid_architecture": "graph TD\\n  A[Frontend] --> B[Backend]",
+  "mermaid_service_dependencies": "graph TD\\n  A[Service A] --> B[Service B]",
+  "data_flow": "Detailed explanation of the most important request/data flow through the system.",
+  "tech_stack_details": [
+    {{
+      "tech": "Technology name",
+      "purpose": "What it does in this repo",
+      "why_chosen": "Why it fits this codebase",
+      "version": "detected version or unknown",
+      "category": "language|framework|database|tool|library"
+    }}
+  ]
+}}
+
+Rules:
+- Keep this grounded in the supplied codebase evidence.
+- Prefer concrete repo-specific details over generic software phrasing.
+- If something is unclear from the scanned files, say so explicitly.
+- Mermaid diagrams should reflect the actual repo shape, not a generic stack template.
+- For Mermaid graph/flowchart output, quote node labels whenever they contain spaces, slashes, parentheses, or punctuation, for example `API["Backend API / Django"]`.
+"""
+        return self._safe_parse_json(self.generate(prompt=prompt, response_schema=True))
+
     def generate_services(self, project_name: str, cache: dict, workspace_path: Path) -> dict:
-        files = select_files_for_section(cache, 'services')
+        files = select_files_for_section(cache, 'services', workspace_path)
         file_context = self._file_context_block(workspace_path, files)
         base_context = self._base_context(cache)
 
@@ -168,7 +212,12 @@ Rules:
         return self._safe_parse_json(self.generate(prompt=prompt, response_schema=True))
 
     def generate_api(self, project_name: str, cache: dict, workspace_path: Path) -> dict:
-        files = select_files_for_section(cache, 'api')
+        if cache.get('api_reference'):
+            return {
+                'api_endpoints': list(cache.get('api_reference') or []),
+            }
+
+        files = select_files_for_section(cache, 'api', workspace_path)
         file_context = self._file_context_block(workspace_path, files)
         base_context = self._base_context(cache)
 
@@ -206,7 +255,13 @@ Rules:
         return self._safe_parse_json(self.generate(prompt=prompt, response_schema=True))
 
     def generate_database(self, project_name: str, cache: dict, workspace_path: Path) -> dict:
-        files = select_files_for_section(cache, 'database')
+        if cache.get('database_schema'):
+            return {
+                'database_schema': cache.get('database_schema') or [],
+                'mermaid_erd': cache.get('database_mermaid_erd') or '',
+            }
+
+        files = select_files_for_section(cache, 'database', workspace_path)
         file_context = self._file_context_block(workspace_path, files)
         base_context = self._base_context(cache)
 
@@ -249,7 +304,7 @@ Rules:
         return self._safe_parse_json(self.generate(prompt=prompt, response_schema=True))
 
     def generate_workflows(self, project_name: str, cache: dict, workspace_path: Path) -> dict:
-        files = select_files_for_section(cache, 'workflows')
+        files = select_files_for_section(cache, 'workflows', workspace_path)
         file_context = self._file_context_block(workspace_path, files)
         base_context = self._base_context(cache)
 
@@ -281,17 +336,22 @@ Return ONLY this JSON:
   ]
 }}
 
-Rules:
-- Trace actual code paths for the sequence flows. Follow function calls across files.
-- Include at least 3-5 meaningful sequence flows covering the main user/system interactions.
-- Each workflow step should include concrete commands, file paths, or UI actions.
-- Mermaid sequence diagrams should have realistic participant names from the actual code.
-- Common workflows should be things a developer would actually need to do.
-"""
+  Rules:
+  - Trace actual code paths for the sequence flows. Follow function calls across files.
+  - Include at least 3-5 meaningful sequence flows covering the main user/system interactions.
+  - Each workflow step should include concrete commands, file paths, or UI actions.
+  - Mermaid sequence diagrams should have realistic participant names from the actual code.
+  - Common workflows should be things a developer, operator, or maintainer would actually need to do in this repository.
+  - Only document a workflow as active when the initiating code path and handling code path both exist in the provided files.
+  - Do not invent realtime collaboration, sockets, or background loops unless the frontend caller and backend handler are both present.
+  - Prefer the most central repo-specific flows visible in the code, whether they are product flows, data-processing flows, admin flows, background-job flows, setup flows, testing flows, or documentation flows.
+  - Avoid duplicate participants, placeholder actors, and speculative future-state flows.
+  - Do not bias toward IDE, workspace, or code-generation workflows unless the provided repository actually contains those capabilities.
+  """
         return self._safe_parse_json(self.generate(prompt=prompt, response_schema=True))
 
     def generate_setup(self, project_name: str, cache: dict, workspace_path: Path) -> dict:
-        files = select_files_for_section(cache, 'setup')
+        files = select_files_for_section(cache, 'setup', workspace_path)
         file_context = self._file_context_block(workspace_path, files)
         base_context = self._base_context(cache)
 
@@ -343,7 +403,7 @@ Rules:
         return self._safe_parse_json(self.generate(prompt=prompt, response_schema=True))
 
     def generate_quality(self, project_name: str, cache: dict, workspace_path: Path) -> dict:
-        files = select_files_for_section(cache, 'quality')
+        files = select_files_for_section(cache, 'quality', workspace_path)
         file_context = self._file_context_block(workspace_path, files)
         base_context = self._base_context(cache)
 
@@ -395,7 +455,7 @@ Rules:
         return self._safe_parse_json(self.generate(prompt=prompt, response_schema=True))
 
     def generate_knowledge(self, project_name: str, cache: dict, workspace_path: Path) -> dict:
-        files = select_files_for_section(cache, 'knowledge')
+        files = select_files_for_section(cache, 'knowledge', workspace_path)
         file_context = self._file_context_block(workspace_path, files)
         base_context = self._base_context(cache)
 
@@ -410,7 +470,7 @@ Return ONLY this JSON:
 {{
   "key_concepts": [
     {{
-      "concept": "Concept name (e.g., 'Blueprint Context Cache', 'Agent-based Architecture')",
+      "concept": "Concept name (e.g., 'Request Lifecycle', 'Module Boundaries', 'Background Job Flow')",
       "explanation": "Detailed 3-6 sentence explanation of what this concept means in this codebase, how it works, and what code implements it",
       "why_important": "Why a new engineer needs to understand this to be productive",
       "related_code": "primary file path implementing this concept",
@@ -424,7 +484,7 @@ Return ONLY this JSON:
     }}
   ],
   "gotchas": [
-    "Specific non-obvious behavior or pitfall with file references (e.g., 'The blueprint cache in .devhub/ is fingerprint-based — if you change file content but not file names, the cache may still be stale. Force regeneration with force=True.')"
+    "Specific non-obvious behavior or pitfall with file references (e.g., 'A configuration file in one folder can silently override defaults defined elsewhere in the repo, so check load order before changing shared settings.')"
   ]
 }}
 
@@ -438,6 +498,29 @@ Rules:
         return self._safe_parse_json(self.generate(prompt=prompt, response_schema=True))
 
     # ── orchestrator ────────────────────────────────────────────────────
+
+    def generate_section(
+        self,
+        section_key: str,
+        project_name: str,
+        cache: dict,
+        workspace_path: Path,
+        existing_blueprint: dict | None = None,
+    ) -> dict[str, Any]:
+        generators = {
+            'overview': self.generate_overview,
+            'services': self.generate_services,
+            'api': self.generate_api,
+            'database': self.generate_database,
+            'workflows': self.generate_workflows,
+            'setup': self.generate_setup,
+            'quality': self.generate_quality,
+            'knowledge': self.generate_knowledge,
+        }
+        generator = generators.get(section_key)
+        if not generator:
+            raise ValueError(f'Unsupported Blueprint section: {section_key}')
+        return generator(project_name, cache, workspace_path)
 
     def generate_all_sections(
         self,
@@ -459,16 +542,6 @@ Rules:
         }
         """
         blueprint = dict(existing_blueprint or {})
-        generators = {
-            'services': self.generate_services,
-            'api': self.generate_api,
-            'database': self.generate_database,
-            'workflows': self.generate_workflows,
-            'setup': self.generate_setup,
-            'quality': self.generate_quality,
-            'knowledge': self.generate_knowledge,
-        }
-
         total = len(SECTION_ORDER)
         for index, section_key in enumerate(SECTION_ORDER):
             yield {
@@ -482,8 +555,13 @@ Rules:
                 'blueprint_snapshot': blueprint,
             }
             try:
-                generator = generators[section_key]
-                section_data = generator(project_name, cache, workspace_path)
+                section_data = self.generate_section(
+                    section_key,
+                    project_name,
+                    cache,
+                    workspace_path,
+                    existing_blueprint=blueprint,
+                )
                 # Merge into blueprint
                 for key, value in section_data.items():
                     blueprint[key] = value

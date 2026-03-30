@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ArrowRight, BookOpen, CheckCircle2, Circle, Code2, Layers3 } from 'lucide-react';
 
 import MermaidDiagram from './MermaidDiagram';
@@ -39,6 +39,90 @@ const normalizeSourceType = (value: any): SourceType => {
   if (source === 'github' || source === 'folder') return source;
   return 'starter';
 };
+
+const escapeMermaidLabel = (value: string) =>
+  String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const normalizeAreaLabel = (value: any) => {
+  const text = String(value || '').trim();
+  if (!text || text === '.' || text === './') return 'project root';
+  return text.replace(/[\\/]+$/, '') || 'project root';
+};
+
+const isRootAreaLabel = (value: string) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[\\/]+/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  return (
+    !normalized ||
+    normalized === 'project root' ||
+    normalized === 'root' ||
+    normalized === 'repo root' ||
+    normalized === 'repository root' ||
+    normalized === 'repository' ||
+    normalized === 'codebase'
+  );
+};
+
+function buildRepositoryMapChart(blueprint: any, projectName?: string) {
+  const repositoryMap = toArray(blueprint?.repository_map);
+  const directoryGuide = toArray(blueprint?.directory_guide);
+  const repoTreeNodes = toArray(blueprint?.repo_tree_nodes);
+
+  const rawAreas = repositoryMap.length
+    ? repositoryMap.slice(0, 8).map((entry: any, index: number) => ({
+        id: `AREA_${index}`,
+        label: normalizeAreaLabel(entry?.area),
+      }))
+    : directoryGuide.length
+      ? directoryGuide.slice(0, 8).map((entry: any, index: number) => ({
+          id: `AREA_${index}`,
+          label: normalizeAreaLabel(entry?.path),
+        }))
+      : repoTreeNodes.length
+        ? repoTreeNodes
+            .filter((node: any) => node && !node?.truncated)
+            .slice(0, 8)
+            .map((node: any, index: number) => ({
+              id: `AREA_${index}`,
+              label: normalizeAreaLabel(node?.path || node?.name),
+            }))
+        : [];
+
+  if (!rawAreas.length) return '';
+
+  const dedupedAreas = rawAreas.filter((area, index) => {
+    const normalized = area.label.toLowerCase();
+    return rawAreas.findIndex((candidate) => candidate.label.toLowerCase() === normalized) === index;
+  });
+
+  const nonRootAreas = dedupedAreas.filter((area) => !isRootAreaLabel(area.label));
+  const areas = nonRootAreas.length ? nonRootAreas : dedupedAreas;
+
+  if (!areas.length) return '';
+
+  const rootLabel = escapeMermaidLabel(
+    projectName && projectName.trim()
+      ? `${projectName.trim()} Repository`
+      : 'Repository Map',
+  );
+
+  const lines = ['flowchart TD', `ROOT["${rootLabel}"]`];
+
+  areas.forEach((area) => {
+    lines.push(`${area.id}["${escapeMermaidLabel(area.label)}"]`);
+    lines.push(`ROOT --> ${area.id}`);
+  });
+
+  return lines.join('\n');
+}
 
 function Pill({ children }: { children: ReactNode }) {
   return (
@@ -127,6 +211,10 @@ export default function OnboardingPanel({
   onNavigateToTab,
 }: Props) {
   const [done, setDone] = useState<Set<string>>(new Set());
+  const repositoryMapChart = useMemo(
+    () => buildRepositoryMapChart(blueprint, projectName),
+    [blueprint, projectName],
+  );
 
   const resolvedSource = normalizeSourceType(
     sourceType ?? blueprint?.source_type ?? blueprint?._meta?.source_type,
@@ -388,6 +476,15 @@ export default function OnboardingPanel({
                   Open Workspace
                 </button>
               </div>
+              {repositoryMapChart ? (
+                <div className="mt-4">
+                  <MermaidDiagram chart={repositoryMapChart} id="onboard-repo-map" />
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <EmptyState text="No repository map data available yet." />
+                </div>
+              )}
             </div>
           </div>
 

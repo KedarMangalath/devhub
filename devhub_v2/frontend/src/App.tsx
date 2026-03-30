@@ -4,12 +4,14 @@ import ProjectView from './pages/ProjectView'
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/project/:id" element={<ProjectView />} />
-      </Routes>
-    </Router>
+    <div className="app-scale-shell">
+      <Router>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/project/:id" element={<ProjectView />} />
+        </Routes>
+      </Router>
+    </div>
   )
 }
 

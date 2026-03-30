@@ -163,6 +163,7 @@ def _module_catalog_section(cache: dict) -> dict[str, Any]:
 
 
 def _api_surface_section(cache: dict) -> dict[str, Any]:
+    api_reference = list(cache.get('api_reference') or [])
     routes = list(cache.get('routes') or [])
     route_files = [
         item for item in _important_files(cache, limit=24)
@@ -170,7 +171,14 @@ def _api_surface_section(cache: dict) -> dict[str, Any]:
     ]
 
     lines = []
-    if routes:
+    if api_reference:
+        lines.append("Detected API endpoints:")
+        for item in api_reference[:24]:
+            method = str(item.get('method') or 'UNKNOWN')
+            path = str(item.get('path') or '/unknown')
+            summary = str(item.get('summary') or item.get('description') or 'API endpoint detected from the routed handlers.')
+            lines.append(f"- `{method} {path}`: {summary}")
+    elif routes:
         lines.append("Detected routes and endpoints:")
         for route in routes[:24]:
             lines.append(f"- `{route}`")
@@ -187,10 +195,15 @@ def _api_surface_section(cache: dict) -> dict[str, Any]:
         path = item.get('path', '')
         if path:
             evidence.append(_evidence(path, 'Detected as an API, routing, or view-related file.'))
+    for item in api_reference[:8]:
+        source = item.get('source') or {}
+        view_file = str(source.get('view_file') or '')
+        if view_file:
+            evidence.append(_evidence(view_file, f"Implements routed handler `{item.get('handler') or 'unknown'}`."))
     return {
         'key': 'api_surface',
         'title': 'API Surface',
-        'summary': f"Detected {len(routes)} route patterns from indexed source files.",
+        'summary': f"Detected {len(api_reference) or len(routes)} API route entries from indexed source files.",
         'markdown': "\n".join(lines).strip(),
         'evidence': evidence,
     }

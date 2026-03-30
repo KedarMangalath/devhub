@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import DocumentationPanel from './DocumentationPanel';
 import MermaidDiagram from './MermaidDiagram';
 
 interface Props {
   blueprint: any;
+  documentation?: any;
   projectId?: string;
   scrollContainer?: HTMLDivElement | null;
   deepDocsProgress?: { pct: number; section: string; completed: number; total: number } | null;
+  onRegenerateSection?: (sectionKey: string) => void;
+  onGenerateDocumentation?: () => void;
+  documentationGenerating?: boolean;
+  regeneratingSection?: string | null;
+  blueprintBusy?: boolean;
 }
+
+type BlueprintTab = [id: string, label: string, regenerateWithBlueprint: boolean];
 
 const API = 'http://localhost:8000/api';
 
@@ -26,6 +35,18 @@ const toText = (value: any, fallback = 'No data available yet.'): string => {
     }
   }
   return fallback;
+};
+
+const hasMeaningfulPrerequisites = (value: any): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  return Boolean(
+    toText(value.readme_excerpt, '') ||
+    toArray(value.required_tools).length ||
+    toArray(value.environment_files).length ||
+    toArray(value.commands).length ||
+    toArray(value.environment_variables).length ||
+    toArray(value.instruction_files).length,
+  );
 };
 
 function Pill({ children }: { children: ReactNode }) {
@@ -96,6 +117,17 @@ function renderRichMarkdown(text: string) {
 
   const flushCode = () => {
     if (!codeLines.length) return;
+    const language = codeLanguage.trim().toLowerCase();
+    if (/^mermaid(?:\s|$)/.test(language)) {
+      blocks.push(
+        <div key={`mermaid-${blocks.length}`} className="overflow-hidden rounded-[22px] border border-black/5 bg-[#fbfcfe] p-3">
+          <MermaidDiagram chart={codeLines.join('\n')} id={`design-doc-mermaid-${blocks.length}`} />
+        </div>,
+      );
+      codeLines = [];
+      codeLanguage = '';
+      return;
+    }
     blocks.push(
       <pre key={`code-${blocks.length}`} className="overflow-x-auto whitespace-pre-wrap break-words rounded-[22px] bg-[#0f172a] p-4 text-xs leading-6 text-slate-100">
         {codeLanguage ? `${codeLanguage}\n` : ''}{codeLines.join('\n')}
@@ -162,7 +194,18 @@ function renderRichMarkdown(text: string) {
   return blocks;
 }
 
-export default function BlueprintPanel({ blueprint, projectId, scrollContainer, deepDocsProgress }: Props) {
+export default function BlueprintPanel({
+  blueprint,
+  documentation,
+  projectId,
+  scrollContainer,
+  deepDocsProgress,
+  onRegenerateSection,
+  onGenerateDocumentation,
+  documentationGenerating,
+  regeneratingSection,
+  blueprintBusy,
+}: Props) {
   const [tab, setTab] = useState('overview');
   const [tabBarVisible, setTabBarVisible] = useState(true);
   const [expandedRepoTree, setExpandedRepoTree] = useState<Record<string, boolean>>({});
@@ -171,21 +214,27 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
   const [repoDocLoading, setRepoDocLoading] = useState(false);
   const [repoDocError, setRepoDocError] = useState('');
   const lastScrollTopRef = useRef(0);
-  const tabs = useMemo(
+  const tabs = useMemo<BlueprintTab[]>(
     () => [
-      ['design_doc', 'Design Doc'],
-      ['overview', 'Overview'],
-      ['repository', 'Repository'],
-      ['services', 'Services'],
-      ['api', 'API'],
-      ['database', 'Database'],
-      ['workflows', 'Workflows'],
-      ['setup', 'Setup'],
-      ['quality', 'Quality'],
-      ['knowledge', 'Knowledge'],
+      ['design_doc', 'Design Doc', true],
+      ['overview', 'Overview', true],
+      ['repository', 'Repository', true],
+      ['reference', 'Reference', false],
+      ['services', 'Services', true],
+      ['api', 'API', true],
+      ['database', 'Database', true],
+      ['workflows', 'Workflows', true],
+      ['setup', 'Setup', true],
+      ['quality', 'Quality', true],
+      ['knowledge', 'Knowledge', true],
     ],
     [],
   );
+  const currentTabMeta = tabs.find(([id]) => id === tab);
+  const currentTabLabel = currentTabMeta?.[1] || 'Section';
+  const currentTabCanRegenerateWithBlueprint = currentTabMeta?.[2] !== false;
+  const isCurrentSectionRunning = regeneratingSection === tab;
+  const showPrerequisites = hasMeaningfulPrerequisites(repoDoc?.prerequisites);
 
   useEffect(() => {
     const element = scrollContainer;
@@ -278,12 +327,26 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
   const concepts = toArray(blueprint.key_concepts);
   const faq = toArray(blueprint.faq);
   const gotchas = toArray(blueprint.gotchas);
-  const pipeline = blueprint.sdlc_pipeline || {};
+  const overviewHealth = toArray(blueprint.overview_project_health);
+  const overviewRisks = toArray(blueprint.overview_current_risks);
+  const overviewRuntime = toArray(blueprint.overview_runtime_entrypoints);
+  const overviewReadFirst = toArray(blueprint.overview_read_first);
+  const overviewRecentChanges = toArray(blueprint.overview_recent_changes);
+  const overviewNextSteps = toArray(blueprint.overview_next_steps);
   const designDocumentMarkdown = toText(blueprint.design_document_markdown, 'No design document generated yet.');
   const designDocumentSections = toArray(blueprint.design_document_sections);
   const repoTreeNodes = toArray(blueprint.repo_tree_nodes);
   const readmeExcerpt = toText(blueprint.readme_excerpt, '').trim();
-  const instructionFiles = toArray(blueprint.instruction_files);
+  const endpointGroups = useMemo(() => {
+    const groups = new Map<string, any[]>();
+    endpoints.forEach((endpoint) => {
+      const group = toText(endpoint?.group, 'Other');
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group)?.push(endpoint);
+    });
+    return Array.from(groups.entries());
+  }, [endpoints]);
+  const uniqueEndpointPaths = new Set(endpoints.map((endpoint) => toText(endpoint?.path, '/'))).size;
 
   const toggleRepoTreePath = (path: string) => {
     setExpandedRepoTree((current) => ({ ...current, [path]: !current[path] }));
@@ -329,6 +392,39 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
     </div>
   );
 
+  const detailList = (items: any[], emptyText = 'None documented.') => (
+    items.length ? (
+      <div className="mt-3 space-y-2">
+        {items.map((item, index) => (
+          <div key={index} className="rounded-2xl bg-white px-3 py-2 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="text-[11px] text-slate-700">{toText(item?.name ?? item, 'unknown')}</code>
+              {typeof item === 'object' && item?.required && <Pill>required</Pill>}
+            </div>
+            {typeof item === 'object' && item?.description && (
+              <p className="mt-1 text-xs leading-5 text-slate-500">{toText(item.description, '')}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    ) : <p className="mt-3 text-sm text-slate-400">{emptyText}</p>
+  );
+
+  const tonePanelClass = (tone: any) => {
+    const value = toText(tone, 'neutral').toLowerCase();
+    if (value === 'good') return 'border-emerald-100 bg-emerald-50/60';
+    if (value === 'warn') return 'border-amber-100 bg-amber-50/60';
+    if (value === 'danger') return 'border-rose-100 bg-rose-50/60';
+    return 'border-black/5 bg-[#fbfcfe]';
+  };
+
+  const severityPillClass = (severity: any) => {
+    const value = toText(severity, 'low').toLowerCase();
+    if (value === 'critical' || value === 'high') return 'border-rose-200 bg-rose-50 text-rose-700';
+    if (value === 'medium' || value === 'warning') return 'border-amber-200 bg-amber-50 text-amber-700';
+    return 'border-slate-200 bg-slate-50 text-slate-600';
+  };
+
   const traceCard = (trace: any) => {
     if (!trace) return null;
     const filesAccessed = toArray(trace.files_accessed);
@@ -372,17 +468,29 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
   return (
     <div className="space-y-5">
       <div className={`sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-[linear-gradient(180deg,rgba(247,249,252,0.96),rgba(247,249,252,0.82))] backdrop-blur-xl transition-transform duration-200 ${tabBarVisible ? 'translate-y-0' : '-translate-y-[130%]'}`}>
-        <div className="flex flex-wrap gap-2">
-          {tabs.map(([id, label]) => (
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {tabs.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${tab === id ? 'border border-black/5 bg-white text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.1)]' : 'text-slate-500 hover:bg-white/70'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {projectId && onRegenerateSection && currentTabCanRegenerateWithBlueprint && (
             <button
-              key={id}
               type="button"
-              onClick={() => setTab(id)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${tab === id ? 'border border-black/5 bg-white text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.1)]' : 'text-slate-500 hover:bg-white/70'}`}
+              onClick={() => onRegenerateSection(tab)}
+              disabled={Boolean(blueprintBusy)}
+              className="inline-flex items-center justify-center rounded-full border border-black/5 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {label}
+              {isCurrentSectionRunning ? `Regenerating ${currentTabLabel}...` : blueprintBusy ? 'Blueprint busy...' : `Regenerate ${currentTabLabel}`}
             </button>
-          ))}
+          )}
         </div>
       </div>
 
@@ -437,9 +545,6 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
             </Section>
           )}
 
-          <Section title="Blueprint Metadata" subtitle="Caching and generation details behind this living project document.">
-            <pre className="overflow-auto rounded-2xl bg-[#0f172a] p-4 text-xs leading-6 text-slate-100">{JSON.stringify(blueprint._meta || {}, null, 2)}</pre>
-          </Section>
         </div>
       )}
 
@@ -451,16 +556,6 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
                 <div className="rounded-[24px] border border-black/5 bg-[#fbfcfe] p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Root Documentation</p>
                   {readmeExcerpt ? <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">{readmeExcerpt}</p> : <p className="mt-3 text-sm text-slate-400">No root README excerpt detected yet.</p>}
-                  {instructionFiles.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      {instructionFiles.map((item: any, index: number) => (
-                        <div key={`${item.path || 'instruction'}-${index}`} className="rounded-2xl bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-                          <code className="text-[11px] text-slate-700">{toText(item.path, 'instruction file')}</code>
-                          <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-slate-500">{toText(item.content, '').slice(0, 420)}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
                 <div><p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Generated Project Summary</p><p className="mt-3 text-sm leading-7 text-slate-600">{toText(blueprint.project_summary)}</p></div>
                 <div><p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Generated Architecture Interpretation</p><p className="mt-3 text-sm leading-7 text-slate-600">{toText(blueprint.architecture_overview)}</p></div>
@@ -492,97 +587,199 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
             <Section title="Service Dependency Graph" subtitle="Which services, layers, or modules depend on each other."><MermaidDiagram chart={blueprint.mermaid_service_dependencies || ''} id="blueprint-service-deps" /></Section>
           </div>
 
-          <Section title="Feature Inventory" subtitle="Current work and major capabilities visible from the project state.">
-            {features.length ? (
-              <div className="space-y-3">
-                {features.map((item: any, index) => (
-                  <div key={`${item.title || 'feature'}-${index}`} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
-                    <div className="flex flex-wrap items-center gap-2"><h4 className="text-sm font-semibold text-slate-900">{toText(item.title, 'Untitled feature')}</h4>{item.status && <Pill>{toText(item.status, 'unknown')}</Pill>}</div>
-                    {item.description && <p className="mt-2 text-sm leading-6 text-slate-600 whitespace-pre-wrap break-words">{toText(item.description)}</p>}
-                    {item.implementation_notes && <p className="mt-2 text-sm leading-6 text-slate-500 whitespace-pre-wrap break-words">{toText(item.implementation_notes)}</p>}
+          <Section title="Project Health" subtitle="Live readiness signals from the imported repo, detected runtime, docs, validation, and tracked work.">
+            {overviewHealth.length ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {overviewHealth.map((item: any, index: number) => (
+                  <div key={`${item.label || 'health'}-${index}`} className={`rounded-[22px] border p-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)] ${tonePanelClass(item.tone)}`}>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{toText(item.label, 'Health')}</p>
+                    <p className="mt-3 text-xl font-semibold text-slate-900">{toText(item.value, 'Unknown')}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{toText(item.detail, 'No detail captured yet.')}</p>
                   </div>
                 ))}
               </div>
-            ) : <EmptyState text="No feature inventory available yet." />}
+            ) : <EmptyState text="No project health signals available yet." />}
           </Section>
 
-          <Section title="DevHub Workflow" subtitle="This is DevHub's delivery model for tracked work items, separate from the repository's own code documentation.">
-            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-              {toArray(pipeline.stages).length ? (
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Section title="Current Risks" subtitle="The highest-signal warnings from security, performance, and operational analysis.">
+              {overviewRisks.length ? (
                 <div className="space-y-3">
-                  {toArray(pipeline.stages).map((stage: any, index) => (
-                    <div key={`${stage.name || 'stage'}-${index}`} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4">
-                      <div className="flex items-center gap-2"><Pill>{toText(stage.name, `Stage ${index + 1}`)}</Pill>{stage.purpose && <span className="text-sm font-medium text-slate-700">{toText(stage.purpose)}</span>}</div>
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Entry Criteria</p>{bulletList(toArray(stage.entry_criteria))}</div>
-                        <div><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Exit Criteria</p>{bulletList(toArray(stage.exit_criteria))}</div>
+                  {overviewRisks.map((item: any, index: number) => (
+                    <div key={`${item.title || 'risk'}-${index}`} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-semibold text-slate-900">{toText(item.title, 'Detected risk')}</h4>
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-medium ${severityPillClass(item.severity)}`}>{toText(item.severity, 'info')}</span>
                       </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{toText(item.detail, 'No additional detail captured yet.')}</p>
                     </div>
                   ))}
                 </div>
-              ) : <EmptyState text="No pipeline stages defined yet." />}
-              <div className="space-y-4">
-                <div className="rounded-[22px] border border-black/5 bg-white p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Team Workflow</p><p className="mt-2 text-sm leading-6 text-slate-600">{toText(pipeline.team_workflow)}</p></div>
-                <div className="rounded-[22px] border border-black/5 bg-white p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Approval Gates</p>{bulletList(toArray(pipeline.approval_gates))}</div>
-                <div className="rounded-[22px] border border-black/5 bg-white p-4"><p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">AI Capabilities</p>{bulletList(toArray(pipeline.ai_capabilities))}</div>
-              </div>
-            </div>
-          </Section>
+              ) : <EmptyState text="No major risks were surfaced by the current repo scan." />}
+            </Section>
+
+            <Section title="Active Runtime / Entry Points" subtitle="Detected runtime commands and the files most likely to control local startup.">
+              {overviewRuntime.length ? (
+                <div className="space-y-3">
+                  {overviewRuntime.map((item: any, index: number) => (
+                    <div key={`${item.label || 'runtime'}-${index}`} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4">
+                      <p className="text-sm font-semibold text-slate-900">{toText(item.label, 'Entry point')}</p>
+                      {item.path && <code className="mt-2 block break-all rounded-lg bg-white px-3 py-2 text-[11px] text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">{toText(item.path, '')}</code>}
+                      {item.command && <code className="mt-2 block break-all rounded-lg bg-[#0f172a] px-3 py-2 text-[11px] text-slate-100">{toText(item.command, '')}</code>}
+                      {item.detail && <p className="mt-2 text-sm leading-6 text-slate-600">{toText(item.detail, '')}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState text="No runtime or entrypoint signals were detected yet." />}
+            </Section>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Section title="What To Read First" subtitle="The fastest paths into this repo before you start making changes.">
+              {overviewReadFirst.length ? (
+                <div className="space-y-3">
+                  {overviewReadFirst.map((item: any, index: number) => (
+                    <div key={`${item.path || 'read'}-${index}`} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4">
+                      <p className="text-sm font-semibold text-slate-900">{toText(item.title, 'Read first')}</p>
+                      <code className="mt-2 block break-all rounded-lg bg-white px-3 py-2 text-[11px] text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">{toText(item.path, 'unknown')}</code>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{toText(item.reason, 'No reason captured yet.')}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState text="No prioritized reading list has been derived yet." />}
+            </Section>
+
+            <Section title="Repo-specific Next Steps" subtitle="Practical next actions based on the detected setup flow, docs, and current project state.">
+              {overviewNextSteps.length ? (
+                <div className="space-y-3">
+                  {overviewNextSteps.map((item: any, index: number) => (
+                    <div key={`${item.title || 'step'}-${index}`} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4">
+                      <div className="flex items-center gap-3">
+                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-xs font-semibold text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">{index + 1}</span>
+                        <h4 className="text-sm font-semibold text-slate-900">{toText(item.title, 'Next step')}</h4>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-slate-600">{toText(item.detail, 'No guidance captured yet.')}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState text="No repo-specific next steps have been derived yet." />}
+            </Section>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-2">
+            <Section title="Recent Changes" subtitle="Latest recorded project changesets or workflow transitions tied to this project.">
+              {overviewRecentChanges.length ? (
+                <div className="space-y-3">
+                  {overviewRecentChanges.map((item: any, index: number) => (
+                    <div key={`${item.title || 'change'}-${index}`} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-semibold text-slate-900">{toText(item.title, 'Recent change')}</h4>
+                        {item.status && <Pill>{toText(item.status, 'unknown')}</Pill>}
+                        {item.meta && <span className="text-[11px] text-slate-400">{toText(item.meta, '')}</span>}
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">{toText(item.detail, 'No detail captured yet.')}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState text="No recent changes have been recorded yet." />}
+            </Section>
+
+            <Section title="Active Work" subtitle="Tracked work items and capabilities visible from the current project state.">
+              {features.length ? (
+                <div className="space-y-3">
+                  {features.slice(0, 6).map((item: any, index) => (
+                    <div key={`${item.title || 'feature'}-${index}`} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                      <div className="flex flex-wrap items-center gap-2"><h4 className="text-sm font-semibold text-slate-900">{toText(item.title, 'Untitled feature')}</h4>{item.status && <Pill>{toText(item.status, 'unknown')}</Pill>}</div>
+                      {item.description && <p className="mt-2 text-sm leading-6 text-slate-600 whitespace-pre-wrap break-words">{toText(item.description)}</p>}
+                      {item.implementation_notes && <p className="mt-2 text-sm leading-6 text-slate-500 whitespace-pre-wrap break-words">{toText(item.implementation_notes)}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState text="No active work inventory is available yet." />}
+            </Section>
+          </div>
+        </div>
+      )}
+
+      {tab === 'reference' && (
+        <div className="space-y-5">
+          <div className="rounded-[28px] border border-black/5 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(248,250,252,0.9))] p-5 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Blueprint Reference</p>
+            <h3 className="mt-2 text-2xl font-semibold text-slate-900">Fingerprint-backed codebase snapshot</h3>
+            <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+              This keeps the old Docs workflow inside Blueprint so the exportable codebase reference stays available without a duplicate top-level project page.
+            </p>
+          </div>
+          <DocumentationPanel
+            documentation={documentation}
+            onGenerate={onGenerateDocumentation || (() => {})}
+            generating={Boolean(documentationGenerating)}
+          />
         </div>
       )}
 
       {tab === 'repository' && (
         <div className="space-y-5">
-          <div className="grid gap-5 xl:grid-cols-[0.42fr_0.58fr]">
-            <Section title="Repository Explorer" subtitle="Browse the repo tree and load folder-by-folder or file-by-file documentation on demand.">
-              <div className="space-y-4">
+          <div className="flex flex-col xl:flex-row gap-0 overflow-hidden rounded-[24px] border border-black/5 bg-white shadow-sm min-h-[75vh]">
+            
+            {/* LEFT SIDEBAR */}
+            <div className="w-full xl:w-[340px] shrink-0 border-b xl:border-b-0 xl:border-r border-black/5 bg-[#fbfcfe]">
+              <div className="p-5 border-b border-black/5">
+                <h3 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-slate-800">Repository Explorer</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Browse the repo tree and load folder-by-folder or file-by-file documentation on demand.</p>
+              </div>
+              <div className="p-5 space-y-4">
                 <button
                   type="button"
                   onClick={() => void fetchRepoDoc('')}
-                  className={`flex w-full items-center justify-between rounded-2xl border border-black/5 px-3 py-2 text-left text-sm font-medium ${selectedRepoPath === '' ? 'bg-white text-slate-900 shadow-[0_10px_24px_rgba(15,23,42,0.08)]' : 'bg-[#fbfcfe] text-slate-600 hover:bg-white'}`}
+                  className={`flex w-full items-center justify-between rounded-xl border border-black/5 px-3 py-2 text-left text-sm font-medium ${selectedRepoPath === '' ? 'bg-white text-slate-900 shadow-[0_4px_12px_rgba(15,23,42,0.06)]' : 'bg-transparent text-slate-600 hover:bg-white'}`}
                 >
                   <span>codebase</span>
                   <span className="text-[11px] text-slate-400">root</span>
                 </button>
-                <div className="max-h-[70vh] overflow-y-auto rounded-[22px] border border-black/5 bg-[#fbfcfe] p-3">
+                <div className="max-h-[60vh] overflow-y-auto pr-1">
                   {repoTreeNodes.length ? renderRepoTreeNodes(repoTreeNodes) : (
-                    blueprint.repo_tree ? <pre className="overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-[#0f172a] p-4 text-xs leading-6 text-slate-100">{toText(blueprint.repo_tree, 'No repository tree available yet.')}</pre> : <EmptyState text="No repository tree available yet." />
+                    blueprint.repo_tree ? <pre className="overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[#0f172a] p-4 text-xs leading-6 text-slate-100">{toText(blueprint.repo_tree, 'No repository tree available yet.')}</pre> : <EmptyState text="No repository tree available yet." />
                   )}
                 </div>
                 {readmeExcerpt && (
-                  <div className="rounded-[22px] border border-black/5 bg-white p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">README Context</p>
-                    <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{readmeExcerpt.slice(0, 900)}</p>
+                  <div className="mt-4 rounded-xl border border-black/5 bg-white p-4 shadow-sm">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">README Context</p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{readmeExcerpt.slice(0, 400)}</p>
                   </div>
                 )}
               </div>
-            </Section>
+            </div>
 
-            <Section title="Codebase Detail" subtitle="Detailed folder or file documentation generated from the actual repository contents.">
+            {/* RIGHT DETAIL */}
+            <div className="flex-1 w-full bg-white p-6 md:p-8">
               {repoDocLoading ? (
-                <div className="flex min-h-[280px] items-center justify-center text-sm text-slate-400">Loading documentation...</div>
+                <div className="flex h-full min-h-[400px] items-center justify-center text-sm text-slate-400">Loading documentation...</div>
               ) : repoDocError ? (
                 <EmptyState text={repoDocError} />
               ) : repoDoc ? (
-                <div className="space-y-5">
+                <div className="space-y-6">
+                  {/* Header / Breadcrumbs */}
                   <div className="flex flex-wrap items-center gap-2">
                     {toArray(repoDoc.breadcrumbs).map((item: any, index: number) => (
                       <button
                         key={`${item.path || 'root'}-${index}`}
                         type="button"
                         onClick={() => void fetchRepoDoc(toText(item.path, ''))}
-                        className="rounded-full border border-black/5 bg-[#fbfcfe] px-3 py-1 text-[11px] font-medium text-slate-500 hover:bg-white"
+                        className="rounded-lg border border-transparent bg-slate-50 px-2.5 py-1 text-[12px] font-medium text-slate-600 hover:border-black/5 hover:bg-white transition-colors"
                       >
-                        {toText(item.label, 'codebase')}
+                        {toText(item.label, 'codebase')} <span className="text-slate-300 ml-1">/</span>
                       </button>
                     ))}
                   </div>
-                  <div className="rounded-[24px] border border-black/5 bg-[#fbfcfe] p-4">
-                    <div className="flex flex-wrap items-center gap-2">
+                  
+                  {/* Title Area */}
+                  <div className="border-b border-black/5 pb-5">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <h2 className="text-xl font-semibold text-slate-900 break-all">{toText(repoDoc.name || 'codebase', 'codebase')}</h2>
                       <Pill>{repoDoc.kind === 'directory' ? 'Directory' : 'File'}</Pill>
-                      <code className="break-all rounded-lg bg-white px-2 py-1 text-[11px] text-slate-700">{toText(repoDoc.path || './', './')}</code>
                     </div>
-                    <p className="mt-3 text-sm leading-7 text-slate-600">{toText(repoDoc.summary, 'Documentation summary unavailable.')}</p>
+                    <p className="mt-3 text-[15px] leading-relaxed text-slate-600">{toText(repoDoc.summary, 'Documentation summary unavailable.')}</p>
                     {repoDoc.stats && (
                       <div className="mt-4 flex flex-wrap gap-2">
                         {Object.entries(repoDoc.stats).map(([key, value]) => (
@@ -592,43 +789,44 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
                     )}
                   </div>
 
+                  {/* Detail Grid */}
                   {repoDoc.details && (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="rounded-[24px] border border-black/5 bg-white p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">What</p>
-                        <p className="mt-2 text-sm leading-7 text-slate-600">{toText(repoDoc.details.what, 'No purpose summary available yet.')}</p>
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      <div className="rounded-[20px] bg-[#fbfcfe] border border-black/5 p-5">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">What</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{toText(repoDoc.details.what, 'No purpose summary available yet.')}</p>
                       </div>
-                      <div className="rounded-[24px] border border-black/5 bg-white p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Why</p>
-                        <p className="mt-2 text-sm leading-7 text-slate-600">{toText(repoDoc.details.why, 'No rationale available yet.')}</p>
+                      <div className="rounded-[20px] bg-[#fbfcfe] border border-black/5 p-5">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Why</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{toText(repoDoc.details.why, 'No rationale available yet.')}</p>
                       </div>
-                      <div className="rounded-[24px] border border-black/5 bg-white p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">How To Read It</p>
-                        <p className="mt-2 text-sm leading-7 text-slate-600">{toText(repoDoc.details.how, 'No reading guidance available yet.')}</p>
+                      <div className="rounded-[20px] bg-[#fbfcfe] border border-black/5 p-5">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">How To Read It</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{toText(repoDoc.details.how, 'No reading guidance available yet.')}</p>
                       </div>
-                      <div className="rounded-[24px] border border-black/5 bg-white p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Change Guidance</p>
-                        <p className="mt-2 text-sm leading-7 text-slate-600">{toText(repoDoc.details.change_guidance, 'No change guidance available yet.')}</p>
+                      <div className="rounded-[20px] border border-amber-500/20 bg-amber-50/50 p-5">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">Change Guidance</p>
+                        <p className="mt-2 text-sm leading-6 text-amber-900/80">{toText(repoDoc.details.change_guidance, 'No change guidance available yet.')}</p>
                       </div>
                     </div>
                   )}
 
                   {repoDoc.kind === 'directory' && toArray(repoDoc.children).length > 0 && (
-                    <div className="rounded-[24px] border border-black/5 bg-white p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Children</p>
-                      <div className="mt-3 space-y-3">
+                    <div className="border-t border-black/5 pt-6">
+                      <h3 className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-800 mb-4">Children</h3>
+                      <div className="grid gap-3 md:grid-cols-2">
                         {toArray(repoDoc.children).map((item: any, index: number) => (
                           <button
                             key={`${item.path || 'child'}-${index}`}
                             type="button"
                             onClick={() => void fetchRepoDoc(toText(item.path, ''))}
-                            className="block w-full rounded-[20px] border border-black/5 bg-[#fbfcfe] p-4 text-left transition hover:bg-white"
+                            className="block w-full rounded-[16px] border border-black/5 bg-[#fbfcfe] p-4 text-left transition hover:bg-white hover:shadow-sm"
                           >
                             <div className="flex flex-wrap items-center gap-2">
                               <Pill>{toText(item.type, 'unknown')}</Pill>
-                              <code className="break-all text-[11px] text-slate-700">{toText(item.path, 'unknown')}</code>
+                              <code className="break-all text-[11px] text-slate-700">{toText(item.name || item.path?.split('/').pop(), 'unknown')}</code>
                             </div>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">{toText(item.summary, 'No summary available yet.')}</p>
+                            <p className="mt-2 text-xs leading-5 text-slate-500">{toText(item.summary, 'No summary available yet.')}</p>
                           </button>
                         ))}
                       </div>
@@ -636,22 +834,22 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
                   )}
 
                   {repoDoc.docs && toArray(repoDoc.docs).length > 0 && (
-                    <div className="rounded-[24px] border border-black/5 bg-white p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Related Documentation</p>
-                      <div className="mt-3 space-y-3">
+                    <div className="border-t border-black/5 pt-6">
+                      <h3 className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-800 mb-4">Related Documentation</h3>
+                      <div className="grid gap-4 md:grid-cols-2">
                         {toArray(repoDoc.docs).map((item: any, index: number) => (
-                          <div key={`${item.path || 'doc'}-${index}`} className="rounded-[20px] bg-[#fbfcfe] p-4">
+                          <div key={`${item.path || 'doc'}-${index}`} className="rounded-[16px] border border-black/5 bg-[#fbfcfe] p-4">
                             <code className="text-[11px] text-slate-700">{toText(item.path, 'doc')}</code>
-                            <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{toText(item.excerpt, '')}</p>
+                            <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-slate-500">{toText(item.excerpt, '')}</p>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  <div className="rounded-[24px] border border-black/5 bg-white p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Rendered Documentation</p>
-                    <div className="mt-3 space-y-4">
+                  <div className="border-t border-black/5 pt-6">
+                    <h3 className="text-[13px] font-semibold uppercase tracking-[0.16em] text-slate-800 mb-4">Rendered Documentation</h3>
+                    <div className="prose prose-sm prose-slate max-w-none">
                       {renderRichMarkdown(toText(repoDoc.markdown, 'No rendered documentation available yet.'))}
                     </div>
                   </div>
@@ -661,20 +859,12 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
               ) : (
                 <EmptyState text="Select a folder or file from the repository explorer to load detailed documentation." />
               )}
-            </Section>
+            </div>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Section title="Dependency Graph" subtitle="Key file-to-file import connections detected from the indexed repository snapshot.">
-              {repoDoc?.dependency_graph?.mermaid ? (
-                <MermaidDiagram chart={toText(repoDoc.dependency_graph.mermaid, '')} id={`repo-dependency-${projectId || 'project'}`} />
-              ) : (
-                <EmptyState text="No dependency graph available yet for this repository snapshot." />
-              )}
-            </Section>
-
-            <Section title="Prerequisites" subtitle="Root docs, setup commands, tools, and environment hints detected from the repo.">
-              {repoDoc?.prerequisites ? (
+          {showPrerequisites && (
+            <div>
+              <Section title="Prerequisites" subtitle="Root docs, setup commands, tools, and environment hints detected from the repo.">
                 <div className="space-y-4">
                   {repoDoc.prerequisites.readme_excerpt && (
                     <div className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4">
@@ -714,67 +904,9 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
                     </div>
                   )}
                 </div>
-              ) : (
-                <EmptyState text="No prerequisites summary available yet." />
-              )}
-            </Section>
-          </div>
-
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Section title="All Models" subtitle="Every detected model, schema, or type surfaced from the indexed files.">
-              {toArray(repoDoc?.all_models).length ? (
-                <div className="overflow-hidden rounded-[22px] border border-black/5 bg-white">
-                  <table className="min-w-full divide-y divide-black/5 text-sm">
-                    <thead className="bg-[#fbfcfe]">
-                      <tr className="text-left text-[11px] uppercase tracking-[0.16em] text-slate-400">
-                        <th className="px-3 py-2">Model</th>
-                        <th className="px-3 py-2">Kind</th>
-                        <th className="px-3 py-2">Source File</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-black/5 text-slate-600">
-                      {toArray(repoDoc?.all_models).map((item: any, index: number) => (
-                        <tr key={`${item.name || 'model'}-${index}`}>
-                          <td className="px-3 py-3 font-medium text-slate-800">{toText(item.name, 'Unknown')}</td>
-                          <td className="px-3 py-3">{toText(item.kind, 'model')}</td>
-                          <td className="px-3 py-3"><code className="break-all text-[11px] text-slate-700">{toText(item.file, 'unknown')}</code></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <EmptyState text="No models or schema types detected yet." />
-              )}
-            </Section>
-
-            <Section title="All Routes" subtitle="Detected API and routing paths with their source files.">
-              {toArray(repoDoc?.all_routes).length ? (
-                <div className="overflow-hidden rounded-[22px] border border-black/5 bg-white">
-                  <table className="min-w-full divide-y divide-black/5 text-sm">
-                    <thead className="bg-[#fbfcfe]">
-                      <tr className="text-left text-[11px] uppercase tracking-[0.16em] text-slate-400">
-                        <th className="px-3 py-2">Method</th>
-                        <th className="px-3 py-2">Path</th>
-                        <th className="px-3 py-2">Source File</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-black/5 text-slate-600">
-                      {toArray(repoDoc?.all_routes).map((item: any, index: number) => (
-                        <tr key={`${item.method || 'route'}-${item.path || index}`}>
-                          <td className="px-3 py-3 font-medium text-slate-800">{toText(item.method, 'DETECTED')}</td>
-                          <td className="px-3 py-3"><code className="break-all text-[11px] text-slate-700">{toText(item.path, 'unknown')}</code></td>
-                          <td className="px-3 py-3"><code className="break-all text-[11px] text-slate-700">{toText(item.file, 'unknown')}</code></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <EmptyState text="No routes detected yet." />
-              )}
-            </Section>
-          </div>
+              </Section>
+            </div>
+          )}
         </div>
       )}
 
@@ -830,23 +962,112 @@ export default function BlueprintPanel({ blueprint, projectId, scrollContainer, 
       )}
 
       {tab === 'api' && (
-        <Section title="API Reference" subtitle="Detected routes, endpoint behavior, and request or response notes.">
-          {endpoints.length ? (
-            <div className="space-y-3">
-              {endpoints.map((endpoint: any, index) => (
-                <div key={`${endpoint.method || 'method'}-${endpoint.path || index}`} className="rounded-[22px] border border-black/5 bg-white p-4">
-                  <div className="flex flex-wrap items-center gap-2"><Pill>{toText(endpoint.method, 'UNKNOWN')}</Pill><code className="rounded-lg bg-[#f8fafc] px-2 py-1 text-[11px] text-slate-700">{toText(endpoint.path, '/')}</code><Pill>{endpoint.auth_required ? 'auth required' : 'public or unknown'}</Pill></div>
-                  <p className="mt-3 text-sm leading-6 text-slate-600 whitespace-pre-wrap break-words">{toText(endpoint.description, 'No endpoint description available.')}</p>
-                  <div className="mt-4 grid gap-4 xl:grid-cols-3">
-                    <div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Request Body</p><pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-[#0f172a] p-3 text-xs leading-6 text-slate-100">{toText(endpoint.request_body, 'No request body documented.')}</pre></div>
-                    <div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Response</p><pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-[#0f172a] p-3 text-xs leading-6 text-slate-100">{toText(endpoint.response, 'No response documented.')}</pre></div>
-                    <div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Curl Example</p><pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-[#0f172a] p-3 text-xs leading-6 text-slate-100">{toText(endpoint.curl_example, 'No curl example documented.')}</pre></div>
-                  </div>
+        <div className="space-y-5">
+          <Section title="API Reference" subtitle="Real routed endpoints, grouped by area, with handler and payload notes from the current codebase.">
+            {endpoints.length ? (
+              <div className="space-y-5">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {[
+                    ['Operations', endpoints.length],
+                    ['Unique Paths', uniqueEndpointPaths],
+                    ['Groups', endpointGroups.length],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="rounded-[22px] border border-black/5 bg-[#fbfcfe] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : <EmptyState text="No API endpoints detected yet." />}
-        </Section>
+
+                {endpointGroups.map(([group, items]) => (
+                  <div key={group} className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h4 className="text-sm font-semibold text-slate-900">{group}</h4>
+                      <Pill>{items.length} operation{items.length === 1 ? '' : 's'}</Pill>
+                    </div>
+
+                    {items.map((endpoint: any, index: number) => (
+                      <div key={`${endpoint.method || 'method'}-${endpoint.path || index}`} className="rounded-[22px] border border-black/5 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Pill>{toText(endpoint.method, 'UNKNOWN')}</Pill>
+                          <code className="rounded-lg bg-[#f8fafc] px-2 py-1 text-[11px] text-slate-700">{toText(endpoint.path, '/')}</code>
+                          {endpoint.handler && <Pill>{toText(endpoint.handler, 'handler')}</Pill>}
+                          <Pill>{endpoint.auth_required ? 'auth required' : 'no explicit auth'}</Pill>
+                        </div>
+
+                        <p className="mt-3 text-sm font-medium leading-6 text-slate-800">{toText(endpoint.summary || endpoint.description, 'No endpoint summary available.')}</p>
+                        {endpoint.when_to_use && <p className="mt-2 text-sm leading-6 text-slate-600">{toText(endpoint.when_to_use, '')}</p>}
+                        {endpoint.access && <p className="mt-2 text-sm leading-6 text-slate-500">{toText(endpoint.access, '')}</p>}
+                        {endpoint.behavior_notes && toArray(endpoint.behavior_notes).length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Behavior Notes</p>
+                            {bulletList(toArray(endpoint.behavior_notes))}
+                          </div>
+                        )}
+                        {toArray(endpoint.status_codes).length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Status Codes</p>
+                            {codeList(toArray(endpoint.status_codes))}
+                          </div>
+                        )}
+
+                        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                          <div className="rounded-[20px] border border-black/5 bg-[#fbfcfe] p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Path Params</p>
+                            {detailList(toArray(endpoint.path_params), 'No path params.')}
+                          </div>
+                          <div className="rounded-[20px] border border-black/5 bg-[#fbfcfe] p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Query Params</p>
+                            {detailList(toArray(endpoint.query_params), 'No query params.')}
+                          </div>
+                          <div className="rounded-[20px] border border-black/5 bg-[#fbfcfe] p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Request Fields</p>
+                            {detailList(toArray(endpoint.request_fields), 'No JSON body fields detected.')}
+                          </div>
+                          <div className="rounded-[20px] border border-black/5 bg-[#fbfcfe] p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Response Keys</p>
+                            {toArray(endpoint.response_keys).length ? codeList(toArray(endpoint.response_keys)) : <p className="mt-3 text-sm text-slate-400">No response keys documented.</p>}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Request Body</p>
+                            <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-[#0f172a] p-3 text-xs leading-6 text-slate-100">{toText(endpoint.request_body, 'No request body documented.')}</pre>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Response</p>
+                            <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-[#0f172a] p-3 text-xs leading-6 text-slate-100">{toText(endpoint.response, 'No response documented.')}</pre>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Curl Example</p>
+                            <pre className="mt-2 overflow-auto whitespace-pre-wrap break-words rounded-2xl bg-[#0f172a] p-3 text-xs leading-6 text-slate-100">{toText(endpoint.curl_example, 'No curl example documented.')}</pre>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                          <div className="rounded-[20px] border border-black/5 bg-[#fbfcfe] p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Common Errors</p>
+                            {toArray(endpoint.common_errors).length ? bulletList(toArray(endpoint.common_errors)) : <p className="mt-3 text-sm text-slate-400">No common errors documented.</p>}
+                          </div>
+                          <div className="rounded-[20px] border border-black/5 bg-[#fbfcfe] p-4">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Source</p>
+                            <div className="mt-3 space-y-2 text-sm text-slate-600">
+                              <p><span className="font-medium text-slate-800">Route:</span> {toText(endpoint.route_name, 'unknown')}</p>
+                              <p><span className="font-medium text-slate-800">View File:</span> <code className="text-[11px] text-slate-700">{toText(endpoint.source?.view_file, 'unknown')}</code></p>
+                              <p><span className="font-medium text-slate-800">URL File:</span> <code className="text-[11px] text-slate-700">{toText(endpoint.source?.url_file, 'unknown')}</code></p>
+                              {endpoint.source?.line && <p><span className="font-medium text-slate-800">Line:</span> {toText(endpoint.source.line, '')}</p>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : <EmptyState text="No API endpoints detected yet." />}
+          </Section>
+        </div>
       )}
 
       {tab === 'database' && (

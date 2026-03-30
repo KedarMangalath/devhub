@@ -3,13 +3,14 @@ import os
 import json
 
 class ScaffolderAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, ai_config: dict | None = None):
         super().__init__(
             role="Project Scaffolding Expert",
             system_instruction="""You are a Project Scaffolding Expert.
 Given a short description of a new component, module, or full project, your job is to 
 generate the initial directory structure and the core files required to start development.
-Always output your scaffolding plan as a structured JSON object."""
+Always output your scaffolding plan as a structured JSON object.""",
+            ai_config=ai_config,
         )
 
     def generate_scaffold(self, description: str, tech_stack: str) -> dict:

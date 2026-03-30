@@ -1,5 +1,6 @@
 import json
 import hashlib
+import html
 import logging
 import os
 import posixpath
@@ -8,10 +9,12 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
 from difflib import unified_diff
 from pathlib import Path, PurePosixPath
 import re
 import sys
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -21,9 +24,9 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from agents.base import normalize_ai_config
+from agents.base import ai_config_is_usable, normalize_ai_config
 from agents.documentation import generate_codebase_reference_sync
-from agents.memory import _file_summary, build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, record_episode, upsert_working_memory
+from agents.memory import _file_summary, _query_requests_broad_listing, _query_requests_system_explanation, build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, read_query_relevant_file_content, record_episode, retrieve_relevant_files, upsert_working_memory
 from agents.workspace import PROJECTS_DIR, SKIP_DIRS, workspace_manager
 from core.models import AgentRun, Changeset, ChatMessage, DocumentationRun, EpisodicMemory, Feature, FeatureApproval, FeatureHistory, FileDiff, Project, SemanticMemory, TestResult, WorkingMemory
 
@@ -2213,14 +2216,14 @@ def build_scaffold_files(project: Project, starter_brief: str = "") -> dict:
     else:
         files = _static_scaffold_files(project)
 
-    api_key = os.environ.get('OPENAI_API_KEY')
-    if not api_key:
+    ai_config = _project_ai_config(project)
+    if not ai_config_is_usable(ai_config):
         return files
 
     try:
         from agents.scaffolder import ScaffolderAgent
 
-        agent = ScaffolderAgent()
+        agent = ScaffolderAgent(ai_config=ai_config)
         scaffold = agent.generate_scaffold(
             description=(
                 f"Create a small but working starter application for {project.name}. "
@@ -2755,6 +2758,49 @@ def _read_deep_docs_progress(workspace_path: Path) -> dict | None:
         return None
 
 
+BLUEPRINT_SECTION_LABELS = {
+    'design_doc': 'Design Doc',
+    'overview': 'Overview',
+    'repository': 'Repository',
+    'services': 'Services & Components',
+    'api': 'API Reference',
+    'database': 'Database Schema',
+    'workflows': 'Workflows & Sequences',
+    'setup': 'Setup & Environment',
+    'quality': 'Quality & Security',
+    'knowledge': 'Knowledge Base',
+}
+
+BLUEPRINT_SECTION_FIELDS = {
+    'design_doc': ['design_document_markdown', 'design_document_sections'],
+    'overview': ['project_summary', 'architecture_overview', 'mermaid_architecture', 'mermaid_service_dependencies', 'data_flow', 'tech_stack_details', 'feature_inventory', 'sdlc_pipeline', 'overview_project_health', 'overview_current_risks', 'overview_runtime_entrypoints', 'overview_read_first', 'overview_recent_changes', 'overview_next_steps'],
+    'repository': ['directory_guide', 'repository_map', 'repo_tree', 'repo_tree_nodes', 'readme_excerpt', 'instruction_files', 'file_structure_visualizer', 'change_guide'],
+    'services': ['services', 'key_components', 'integration_points'],
+    'api': ['api_endpoints'],
+    'database': ['database_schema', 'mermaid_erd'],
+    'workflows': ['sequence_flows', 'common_workflows'],
+    'setup': ['setup_steps', 'environment_variables', 'onboarding_checklist'],
+    'quality': ['security_considerations', 'performance_notes', 'testing_strategy', 'code_quality_standards'],
+    'knowledge': ['key_concepts', 'faq', 'gotchas'],
+}
+
+LLM_BLUEPRINT_SECTION_KEYS = {'overview', 'services', 'api', 'database', 'workflows', 'setup', 'quality', 'knowledge'}
+TOKEN_FREE_BLUEPRINT_SECTION_KEYS = {'design_doc', 'repository', 'api', 'setup', 'quality', 'knowledge'}
+
+
+def _slice_blueprint_section(blueprint: dict, section_key: str) -> dict[str, Any]:
+    return {
+        field: blueprint.get(field)
+        for field in BLUEPRINT_SECTION_FIELDS.get(section_key, [])
+        if field in blueprint
+    }
+
+
+def _persist_blueprint_state(project: Project, blueprint: dict) -> None:
+    project.blueprint = blueprint
+    project.save(update_fields=['blueprint'])
+
+
 def _render_project_features_summary(project: Project, limit: int = 10) -> str:
     lines = []
     features = Feature.objects.filter(project=project).order_by('-created_at')[:limit]
@@ -2765,7 +2811,7 @@ def _render_project_features_summary(project: Project, limit: int = 10) -> str:
         spec = feature.spec or {}
         if spec.get('technical_approach'):
             lines.append(f"  Approach: {str(spec['technical_approach'])[:240]}")
-    return "\n".join(lines) if lines else "No tracked features yet."
+    return "\n".join(lines) if lines else "No active DevHub work items are recorded yet."
 
 
 def _render_recent_changes_summary(project: Project, limit: int = 8) -> str:
@@ -2902,6 +2948,39 @@ def _normalize_mermaid_chart(chart: str, diagram_type: str = "graph") -> str:
     if not text:
         return ""
 
+    def _escape_graph_label_text(value: str) -> str:
+        label = html.unescape(str(value or ""))
+        label = label.replace("\\n", " ")
+        label = label.replace("\r", " ").replace("\n", " ")
+        label = re.sub(r"\s+", " ", label).strip()
+        label = label.replace("\\", "\\\\").replace('"', '\\"')
+        return label
+
+    def _rewrite_graph_label(match: re.Match[str], template: str) -> str:
+        node_id = str(match.group("id") or "").strip()
+        raw_label = str(match.group("label") or "").strip()
+        if not node_id or not raw_label:
+            return match.group(0)
+        if raw_label.startswith('"') and raw_label.endswith('"'):
+            return match.group(0)
+        return template.format(id=node_id, label=_escape_graph_label_text(raw_label))
+
+    def _normalize_graph_line(line: str) -> str:
+        patterns: list[tuple[re.Pattern[str], str]] = [
+            (re.compile(r'(?P<id>\b[A-Za-z][A-Za-z0-9_]*\b)\[\((?P<label>[^"\n][^)\n]*?)\)\]'), '{id}[("{label}")]'),
+            (re.compile(r'(?P<id>\b[A-Za-z][A-Za-z0-9_]*\b)\[\[(?P<label>[^"\n][^\]\n]*?)\]\]'), '{id}[["{label}"]]'),
+            (re.compile(r'(?P<id>\b[A-Za-z][A-Za-z0-9_]*\b)\(\((?P<label>[^"\n][^)\n]*?)\)\)'), '{id}(("{label}"))'),
+            (re.compile(r'(?P<id>\b[A-Za-z][A-Za-z0-9_]*\b)\(\[(?P<label>[^"\n][^\]\n]*?)\]\)'), '{id}(["{label}"])'),
+            (re.compile(r'(?P<id>\b[A-Za-z][A-Za-z0-9_]*\b)\[(?P<label>[^"\[(\n][^\]\n]*?)\]'), '{id}["{label}"]'),
+            (re.compile(r'(?P<id>\b[A-Za-z][A-Za-z0-9_]*\b)\((?P<label>[^"\[(\n][^)\n]*?)\)'), '{id}("{label}")'),
+            (re.compile(r'(?P<id>\b[A-Za-z][A-Za-z0-9_]*\b)\{(?P<label>[^"\n][^}\n]*?)\}'), '{id}{{"{label}"}}'),
+        ]
+
+        normalized = str(line or "")
+        for pattern, template in patterns:
+            normalized = pattern.sub(lambda match, tpl=template: _rewrite_graph_label(match, tpl), normalized)
+        return normalized
+
     if diagram_type == "erd":
         text = re.sub(r'^\s*erDiagram\s*;?', 'erDiagram\n', text, flags=re.IGNORECASE)
         text = re.sub(r';\s*', '\n', text)
@@ -2911,16 +2990,832 @@ def _normalize_mermaid_chart(chart: str, diagram_type: str = "graph") -> str:
         return "\n".join(lines)
 
     if diagram_type == "sequence":
+        def _escape_sequence_label_text(value: str) -> str:
+            text = html.unescape(str(value or ""))
+            text = text.replace("\\n", " newline ")
+            text = text.replace("\r", "").replace("\n", " newline ")
+            text = re.sub(r"<([^>]+)>", r" \1 ", text)
+            text = re.sub(r"\[([^\]]+)\]", r" \1 ", text)
+            text = re.sub(r"[{}()]", " ", text)
+            text = text.replace("&", " and ")
+            text = re.sub(r"""["'`]""", "", text)
+            text = re.sub(r"[^A-Za-z0-9 _-]+", " ", text)
+            text = re.sub(r"\s+", " ", text)
+            return text.strip()
+
+        def _starts_sequence_statement(line: str) -> bool:
+            stripped = str(line or "").strip()
+            if not stripped:
+                return False
+            if stripped.lower() == "sequencediagram":
+                return True
+            if re.match(r"^(participant|actor|note|activate|deactivate|autonumber|title|link|box|end|alt|else|opt|loop|par|and|critical|break|rect)\b", stripped, re.IGNORECASE):
+                return True
+            return bool(re.match(r"^[A-Za-z0-9_.()[\]`\"'/-]+\s*(?:-->>|->>|-->|->|<<--|<<->>|<<->|--x|x--)", stripped))
+
         text = re.sub(r'^\s*sequenceDiagram\s*;?', 'sequenceDiagram\n', text, flags=re.IGNORECASE)
         text = re.sub(r';\s*', '\n', text)
-        lines = [line.rstrip() for line in text.splitlines() if line.strip()]
-        if not lines or lines[0].strip().lower() != 'sequencediagram':
-            lines.insert(0, 'sequenceDiagram')
-        return "\n".join(lines)
+        raw_lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+        merged_lines: list[str] = []
+        for line in raw_lines:
+            stripped = line.strip()
+            if not merged_lines or _starts_sequence_statement(stripped):
+                merged_lines.append(stripped)
+            else:
+                merged_lines[-1] = f"{merged_lines[-1]}\\n{stripped}"
+        if not merged_lines or merged_lines[0].strip().lower() != 'sequencediagram':
+            merged_lines.insert(0, 'sequenceDiagram')
+        sanitized_lines: list[str] = []
+        for line in merged_lines:
+            if line.strip().lower() == "sequencediagram":
+                sanitized_lines.append("sequenceDiagram")
+                continue
+            if ":" in line and re.search(r"(?:-->>|->>|-->|->|<<--|<<->>|<<->|--x|x--)", line):
+                prefix, label = line.split(":", 1)
+                sanitized_lines.append(f"{prefix}: {_escape_sequence_label_text(label.strip())}")
+            else:
+                sanitized_lines.append(line)
+        return "\n".join(sanitized_lines)
 
     if text.lower().startswith('graph ') or text.lower().startswith('flowchart '):
-        return re.sub(r';\s*', '\n', text)
+        text = re.sub(r';\s*', '\n', text)
+        lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+        return "\n".join(_normalize_graph_line(line) for line in lines)
     return text
+
+
+def _read_workspace_text(workspace_path: Path | None, rel_path: str) -> str:
+    if not workspace_path:
+        return ""
+    target = workspace_path / rel_path
+    if not target.exists() or not target.is_file():
+        return ""
+    try:
+        return target.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _content_has_all(text: str, *needles: str) -> bool:
+    haystack = str(text or "").lower()
+    return all(str(needle or "").lower() in haystack for needle in needles if needle)
+
+
+def _content_has_any(text: str, *needles: str) -> bool:
+    haystack = str(text or "").lower()
+    return any(str(needle or "").lower() in haystack for needle in needles if needle)
+
+
+def _workflow_touchpoints(workspace_path: Path, rel_paths: dict[str, str], *keys: str) -> list[str]:
+    touchpoints: list[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        rel_path = rel_paths.get(key)
+        if not rel_path or rel_path in seen:
+            continue
+        if (workspace_path / rel_path).exists():
+            touchpoints.append(rel_path)
+            seen.add(rel_path)
+    return touchpoints
+
+
+def _matches_devhub_workflow_signature(files: dict[str, str]) -> bool:
+    lowered = {key: str(value or "").lower() for key, value in files.items()}
+    return (
+        _content_has_any(
+            lowered.get("codeworkspace", ""),
+            "/workspace/${workspaceid}/spawn/",
+            "/workspace/${workspaceid}/runtime/",
+            "/workspace/${workspaceid}/fs/",
+        )
+        and _content_has_any(
+            lowered.get("projectview", ""),
+            "/projects/${id}/agent/deep-docs/",
+            "/projects/${id}/pipeline/action/",
+            "/projects/${id}/documentation/",
+        )
+        and _content_has_any(
+            lowered.get("views", ""),
+            "def workspace_spawn",
+            "def workspace_runtime",
+            "def project_chat",
+            "def project_documentation",
+        )
+    )
+
+
+def _build_evidence_backed_workflows(workspace_path: Path | None) -> tuple[list[dict], list[dict]]:
+    if not workspace_path or not workspace_path.is_dir():
+        return [], []
+
+    rel_paths = {
+        "codeworkspace": "frontend/src/components/CodeWorkspace.tsx",
+        "documentationpanel": "frontend/src/components/DocumentationPanel.tsx",
+        "projectchat": "frontend/src/components/ProjectChatPanel.tsx",
+        "projectview": "frontend/src/pages/ProjectView.tsx",
+        "dashboard": "frontend/src/pages/Dashboard.tsx",
+        "views": "backend/api/views.py",
+        "urls": "backend/api/urls.py",
+        "consumers": "backend/editor/consumers.py",
+        "routing": "backend/editor/routing.py",
+        "executor": "backend/sandbox/executor.py",
+        "deepdocs": "backend/agents/deep_documentation.py",
+        "workspace_agent": "backend/agents/workspace.py",
+    }
+    files = {key: _read_workspace_text(workspace_path, rel_path) for key, rel_path in rel_paths.items()}
+    lowered = {key: value.lower() for key, value in files.items()}
+
+    # This evidence override is intentionally reserved for repos that expose the
+    # DevHub workspace/project workflow surface. Other repositories should keep
+    # the generic LLM-generated workflow section instead of inheriting these
+    # product-specific flows.
+    if not _matches_devhub_workflow_signature(files):
+        return [], []
+
+    sequence_flows: list[dict] = []
+    common_workflows: list[dict] = []
+    sequence_titles: set[str] = set()
+    workflow_titles: set[str] = set()
+
+    def add_sequence(flow: dict) -> None:
+        title = str(flow.get("title") or "").strip()
+        if not title or title in sequence_titles:
+            return
+        sequence_titles.add(title)
+        sequence_flows.append(flow)
+
+    def add_workflow(flow: dict) -> None:
+        title = str(flow.get("title") or "").strip()
+        if not title or title in workflow_titles:
+            return
+        workflow_titles.add(title)
+        common_workflows.append(flow)
+
+    if (
+        _content_has_all(
+            lowered["codeworkspace"],
+            "/workspace/${workspaceid}/spawn/",
+            "new websocket(",
+            "process/${pid}/",
+            "json.stringify({ input: data })",
+        )
+        and _content_has_all(
+            lowered["consumers"],
+            "class processconsumer",
+            "poll_process_output",
+            "sandbox.send_input(self.process_id",
+            "sandbox.get_output(self.process_id)",
+            "sandbox.get_status(self.process_id)",
+        )
+        and _content_has_all(
+            lowered["executor"],
+            "def run_command",
+            "def get_output",
+            "def get_status",
+            "def send_input",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def workspace_spawn",
+            "sandbox.run_command(",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "Terminal Process Execution and I/O Streaming",
+                "description": (
+                    "This flow starts when CodeWorkspace opens the terminal and POSTs to the workspace spawn endpoint. "
+                    "The API asks SandboxManager to start a subprocess, returns a process id, and the frontend then opens "
+                    "a process WebSocket. ProcessConsumer polls sandbox status/output and streams stdout or stderr back to "
+                    "the terminal while forwarding user input into SandboxManager.send_input."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant CodeWorkspace",
+                        "participant API",
+                        "participant SandboxManager",
+                        "participant ProcessConsumer",
+                        "CodeWorkspace->>API: POST workspace spawn",
+                        "API->>SandboxManager: run_command process_id command work_dir",
+                        "SandboxManager-->>API: process handle and process id",
+                        "API-->>CodeWorkspace: process_id",
+                        "CodeWorkspace->>ProcessConsumer: open process websocket",
+                        "loop Polling output",
+                        "ProcessConsumer->>SandboxManager: get_status and get_output",
+                        "SandboxManager-->>ProcessConsumer: stdout stderr and status",
+                        "ProcessConsumer-->>CodeWorkspace: send output and status",
+                        "end",
+                        "CodeWorkspace->>ProcessConsumer: send input command text",
+                        "ProcessConsumer->>SandboxManager: send_input process_id input",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "codeworkspace",
+                        "views",
+                        "consumers",
+                        "routing",
+                        "executor",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Interacting with the Workspace Terminal",
+                "steps": [
+                    "Step 1: Open CodeWorkspace; it auto-calls POST /api/workspace/<workspace_id>/spawn/ with {command: 'cmd.exe'} from frontend/src/components/CodeWorkspace.tsx.",
+                    "Step 2: backend/api/views.py creates a process id and delegates the command to sandbox.run_command in backend/sandbox/executor.py.",
+                    "Step 3: The frontend opens ws://localhost:8000/ws/workspace/<workspace_id>/process/<process_id>/ and ProcessConsumer starts poll_process_output().",
+                    "Step 4: Typing in the terminal sends JSON {input: data} over the socket and ProcessConsumer forwards it to SandboxManager.send_input().",
+                    "Step 5: Output and status are polled with sandbox.get_output() and sandbox.get_status() and streamed back into the terminal UI.",
+                ],
+            }
+        )
+
+    if (
+        _content_has_all(
+            lowered["codeworkspace"],
+            "/workspace/${workspaceid}/fs/?path=",
+            "const loadfile = async",
+            "const savefile = async",
+            "/workspace/${workspaceid}/fs/",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def workspace_fs",
+            "workspace_manager.write_file(",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "Workspace File Read and Save",
+                "description": (
+                    "This flow covers how CodeWorkspace browses directories, loads a file into the editor, and persists changes. "
+                    "The frontend requests file contents through the workspace filesystem endpoint, the backend resolves and reads the "
+                    "target path directly for GET requests, and then POSTs the updated content back to backend/api/views.py, which writes "
+                    "the file through workspace_manager."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant CodeWorkspace",
+                        "participant API",
+                        "participant WorkspaceManager",
+                        "CodeWorkspace->>API: GET workspace fs path file",
+                        "API->>API: resolve workspace path and read file or directory",
+                        "API-->>CodeWorkspace: file content or directory items",
+                        "CodeWorkspace->>CodeWorkspace: edit content in Monaco",
+                        "CodeWorkspace->>API: POST workspace fs path content",
+                        "API->>WorkspaceManager: write file to workspace",
+                        "WorkspaceManager-->>API: save success",
+                        "API-->>CodeWorkspace: save complete",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "codeworkspace",
+                        "views",
+                        "workspace_agent",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Editing a File in the Workspace",
+                "steps": [
+                    "Step 1: Expand the tree or click a file in frontend/src/components/CodeWorkspace.tsx, which calls GET /api/workspace/<workspace_id>/fs/?path=<file_path>.",
+                    "Step 2: backend/api/views.py resolves the workspace path and returns either directory entries or the file content.",
+                    "Step 3: CodeWorkspace loads the returned content into the editor and keeps local edits in component state.",
+                    "Step 4: Click Save File to POST /api/workspace/<workspace_id>/fs/ with {path, content}.",
+                    "Step 5: backend/api/views.py persists the new content via workspace_manager.write_file and the workspace view refreshes as needed.",
+                ],
+            }
+        )
+
+    if (
+        _content_has_all(
+            lowered["codeworkspace"],
+            "fetchruntime",
+            "/workspace/${workspaceid}/runtime/",
+            "const runproject = async",
+            "const stopproject = async",
+        )
+        and _content_has_any(
+            lowered["codeworkspace"],
+            "connectsocket(runtime.process_id",
+            "runtime?.process_id && runtime.status?.running",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def workspace_runtime",
+            "detect_runtime(",
+            "runtime_process_id(",
+            "_runtime_response_payload(",
+            "sandbox.run_command(",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "Project Runtime Execution and Preview Streaming",
+                "description": (
+                    "This flow powers the Run Project and Stop Project controls in CodeWorkspace. "
+                    "The frontend asks the runtime endpoint to detect or reuse the run command, the backend launches the managed "
+                    "process through SandboxManager, and CodeWorkspace then streams stdout into the App Output panel while it "
+                    "waits for the preview URL to become healthy."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant CodeWorkspace",
+                        "participant API",
+                        "participant SandboxManager",
+                        "participant ProcessConsumer",
+                        "CodeWorkspace->>API: POST workspace runtime",
+                        "API->>API: detect runtime and preview URL",
+                        "API->>SandboxManager: run_command runtime process",
+                        "SandboxManager-->>API: process status and handle",
+                        "API-->>CodeWorkspace: runtime payload with process_id preview_url ready",
+                        "CodeWorkspace->>ProcessConsumer: open runtime process websocket",
+                        "ProcessConsumer-->>CodeWorkspace: stream stdout stderr and status",
+                        "CodeWorkspace->>API: DELETE workspace runtime when stopping",
+                        "API->>SandboxManager: kill_process runtime process",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "codeworkspace",
+                        "views",
+                        "consumers",
+                        "routing",
+                        "executor",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Running the Project Preview",
+                "steps": [
+                    "Step 1: Click Run Project in frontend/src/components/CodeWorkspace.tsx, which POSTs to /api/workspace/<workspace_id>/runtime/.",
+                    "Step 2: backend/api/views.py calls detect_runtime(), chooses the runtime process id, and starts or refreshes the process through sandbox.run_command().",
+                    "Step 3: The runtime response includes process_id, run_command, preview_url, and ready state so CodeWorkspace can switch the bottom panel to App Output.",
+                    "Step 4: CodeWorkspace opens the runtime process WebSocket and streams output through ProcessConsumer while polling preview readiness.",
+                    "Step 5: Click Stop Project to DELETE /api/workspace/<workspace_id>/runtime/ and terminate the managed runtime process.",
+                ],
+            }
+        )
+
+    if (
+        _content_has_all(
+            lowered["codeworkspace"],
+            "/workspace/${workspaceid}/setup/",
+            "const runsetup = async",
+            "setsetuprunning(true)",
+        )
+        and _content_has_any(
+            lowered["codeworkspace"],
+            "connectsocket(`${workspaceid}_setup`",
+            "connectsocket(`${workspaceid}_setup`,",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def workspace_setup",
+            "setup_process_id(",
+            "sandbox.run_command(",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "Workspace Setup Command Execution",
+                "description": (
+                    "This flow runs the detected setup command for the current workspace. "
+                    "CodeWorkspace POSTs to the setup endpoint, the backend launches the setup process under a stable setup "
+                    "process id, and the frontend reuses ProcessConsumer to stream setup output until the command exits."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant CodeWorkspace",
+                        "participant API",
+                        "participant SandboxManager",
+                        "participant ProcessConsumer",
+                        "CodeWorkspace->>API: POST workspace setup",
+                        "API->>API: detect setup command",
+                        "API->>SandboxManager: run_command setup process",
+                        "SandboxManager-->>API: process status",
+                        "API-->>CodeWorkspace: setup process_id and command",
+                        "CodeWorkspace->>ProcessConsumer: open setup process websocket",
+                        "ProcessConsumer-->>CodeWorkspace: stream setup output and status",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "codeworkspace",
+                        "views",
+                        "consumers",
+                        "routing",
+                        "executor",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Running Workspace Setup",
+                "steps": [
+                    "Step 1: Click Setup in frontend/src/components/CodeWorkspace.tsx when the detected runtime exposes a setup_command.",
+                    "Step 2: CodeWorkspace POSTs to /api/workspace/<workspace_id>/setup/ and clears the setup output panel state.",
+                    "Step 3: backend/api/views.py derives the stable setup process id and launches the setup command through sandbox.run_command().",
+                    "Step 4: CodeWorkspace connects to the setup process WebSocket and appends streamed output into the App Output panel.",
+                    "Step 5: When ProcessConsumer reports that the setup process is no longer running, the UI clears the setup-running state automatically.",
+                ],
+            }
+        )
+
+    if (
+        _content_has_all(
+            lowered["projectview"],
+            "/projects/${id}/features/",
+            "/projects/${id}/pipeline/action/",
+            "const createfeature = async",
+            "setimplementationrun(",
+        )
+        and _content_has_any(
+            lowered["projectview"],
+            "const runaction = async",
+            "const pipelineaction = async",
+        )
+        and _content_has_any(
+            lowered["projectview"],
+            "implementationpollref.current = window.setinterval(",
+            "window.setinterval(() => {",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def project_features",
+            "def pipeline_action",
+            "def implement_feature_sync",
+            "thread = threading.thread(target=implement_feature_sync",
+            "featurehistory.objects.create(feature=feature, stage='development', action='implementation_started'",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "Feature Implementation and Progress Tracking",
+                "description": (
+                    "This flow begins when ProjectView creates a work item or sends a pipeline action for an existing feature. "
+                    "The backend persists the feature, starts async spec generation or implementation work, and ProjectView keeps polling "
+                    "the project state every 2.5 seconds until the feature history reflects completion."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant ProjectView",
+                        "participant API",
+                        "participant FeaturePipeline",
+                        "ProjectView->>API: POST projects project_id features",
+                        "API->>FeaturePipeline: create feature and start spec generation",
+                        "FeaturePipeline-->>ProjectView: feature created",
+                        "ProjectView->>API: POST projects project_id pipeline action implement",
+                        "API->>FeaturePipeline: start implementation flow",
+                        "loop Poll project state every 2.5 seconds",
+                        "ProjectView->>API: GET projects project_id",
+                        "API-->>ProjectView: updated feature history and status",
+                        "end",
+                        "FeaturePipeline-->>ProjectView: implementation completed",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "projectview",
+                        "views",
+                        "urls",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Advancing a Feature through the Pipeline",
+                "steps": [
+                    "Step 1: Create a work item in ProjectView by POSTing to /api/projects/<project_id>/features/ with a title and description.",
+                    "Step 2: backend/api/views.py stores the Feature record and starts generate_feature_spec_sync in a background thread.",
+                    "Step 3: Use POST /api/projects/<project_id>/pipeline/action/ to approve, advance, or implement the feature.",
+                    "Step 4: ProjectView starts its implementation polling loop and refreshes the project every 2.5 seconds.",
+                    "Step 5: Watch feature status and pipeline history update until the implementation run completes.",
+                ],
+            }
+        )
+
+    if (
+        _content_has_all(
+            lowered["projectview"],
+            "const startagent = async",
+            "/projects/${id}/agent/deep-docs/",
+            "/projects/${id}/agent/deep-docs/progress/",
+            "applydeepdocsprogressevent",
+        )
+        and _content_has_any(
+            lowered["projectview"],
+            "response.body?.getreader()",
+            "buffer.split('\\n')",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def deep_documentation_stream",
+            "def deep_documentation_progress",
+            "streaminghttpresponse",
+            "_safe_write_deep_docs_progress(",
+        )
+        and _content_has_all(
+            lowered["deepdocs"],
+            "class deepdocumentationagent",
+            "def generate_all_sections",
+            "def generate_section",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "AI Deep Documentation Generation",
+                "description": (
+                    "This flow powers Blueprint regeneration. ProjectView POSTs to the deep documentation stream endpoint, "
+                    "keeps a secondary polling loop against the progress endpoint, and incrementally applies section updates "
+                    "as DeepDocumentationAgent completes each section."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant ProjectView",
+                        "participant API",
+                        "participant DeepDocumentationAgent",
+                        "ProjectView->>API: POST projects project_id agent deep-docs",
+                        "API->>DeepDocumentationAgent: start section generation",
+                        "loop Poll progress",
+                        "ProjectView->>API: GET projects project_id agent deep-docs progress",
+                        "API-->>ProjectView: status running section progress",
+                        "end",
+                        "DeepDocumentationAgent-->>API: blueprint section updates",
+                        "API-->>ProjectView: stream completed sections",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "projectview",
+                        "views",
+                        "deepdocs",
+                        "urls",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Regenerating Blueprint Documentation",
+                "steps": [
+                    "Step 1: Click Regenerate Blueprint or a section-specific regenerate button in ProjectView.",
+                    "Step 2: The frontend POSTs to /api/projects/<project_id>/agent/deep-docs/ and starts polling /api/projects/<project_id>/agent/deep-docs/progress/ every second.",
+                    "Step 3: backend/api/views.py streams section events from DeepDocumentationAgent as each Blueprint section finishes.",
+                    "Step 4: ProjectView applies progress updates through applyDeepDocsProgressEvent and merges section payloads into local state.",
+                    "Step 5: When the stream completes, the refreshed Blueprint becomes the new persisted project documentation snapshot.",
+                ],
+            }
+        )
+
+    if (
+        _content_has_all(
+            lowered["projectview"],
+            "const generatedocumentation = async",
+            "/projects/${id}/documentation/",
+        )
+        and _content_has_any(
+            lowered["documentationpanel"],
+            "generate codebase reference",
+            "regenerate",
+            "ongenerate",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def project_documentation",
+            "generate_codebase_reference_sync(project)",
+            "_documentation_run_payload(",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "Codebase Reference Documentation Generation",
+                "description": (
+                    "This flow powers the Docs panel reference generation. "
+                    "ProjectView triggers the documentation endpoint, the backend runs the synchronous codebase reference generator "
+                    "against the live workspace, persists the latest DocumentationRun payload, and then the frontend refreshes the project "
+                    "to render the generated sections."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant DocumentationPanel",
+                        "participant ProjectView",
+                        "participant API",
+                        "participant DocumentationGenerator",
+                        "DocumentationPanel->>ProjectView: onGenerate",
+                        "ProjectView->>API: POST projects project_id documentation",
+                        "API->>DocumentationGenerator: generate_codebase_reference_sync",
+                        "DocumentationGenerator-->>API: DocumentationRun and sections",
+                        "API-->>ProjectView: documentation payload",
+                        "ProjectView->>API: GET projects project_id refresh state",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "documentationpanel",
+                        "projectview",
+                        "views",
+                        "urls",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Generating the Codebase Reference",
+                "steps": [
+                    "Step 1: Open the Docs tab and click Generate Codebase Reference or Regenerate from frontend/src/components/DocumentationPanel.tsx.",
+                    "Step 2: frontend/src/pages/ProjectView.tsx runs generateDocumentation() and POSTs to /api/projects/<project_id>/documentation/.",
+                    "Step 3: backend/api/views.py calls generate_codebase_reference_sync(project) against the current workspace path.",
+                    "Step 4: The backend returns the latest DocumentationRun payload, including generated sections, evidence, and metadata.",
+                    "Step 5: ProjectView refreshes the project so DocumentationPanel renders the updated evidence-backed codebase reference.",
+                ],
+            }
+        )
+
+    if (
+        _content_has_all(
+            lowered["dashboard"],
+            "const handlecreate = async",
+            "/projects/create/",
+        )
+        and _content_has_any(
+            lowered["dashboard"],
+            "/projects/suggest/",
+            "/projects/import/github/inspect/",
+            "/projects/import/folder/inspect/",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def create_project",
+            "workspace_manager.create_workspace",
+            "_schedule_project_context_generation(",
+        )
+        and _content_has_any(
+            lowered["views"],
+            "def suggest_project_details",
+            "def inspect_github_import",
+            "def inspect_folder_import",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "Project Creation and Scaffolding",
+                "description": (
+                    "This flow starts in the Dashboard create-project flow. DevHub can first inspect a repo or local folder, "
+                    "or suggest metadata for a starter idea, before the final create request provisions the project source, "
+                    "registers a workspace, and schedules background blueprint generation."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant Dashboard",
+                        "participant API",
+                        "participant WorkspaceManager",
+                        "Dashboard->>API: inspect source or suggest metadata",
+                        "API-->>Dashboard: detected stack runtime and project details",
+                        "Dashboard->>API: POST projects create",
+                        "API->>API: clone repo connect folder or scaffold starter",
+                        "API->>WorkspaceManager: create workspace",
+                        "WorkspaceManager-->>API: workspace id",
+                        "API->>API: build blueprint context and schedule background generation",
+                        "API-->>Dashboard: project id workspace id runtime",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "dashboard",
+                        "views",
+                        "urls",
+                        "workspace_agent",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Creating, Importing, or Connecting a Project",
+                "steps": [
+                    "Step 1: Use frontend/src/pages/Dashboard.tsx to enter an idea, GitHub URL, or local folder path.",
+                    "Step 2: Dashboard can call /api/projects/suggest/, /api/projects/import/github/inspect/, or /api/projects/import/folder/inspect/ before the final create call.",
+                    "Step 3: handleCreate() POSTs to /api/projects/create/ with the resolved name, description, source details, and tech_stack.",
+                    "Step 4: backend/api/views.py clones the repo, connects the folder, or scaffolds starter files and then registers the workspace through workspace_manager.create_workspace().",
+                    "Step 5: The API builds initial blueprint context, schedules background project context generation, and the frontend navigates into /project/:id.",
+                ],
+            }
+        )
+
+    if (
+        _content_has_all(
+            lowered["projectchat"],
+            "const sendchat = async",
+            "/projects/${projectid}/chat/",
+        )
+        and _content_has_any(
+            lowered["projectchat"],
+            "data.applied_changes?.applied_files?.length",
+            "oncodeapplied",
+        )
+        and _content_has_all(
+            lowered["views"],
+            "def project_chat",
+            "build_memory_context(",
+            "_resolve_chat_context(",
+            "apply_chat_changes(",
+            "chatmessage.objects.create(",
+        )
+    ):
+        add_sequence(
+            {
+                "title": "Workspace Chat Requests and Direct Code Application",
+                "description": (
+                    "This flow powers the floating Workspace Chat assistant. "
+                    "ProjectChatPanel posts the user request, selected file, and explicit context mentions to the chat endpoint, "
+                    "the backend builds memory-backed context, and then either answers directly from the current workspace context or "
+                    "applies code changes for edit-style requests before returning assistant trace data and any modified files."
+                ),
+                "mermaid_sequence": "\n".join(
+                    [
+                        "sequenceDiagram",
+                        "participant ProjectChatPanel",
+                        "participant API",
+                        "participant BuildMemoryContext",
+                        "participant DevHubAssistant",
+                        "participant ApplyChatChanges",
+                        "participant CodeWorkspace",
+                        "ProjectChatPanel->>API: POST project chat content selected_file context mentions",
+                        "API->>BuildMemoryContext: build_memory_context and _resolve_chat_context",
+                        "alt Edit style request and workspace available",
+                        "API->>ApplyChatChanges: apply_chat_changes for edit requests",
+                        "ApplyChatChanges-->>API: applied files and validation results",
+                        "API-->>ProjectChatPanel: assistant message trace and applied_changes",
+                        "ProjectChatPanel-->>CodeWorkspace: onCodeApplied refreshes files and runtime",
+                        "else Explain or planning request",
+                        "API->>DevHubAssistant: generate answer from workspace context",
+                        "DevHubAssistant-->>API: assistant response and trace",
+                        "API-->>ProjectChatPanel: assistant message and trace",
+                        "end",
+                    ]
+                ),
+                "touchpoints": [
+                    *_workflow_touchpoints(
+                        workspace_path,
+                        rel_paths,
+                        "projectchat",
+                        "codeworkspace",
+                        "views",
+                        "urls",
+                    ),
+                ],
+            }
+        )
+        add_workflow(
+            {
+                "title": "Using Workspace Chat to Explain or Change Code",
+                "steps": [
+                    "Step 1: Send a message from frontend/src/components/ProjectChatPanel.tsx, optionally including the selected file and explicit context mentions.",
+                    "Step 2: ProjectChatPanel POSTs the request to /api/projects/<project_id>/chat/ and keeps the active chat session id in local state.",
+                    "Step 3: backend/api/views.py stores the user message, builds memory context, and resolves file or codebase evidence for the request.",
+                    "Step 4: If the message looks like an edit request, the backend runs apply_chat_changes(); otherwise it asks the assistant to answer against the current workspace context.",
+                    "Step 5: Any returned applied_files trigger CodeWorkspace refresh hooks so the file tree, active file, and runtime view stay up to date.",
+                ],
+            }
+        )
+
+    return sequence_flows, common_workflows
 
 
 def _build_repository_map_from_context(codebase_context: dict) -> list[dict]:
@@ -3338,9 +4233,41 @@ def _read_context_docs(workspace_path: Path, target_path: Path) -> list[dict]:
     return docs
 
 
-def _build_file_doc_payload(workspace_path: Path, rel_path: str, codebase_context: dict) -> dict:
+def _generate_file_explanation_llm(project, rel_path: str, content: str, summary: dict) -> dict | None:
+    try:
+        from agents.base import BaseAgent
+        agent = BaseAgent(
+            role="Codebase Documenter",
+            system_instruction=(
+                "You are an expert software architect providing dynamic documentation for a codebase file.\n"
+                "Return a JSON object with exactly FOUR string keys:\n"
+                "- 'what': A single short sentence summarizing what the file does.\n"
+                "- 'why': A short paragraph explaining why it exists.\n"
+                "- 'how': A short paragraph guiding a developer on how to read or change it.\n"
+                "- 'change_guidance': A short tip on what to watch out for when modifying this file.\n"
+                "Return ONLY valid JSON. Use Markdown inside the values if needed."
+            ),
+            ai_config=_project_ai_config(project)
+        )
+        prompt = f"File: {rel_path}\nMetadata: {summary}\nExcerpt:\n{content[:9000]}"
+        response = agent.generate(prompt, response_schema=True)
+        data = agent.parse_json(response)
+        if not isinstance(data, dict):
+            return None
+        return {
+            "what": str(data.get("what") or summary.get("purpose") or ""),
+            "why": str(data.get("why") or ""),
+            "how": str(data.get("how") or ""),
+            "change_guidance": str(data.get("change_guidance") or ""),
+        }
+    except Exception:
+        logger.exception("Failed to generate LLM documentation for %s", rel_path)
+        return None
+
+
+def _build_file_doc_payload(project, workspace_path: Path, rel_path: str, codebase_context: dict) -> dict:
     target_path, normalized = _codebase_doc_target(workspace_path, rel_path)
-    summary = _cached_file_summary(codebase_context, normalized) or _file_summary(target_path, workspace_path) or {
+    summary = _cached_file_summary(codebase_context, normalized) or _file_summary(target_path, workspace_path, include_excerpt=True) or {
         "path": normalized,
         "language": target_path.suffix.lstrip(".") or "text",
         "lines": 0,
@@ -3363,12 +4290,24 @@ def _build_file_doc_payload(workspace_path: Path, rel_path: str, codebase_contex
     docs = _read_context_docs(workspace_path, target_path)
     symbols = _extract_code_symbols(content, str(summary.get("language") or "text"))
     exports = _extract_export_symbols(content, str(summary.get("language") or "text"))
-    explanation = _build_file_explanation(summary, sibling_paths, [item["path"] for item in docs])
+    
+    explanation_override = None
+    try:
+        if target_path.stat().st_size <= 150 * 1024:
+            explanation_override = _generate_file_explanation_llm(project, normalized, content, summary)
+    except Exception:
+        pass
+
+    if explanation_override and explanation_override.get("what"):
+        explanation = explanation_override
+    else:
+        explanation = _build_file_explanation(summary, sibling_paths, [item["path"] for item in docs])
+        
     excerpt = content[:9000]
     dependency_graph = _build_dependency_graph(codebase_context)
     models_summary = _build_models_summary(codebase_context)
     routes_summary = _build_routes_summary(codebase_context)
-    prerequisites = _build_prerequisites_summary(workspace_path, codebase_context)
+    prerequisites = _build_file_prerequisites_summary(workspace_path, normalized, summary, codebase_context)
 
     markdown_lines = [
         f"# `{normalized}`",
@@ -3481,13 +4420,13 @@ def _describe_directory_children(file_summaries: list[dict], doc_files: list[dic
                 roles.append(role)
     bits = []
     if languages:
-        bits.append(f"It contains {', '.join(languages[:5])} files.")
+        bits.append(f"Directory composition includes {', '.join(languages[:5])} files.")
     if roles:
-        bits.append(f"The main responsibilities look like {', '.join(roles[:5])}.")
+        bits.append(f"Primary detected responsibilities involve {', '.join(roles[:5])}.")
     if doc_files:
-        bits.append(f"There is local documentation in {', '.join(item['path'] for item in doc_files[:3])}.")
+        bits.append(f"Local documentation context found in {', '.join(item['path'] for item in doc_files[:3])}.")
     if not bits:
-        bits.append("This directory currently has mixed responsibilities and needs to be read through its children.")
+        bits.append("Directory has mixed responsibilities; explore its children for detailed context.")
     return " ".join(bits)
 
 
@@ -3611,21 +4550,11 @@ def _extract_import_reference(line: str) -> str:
 
 
 def _build_dependency_graph(codebase_context: dict) -> dict:
-    summaries = _codebase_summary_pool(codebase_context, limit=80)
-    ranked = sorted(
-        summaries,
-        key=lambda item: (
-            -len(item.get("imports") or []),
-            -len(item.get("routes") or []),
-            -len(item.get("data_models") or []),
-            -int(item.get("lines") or 0),
-            str(item.get("path") or ""),
-        ),
-    )[:28]
-    path_set = {str(item.get("path") or "") for item in summaries if item.get("path")}
+    cached_graph = codebase_context.get("dependency_graph") or {}
+    cached_edges = list(cached_graph.get("edges") or [])[:48]
     labels: dict[str, str] = {}
     lines = ["graph LR"]
-    edges: list[dict] = []
+    nodes: set[str] = set()
 
     def node_id(path: str) -> str:
         digest = hashlib.sha1(path.encode("utf-8")).hexdigest()[:8]
@@ -3637,60 +4566,22 @@ def _build_dependency_graph(codebase_context: dict) -> dict:
             return path
         return f"{path_obj.parts[-2]}/{path_obj.parts[-1]}"
 
-    emitted_nodes: set[str] = set()
-    for item in ranked:
-        source_path = str(item.get("path") or "")
-        if not source_path:
+    for edge in cached_edges:
+        source_path = str(edge.get("from") or "")
+        target_path = str(edge.get("to") or "")
+        if not source_path or not target_path:
             continue
-        source_id = node_id(source_path)
-        if source_path not in emitted_nodes:
-            emitted_nodes.add(source_path)
-            labels[source_path] = node_label(source_path)
-            lines.append(f'  {source_id}["{labels[source_path]}"]')
-        for raw_import in item.get("imports") or []:
-            import_ref = _extract_import_reference(str(raw_import))
-            if not import_ref:
-                continue
-            candidates = _possible_import_paths(_resolve_relative_import(source_path, import_ref) if import_ref.startswith(".") else import_ref)
-            target_path = next((candidate for candidate in candidates if candidate in path_set), "")
-            if not target_path and not import_ref.startswith("."):
-                lowered = import_ref.lower()
-                target_path = next(
-                    (
-                        str(candidate.get("path") or "")
-                        for candidate in summaries
-                        if lowered
-                        and (
-                            str(candidate.get("path") or "").lower().endswith(f"/{lowered}.py")
-                            or str(candidate.get("path") or "").lower().endswith(f"/{lowered}.ts")
-                            or str(candidate.get("path") or "").lower().endswith(f"/{lowered}.tsx")
-                            or str(candidate.get("path") or "").lower().endswith(f"/{lowered}.js")
-                            or str(candidate.get("path") or "").lower().endswith(f"/{lowered}.jsx")
-                            or PurePosixPath(str(candidate.get("path") or "")).stem.lower() == lowered
-                        )
-                    ),
-                    "",
-                )
-            if not target_path or target_path == source_path:
-                continue
-            target_id = node_id(target_path)
-            if target_path not in emitted_nodes:
-                emitted_nodes.add(target_path)
-                labels[target_path] = node_label(target_path)
-                lines.append(f'  {target_id}["{labels[target_path]}"]')
-            edge = {"from": source_path, "to": target_path, "reason": str(raw_import)}
-            if edge not in edges:
-                edges.append(edge)
-                lines.append(f"  {source_id} --> {target_id}")
-            if len(edges) >= 48:
-                break
-        if len(edges) >= 48:
-            break
+        for path in (source_path, target_path):
+            if path not in nodes:
+                nodes.add(path)
+                labels[path] = node_label(path)
+                lines.append(f'  {node_id(path)}["{labels[path]}"]')
+        lines.append(f"  {node_id(source_path)} --> {node_id(target_path)}")
 
     return {
         "mermaid": "\n".join(lines) if len(lines) > 1 else "",
-        "edges": edges,
-        "nodes": [{"path": path, "label": labels.get(path) or node_label(path)} for path in emitted_nodes],
+        "edges": cached_edges,
+        "nodes": [{"path": path, "label": labels.get(path) or node_label(path)} for path in nodes],
     }
 
 
@@ -3745,6 +4636,124 @@ def _build_routes_summary(codebase_context: dict) -> list[dict]:
     return rows[:200]
 
 
+def _is_devhub_internal_path(path: str) -> bool:
+    normalized = str(path or "").replace("\\", "/").strip()
+    return normalized.startswith(f"{DEVHUB_META_DIR}/")
+
+
+def _public_instruction_files(codebase_context: dict) -> list[dict]:
+    visible: list[dict] = []
+    for item in codebase_context.get("instruction_files") or []:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").replace("\\", "/").strip()
+        if not path or _is_devhub_internal_path(path):
+            continue
+        visible.append(
+            {
+                "path": path,
+                "content": str(item.get("content") or "")[:3000],
+            }
+        )
+    return visible[:8]
+
+
+def _is_setup_command_source(item: dict) -> bool:
+    file_kind = str(item.get("file_kind") or "").strip().lower()
+    if file_kind in {"readme", "contributing-doc", "script", "container-config"}:
+        return True
+    if file_kind != "documentation":
+        return False
+
+    haystack = " ".join(
+        [
+            str(item.get("path") or ""),
+            *[str(heading or "") for heading in (item.get("headings") or [])[:8]],
+        ]
+    ).lower()
+    return any(
+        token in haystack
+        for token in (
+            "setup",
+            "install",
+            "getting started",
+            "getting-started",
+            "quickstart",
+            "quick-start",
+            "onboarding",
+            "local dev",
+            "run locally",
+        )
+    )
+
+
+def _looks_like_setup_command(command: str) -> bool:
+    candidate = str(command or "").strip()
+    if not candidate:
+        return False
+    lowered = candidate.lower()
+    patterns = (
+        r"^(pnpm|npm)\s+(install|ci|run\s+\S+|exec\s+\S+|dev\b|start\b|test\b|build\b|lint\b|preview\b)",
+        r"^yarn\s+\S+",
+        r"^bun\s+(install|run\s+\S+|dev\b|test\b|build\b|start\b)",
+        r"^npx\s+\S+",
+        r"^python(?:3)?\s+(?:-m\s+\S+|[^\s]+\.py(?:\s|$)|manage\.py(?:\s|$))",
+        r"^py\s+(?:-m\s+\S+|[^\s]+\.py(?:\s|$)|manage\.py(?:\s|$))",
+        r"^pip(?:3)?\s+\S+",
+        r"^uv\s+\S+",
+        r"^poetry\s+\S+",
+        r"^docker\s+\S+",
+        r"^make\s+\S+",
+        r"^cargo\s+\S+",
+        r"^go\s+(run|test|build|get|install|mod|fmt|vet|generate)\b",
+        r"^(bash|sh)\s+\S+",
+        r"^\./\S+",
+    )
+    return any(re.match(pattern, lowered) for pattern in patterns)
+
+
+def _command_tool_name(command: str) -> str:
+    lowered = str(command or "").strip().lower()
+    if lowered.startswith("python") or lowered.startswith("py "):
+        return "python"
+    for tool in ("pnpm", "npm", "yarn", "bun", "npx", "pip", "uv", "poetry", "docker", "make", "cargo", "go", "bash", "sh"):
+        if lowered.startswith(f"{tool} "):
+            return tool
+    if lowered.startswith("./"):
+        return Path(lowered.split()[0]).name
+    return lowered.split()[0] if lowered else ""
+
+
+def _package_manifest_commands(workspace_path: Path, path: str) -> list[str]:
+    target = workspace_path / path
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        return []
+    if not isinstance(payload, dict):
+        return []
+
+    scripts = payload.get("scripts") or {}
+    if not isinstance(scripts, dict):
+        return []
+
+    package_manager = _detect_workspace_package_manager(workspace_path, payload) or "npm"
+    commands: list[str] = []
+    for script_name in list(scripts.keys())[:8]:
+        name = str(script_name or "").strip()
+        if not name:
+            continue
+        if package_manager == "npm":
+            commands.append(f"npm run {name}")
+        elif package_manager == "pnpm":
+            commands.append(f"pnpm {name}")
+        elif package_manager == "yarn":
+            commands.append(f"yarn {name}")
+        elif package_manager == "bun":
+            commands.append(f"bun run {name}")
+    return commands
+
+
 def _build_prerequisites_summary(workspace_path: Path, codebase_context: dict) -> dict:
     summaries = _codebase_summary_pool(codebase_context)
     commands: list[str] = []
@@ -3766,16 +4775,25 @@ def _build_prerequisites_summary(workspace_path: Path, codebase_context: dict) -
                         env_variables.append(variable)
             except Exception:
                 pass
-        for command in item.get("commands") or []:
-            command_text = str(command).strip()
-            if command_text and command_text not in commands:
+
+        file_kind = str(item.get("file_kind") or "").strip().lower()
+        candidate_commands: list[str] = []
+        if file_kind == "package-manifest" and Path(path).name.lower() == "package.json":
+            candidate_commands.extend(_package_manifest_commands(workspace_path, path))
+        if _is_setup_command_source(item):
+            candidate_commands.extend(str(command).strip() for command in (item.get("commands") or []))
+
+        for command_text in candidate_commands:
+            if not _looks_like_setup_command(command_text):
+                continue
+            if command_text not in commands:
                 commands.append(command_text)
-                tool = command_text.split()[0]
-                if tool and tool not in tools:
-                    tools.append(tool)
+            tool = _command_tool_name(command_text)
+            if tool and tool not in tools:
+                tools.append(tool)
     return {
         "readme_excerpt": str(codebase_context.get("readme_excerpt") or "").strip(),
-        "instruction_files": list(codebase_context.get("instruction_files") or []),
+        "instruction_files": _public_instruction_files(codebase_context),
         "commands": commands[:24],
         "required_tools": tools[:16],
         "environment_files": env_files[:12],
@@ -3783,54 +4801,119 @@ def _build_prerequisites_summary(workspace_path: Path, codebase_context: dict) -
     }
 
 
-def _build_directory_doc_payload(workspace_path: Path, rel_path: str, codebase_context: dict) -> dict:
+def _build_file_prerequisites_summary(workspace_path: Path, rel_path: str, summary: dict, codebase_context: dict) -> dict | None:
+    normalized = str(rel_path or "").replace("\\", "/").strip("/")
+    path_name = PurePosixPath(normalized).name.lower()
+    file_kind = str(summary.get("file_kind") or "").strip().lower()
+    setup_like_kinds = {
+        "readme",
+        "contributing-doc",
+        "package-manifest",
+        "container-config",
+        "env-template",
+    }
+    setup_like_names = {
+        "package.json",
+        "pyproject.toml",
+        "requirements.txt",
+        "requirements-dev.txt",
+        "manage.py",
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yaml",
+        "compose.yml",
+        "makefile",
+        "justfile",
+        ".env.example",
+        ".env.sample",
+    }
+    if file_kind in setup_like_kinds or path_name in setup_like_names:
+        return _build_prerequisites_summary(workspace_path, codebase_context)
+    return None
+
+
+def _build_directory_doc_payload(project, workspace_path: Path, rel_path: str, codebase_context: dict) -> dict:
     target_path, normalized = _codebase_doc_target(workspace_path, rel_path)
     doc_files = _read_context_docs(workspace_path, target_path)
+    manifest_entries = list(codebase_context.get("manifest") or [])
+    summary_lookup = {str(item.get("path") or ""): item for item in _codebase_summary_pool(codebase_context)}
     child_entries = []
     files_accessed = []
-    for entry in sorted(target_path.iterdir(), key=lambda item: (item.is_file(), item.name.lower())):
-        if entry.name in SKIP_DIRS or entry.name == ".env":
+    normalized_prefix = f"{normalized}/" if normalized else ""
+    direct_children: dict[str, dict] = {}
+    for item in manifest_entries:
+        path = str(item.get("path") or "")
+        if not path or (normalized and not path.startswith(normalized_prefix)):
             continue
-        rel_entry = str(entry.relative_to(workspace_path)).replace("\\", "/")
-        if rel_entry.startswith(f"{DEVHUB_META_DIR}/"):
-            continue
-        if entry.is_file():
-            summary = _file_summary(entry, workspace_path)
-            if not summary:
+        remainder = path[len(normalized_prefix):] if normalized else path
+        if not remainder or "/" not in remainder:
+            child_name = remainder
+            if not child_name:
                 continue
+            direct_children.setdefault(
+                child_name,
+                {
+                    "name": child_name,
+                    "path": path,
+                    "type": "file",
+                    "entry": item,
+                },
+            )
+        else:
+            directory_name = remainder.split("/", 1)[0]
+            child_path = f"{normalized_prefix}{directory_name}".strip("/")
+            bucket = direct_children.setdefault(
+                directory_name,
+                {
+                    "name": directory_name,
+                    "path": child_path,
+                    "type": "directory",
+                    "entries": [],
+                },
+            )
+            bucket.setdefault("entries", []).append(item)
+
+    for child in sorted(direct_children.values(), key=lambda item: (item.get("type") != "directory", str(item.get("name") or "").lower()))[:120]:
+        if child.get("type") == "file":
+            rel_entry = str(child.get("path") or "")
+            summary = summary_lookup.get(rel_entry) or {}
+            entry = child.get("entry") or {}
             child_entries.append(
                 {
-                    "name": entry.name,
+                    "name": child.get("name"),
                     "path": rel_entry,
                     "type": "file",
-                    "summary": summary.get("purpose") or summary.get("summary"),
-                    "language": summary.get("language"),
+                    "summary": summary.get("purpose") or summary.get("summary") or f"Tier {entry.get('tier', 3)} file discovered from the repository manifest.",
+                    "language": summary.get("language") or entry.get("language"),
                     "lines": summary.get("lines"),
+                    "size": entry.get("size"),
+                    "tier": entry.get("tier"),
+                    "tier_reason": entry.get("tier_reason"),
                     "role_hints": summary.get("role_hints") or [],
                     "symbol": summary.get("symbol"),
                     "file_kind": summary.get("file_kind"),
                 }
             )
-            files_accessed.append({"path": rel_entry, "source": "file", "reason": "Indexed as part of the selected directory."})
+            files_accessed.append({"path": rel_entry, "source": "manifest", "reason": "Listed from manifest and cached summary for the selected directory."})
         else:
-            sample_files = _iter_codebase_files(entry, workspace_path, limit=6)
-            sample_summaries = [summary for summary in (_file_summary(item, workspace_path) for item in sample_files) if summary]
+            entries = list(child.get("entries") or [])
+            sample_summaries = [
+                summary_lookup.get(str(item.get("path") or ""))
+                for item in entries[:8]
+                if summary_lookup.get(str(item.get("path") or ""))
+            ]
             child_entries.append(
                 {
-                    "name": entry.name,
-                    "path": rel_entry,
+                    "name": child.get("name"),
+                    "path": child.get("path"),
                     "type": "directory",
                     "summary": _describe_directory_children(sample_summaries, []),
-                    "child_count": len([item for item in entry.iterdir() if item.name not in SKIP_DIRS and item.name != ".env"]),
+                    "child_count": len(entries),
                     "sample_files": [str(item.get("path") or "") for item in sample_summaries[:4]],
                 }
             )
-            files_accessed.extend(
-                {"path": str(item.relative_to(workspace_path)).replace("\\", "/"), "source": "folder_sample", "reason": f"Used to summarize the `{rel_entry}/` folder."}
-                for item in sample_files[:4]
-            )
-        if len(child_entries) >= 120:
-            break
+            for item in sample_summaries[:4]:
+                files_accessed.append({"path": str(item.get("path") or ""), "source": "manifest_summary", "reason": f"Used to summarize the `{child.get('path')}/` folder."})
 
     file_rows = [item for item in child_entries if item["type"] == "file"]
     dir_rows = [item for item in child_entries if item["type"] == "directory"]
@@ -3898,8 +4981,8 @@ def _build_codebase_doc_payload(project: Project, rel_path: str = "") -> dict:
     if not target_path.exists():
         raise FileNotFoundError(f"Path not found: {normalized}")
     if target_path.is_file():
-        return _build_file_doc_payload(workspace_path, normalized, codebase_context)
-    return _build_directory_doc_payload(workspace_path, normalized, codebase_context)
+        return _build_file_doc_payload(project, workspace_path, normalized, codebase_context)
+    return _build_directory_doc_payload(project, workspace_path, normalized, codebase_context)
 
 
 def _detect_workspace_package_manager(workspace_path: Path | None, package_data: dict) -> str:
@@ -4007,7 +5090,12 @@ def _guidance_field_needs_refresh(value, field_name: str) -> bool:
 
     markers = {
         "setup_steps": {
+            "clone the repository",
             "install dependencies",
+            "run migrations",
+            "start the server",
+            "python manage.py migrate",
+            "python manage.py runserver",
             "run onboarding",
             "set up development environment",
             "review repository map",
@@ -4038,146 +5126,1253 @@ def _guidance_field_needs_refresh(value, field_name: str) -> bool:
     return False
 
 
+DESIGN_DOC_TEMPLATE_MARKERS = {
+    "third-party services",
+    "additional functionalities",
+    "<repository-url>",
+    "specifies the settings module for django",
+    "use pytest for unit testing",
+    "django's test client",
+    "utilize cypress",
+    "ensure secure handling of user credentials and tokens",
+    "consider implementing caching strategies",
+    "restful principles for api design",
+    "avoid database inconsistencies",
+    "no tracked features yet",
+}
+
+
+def _normalize_design_doc_text(value) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip().lower()
+
+
+def _looks_like_design_doc_template(value) -> bool:
+    normalized = _normalize_design_doc_text(value)
+    if not normalized:
+        return False
+    return any(marker in normalized for marker in DESIGN_DOC_TEMPLATE_MARKERS)
+
+
+def _filter_design_doc_dict_items(items: list, text_keys: tuple[str, ...]) -> list[dict]:
+    filtered: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        combined = " ".join(str(item.get(key) or "") for key in text_keys).strip()
+        if not combined or _looks_like_design_doc_template(combined):
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def _filter_design_doc_strings(items: list) -> list[str]:
+    filtered: list[str] = []
+    for item in items:
+        text = str(item or "").strip()
+        if not text or _looks_like_design_doc_template(text):
+            continue
+        filtered.append(text)
+    return filtered
+
+
+def _dedupe_json_items(items: list) -> list:
+    deduped = []
+    seen = set()
+    for item in items:
+        key = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def _manifest_paths(codebase_context: dict) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    for item in codebase_context.get("manifest") or []:
+        path = str(item.get("path") or "").replace("\\", "/").strip()
+        if not path or path in seen or _is_devhub_internal_path(path):
+            continue
+        seen.add(path)
+        paths.append(path)
+    return paths
+
+
+def _normalize_rel_dir(value: str) -> str:
+    normalized = str(value or "").replace("\\", "/").strip().strip("/")
+    return "" if normalized in {"", "."} else normalized
+
+
+def _format_path_list(paths: list[str], max_paths: int = 3) -> str:
+    unique = []
+    seen = set()
+    for path in paths:
+        normalized = str(path or "").replace("\\", "/").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(f"`{normalized}`")
+    if not unique:
+        return ""
+    shown = unique[:max_paths]
+    if len(shown) == 1:
+        return shown[0]
+    if len(shown) == 2:
+        return f"{shown[0]} and {shown[1]}"
+    return f"{', '.join(shown[:-1])}, and {shown[-1]}"
+
+
+def _prefix_command_for_dir(rel_dir: str, command: str) -> str:
+    normalized = _normalize_rel_dir(rel_dir)
+    command_text = str(command or "").strip()
+    if not command_text:
+        return ""
+    if not normalized:
+        return command_text
+    target = f"\"{normalized}\"" if " " in normalized else normalized
+    return f"cd {target} && {command_text}"
+
+
+def _workspace_package_manifests(workspace_path: Path, codebase_context: dict) -> list[dict]:
+    manifests: list[dict] = []
+    for rel_path in _manifest_paths(codebase_context):
+        if PurePosixPath(rel_path).name.lower() != "package.json":
+            continue
+        file_path = workspace_path / rel_path
+        try:
+            payload = json.loads(file_path.read_text(encoding="utf-8", errors="ignore"))
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        rel_dir = _normalize_rel_dir(PurePosixPath(rel_path).parent.as_posix())
+        scripts = payload.get("scripts") if isinstance(payload.get("scripts"), dict) else {}
+        manifests.append({
+            "path": rel_path,
+            "rel_dir": rel_dir,
+            "name": str(payload.get("name") or PurePosixPath(rel_path).parent.name or "package").strip(),
+            "package_manager": _detect_workspace_package_manager(file_path.parent, payload) or "npm",
+            "scripts": scripts,
+            "workspaces": bool(payload.get("workspaces")) or (rel_dir == "" and (workspace_path / "pnpm-workspace.yaml").exists()),
+        })
+    manifests.sort(key=lambda item: (item.get("rel_dir") != "", str(item.get("rel_dir") or ""), str(item.get("path") or "")))
+    return manifests
+
+
+def _workspace_python_roots(workspace_path: Path, codebase_context: dict) -> list[dict]:
+    roots: dict[str, dict] = {}
+    manifest_paths = _manifest_paths(codebase_context)
+    for rel_path in manifest_paths:
+        name = PurePosixPath(rel_path).name.lower()
+        if name not in {"manage.py", "requirements.txt", "requirements-dev.txt", "pyproject.toml", "pipfile", "poetry.lock", "uv.lock"}:
+            continue
+        rel_dir = _normalize_rel_dir(PurePosixPath(rel_path).parent.as_posix())
+        entry = roots.setdefault(rel_dir, {
+            "rel_dir": rel_dir,
+            "manage_py": "",
+            "requirements": "",
+            "pyproject": "",
+            "tooling": [],
+            "framework": "",
+        })
+        if name == "manage.py":
+            entry["manage_py"] = rel_path
+            manage_text = _read_workspace_excerpt(workspace_path, rel_path, limit=4000).lower()
+            if "django" in manage_text or "settings" in manage_text:
+                entry["framework"] = "django"
+        elif name == "requirements.txt" or (name == "requirements-dev.txt" and not entry.get("requirements")):
+            entry["requirements"] = rel_path
+        elif name == "pyproject.toml":
+            entry["pyproject"] = rel_path
+        else:
+            entry.setdefault("tooling", []).append(rel_path)
+
+    for rel_dir, entry in roots.items():
+        if entry.get("framework"):
+            continue
+        prefix = f"{rel_dir}/" if rel_dir else ""
+        if any(path.startswith(prefix) and PurePosixPath(path).name.lower() == "settings.py" for path in manifest_paths):
+            entry["framework"] = "django"
+
+    ordered = list(roots.values())
+    ordered.sort(
+        key=lambda item: (
+            item.get("rel_dir") != "",
+            str(item.get("rel_dir") or ""),
+            0 if item.get("manage_py") else 1,
+            0 if item.get("requirements") else 1,
+        )
+    )
+    return ordered
+
+
+def _env_template_paths(workspace_path: Path, codebase_context: dict) -> list[str]:
+    candidates: list[str] = []
+    for item in _codebase_summary_pool(codebase_context):
+        path = str(item.get("path") or "").replace("\\", "/").strip()
+        if not path:
+            continue
+        file_kind = str(item.get("file_kind") or "").strip().lower()
+        file_name = PurePosixPath(path).name.lower()
+        if file_kind == "env-template" or file_name in {".env.example", ".env.sample", ".env.template", ".env.local.example", ".env.development.example"}:
+            candidates.append(path)
+    if not candidates:
+        for rel_path in _manifest_paths(codebase_context):
+            file_name = PurePosixPath(rel_path).name.lower()
+            if file_name in {".env.example", ".env.sample", ".env.template", ".env.local.example", ".env.development.example"}:
+                candidates.append(rel_path)
+    return _dedupe_json_items(candidates)[:12]
+
+
+def _sanitize_env_value(value: str) -> str:
+    text = str(value or "").strip().strip('"').strip("'")
+    if not text:
+        return ""
+    lowered = text.lower()
+    if any(token in lowered for token in ("<", ">", "changeme", "replace", "your-", "your_", "example", "sample", "placeholder", "dummy")):
+        return text
+    if re.match(r"^(sk-|ghp_|AIza|ya29\.)", text):
+        return "<configured secret>"
+    if len(text) >= 24 and not re.match(r"^(https?://|[A-Za-z]:/|/|\.{0,2}/)", text) and not re.fullmatch(r"[0-9.]+", text):
+        return "<configured value>"
+    return text
+
+
+def _infer_env_category(name: str) -> str:
+    upper = str(name or "").upper()
+    if upper.startswith(("VITE_", "NEXT_PUBLIC_", "PUBLIC_")):
+        return "frontend"
+    if any(token in upper for token in ("OPENAI", "ANTHROPIC", "GEMINI", "VERTEX", "MODEL", "LLM", "AI_")):
+        return "ai"
+    if any(token in upper for token in ("SECRET", "TOKEN", "KEY", "PASSWORD", "CREDENTIAL")):
+        return "secret"
+    if any(token in upper for token in ("DB_", "DATABASE", "POSTGRES", "MYSQL", "SQLITE", "REDIS", "MONGO")):
+        return "database"
+    if any(token in upper for token in ("AUTH", "JWT", "SESSION", "CSRF", "CORS", "ALLOWED_HOSTS")):
+        return "auth"
+    if any(token in upper for token in ("S3", "BUCKET", "STORAGE", "UPLOAD", "MEDIA")):
+        return "storage"
+    if any(token in upper for token in ("URL", "HOST", "PORT", "ORIGIN", "BASE_URL", "API_BASE")):
+        return "runtime"
+    return "config"
+
+
+def _is_ai_related_env(name: str) -> bool:
+    upper = str(name or "").upper()
+    return any(token in upper for token in ("OPENAI", "OPENROUTER", "ANTHROPIC", "CLAUDE", "GEMINI", "VERTEX", "GOOGLE_API", "GOOGLE_CLOUD", "MODEL", "LLM", "AI_"))
+
+
+def _is_ai_override_env(name: str) -> bool:
+    upper = str(name or "").upper()
+    if not _is_ai_related_env(upper):
+        return False
+    return any(
+        token in upper
+        for token in ("MODEL", "BASE_URL", "PROVIDER", "MODE", "LOCATION", "PROJECT", "CLI_COMMAND")
+    )
+
+
+def _env_family_prefix(name: str) -> str:
+    upper = str(name or "").upper()
+    if "_" not in upper:
+        return ""
+    prefix = upper.split("_", 1)[0].strip()
+    return prefix if prefix and prefix not in {"VITE", "NEXT", "PUBLIC", "DATABASE", "DJANGO", "NODE"} else ""
+
+
+def _is_ai_family_env(name: str, ai_prefixes: set[str]) -> bool:
+    upper = str(name or "").upper()
+    if _is_ai_related_env(upper):
+        return True
+    prefix = _env_family_prefix(upper)
+    if not prefix or prefix not in ai_prefixes:
+        return False
+    return any(
+        upper.endswith(suffix)
+        for suffix in ("_API_KEY", "_MODEL", "_BASE_URL", "_PROVIDER", "_MODE", "_LOCATION", "_PROJECT", "_CLI_COMMAND", "_ACCESS_TOKEN")
+    )
+
+
+def _summarize_ai_env_entry(variable_names: list[str]) -> dict:
+    credential_candidates = [
+        name for name in variable_names
+        if name in {
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "OPENROUTER_API_KEY",
+            "GEMINI_API_KEY",
+            "GOOGLE_API_KEY",
+        }
+    ]
+    extra_candidates = [
+        name for name in variable_names
+        if _is_ai_override_env(name)
+    ]
+    examples = credential_candidates[:4] + [name for name in extra_candidates[:2] if name not in credential_candidates[:4]]
+    description = "Multiple AI or model-provider variables were detected. Credentials are usually the actionable values to set locally, while provider, model, base URL, or location fields are often optional overrides."
+    if examples:
+        description = f"{description} Common variables include {', '.join(f'`{name}`' for name in examples)}."
+    return {
+        "name": "AI provider configuration",
+        "required": False,
+        "default": "No default detected",
+        "example": " / ".join(examples[:3]) if examples else "Provider-specific credential env vars",
+        "category": "ai",
+        "description": description,
+    }
+
+
+def _env_display_score(name: str, item: dict, references: list[str], from_template: bool) -> int:
+    upper = str(name or "").upper()
+    score = 0
+    if from_template:
+        score += 10
+    score += min(8, len(references) * 2)
+    if upper.startswith(("VITE_", "NEXT_PUBLIC_", "PUBLIC_")):
+        score += 8
+    if upper in {"DATABASE_URL", "SECRET_KEY", "DJANGO_SETTINGS_MODULE", "PORT", "HOST"}:
+        score += 6
+    if upper in {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"}:
+        score += 5
+    if any(path.lower().endswith("settings.py") for path in references):
+        score += 4
+    if any("/frontend/" in path.lower() or path.lower().startswith("frontend/") for path in references):
+        score += 3
+    if _is_ai_override_env(upper) and not from_template:
+        score -= 6
+    if item.get("category") == "secret":
+        score += 2
+    if not references and not from_template:
+        score -= 2
+    return score
+
+
+def _normalized_loose_tokens(value: str) -> set[str]:
+    tokens = {
+        token
+        for token in re.split(r"[^a-z0-9]+", str(value or "").lower())
+        if token and token not in {"the", "a", "an", "and", "or", "to", "of", "for", "in", "is", "are", "be", "by", "with", "this", "that", "it", "from"}
+    }
+    return tokens
+
+
+def _dedupe_similar_strings(items: list[str], similarity_threshold: float = 0.72) -> list[str]:
+    deduped: list[str] = []
+    token_sets: list[set[str]] = []
+    for item in items:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        current_tokens = _normalized_loose_tokens(text)
+        normalized_text = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+        duplicate = False
+        for existing, existing_tokens in zip(deduped, token_sets):
+            existing_normalized = re.sub(r"[^a-z0-9]+", " ", str(existing).lower()).strip()
+            if not current_tokens or not existing_tokens:
+                if normalized_text == existing_normalized:
+                    duplicate = True
+                    break
+                continue
+            overlap = len(current_tokens & existing_tokens) / max(1, len(current_tokens | existing_tokens))
+            if overlap >= similarity_threshold or normalized_text in existing_normalized or existing_normalized in normalized_text:
+                duplicate = True
+                break
+        if duplicate:
+            continue
+        deduped.append(text)
+        token_sets.append(current_tokens)
+    return deduped
+
+
+def _scan_environment_variable_usage(workspace_path: Path, codebase_context: dict, variable_names: list[str]) -> dict[str, list[str]]:
+    if not variable_names:
+        return {}
+    usage = {name: [] for name in variable_names}
+    candidate_paths: list[str] = []
+    for item in _codebase_summary_pool(codebase_context, limit=240):
+        path = str(item.get("path") or "").replace("\\", "/").strip()
+        if not path:
+            continue
+        file_kind = str(item.get("file_kind") or "").strip().lower()
+        lowered_path = path.lower()
+        if file_kind == "env-template":
+            continue
+        if file_kind in {"config", "build-config", "api-module", "routing-module", "package-manifest", "container-config", "script"} or any(
+            token in lowered_path for token in ("settings", "config", "runtime", "process", "consumer", "executor", "sandbox", "workspace", "views", "urls", "docker", "compose", "vite", "next")
+        ):
+            candidate_paths.append(path)
+    if not candidate_paths:
+        candidate_paths = _manifest_paths(codebase_context)[:80]
+
+    for rel_path in _dedupe_json_items(candidate_paths)[:80]:
+        text = _read_workspace_excerpt(workspace_path, rel_path, limit=18000)
+        if not text:
+            continue
+        for name in variable_names:
+            if name in text and rel_path not in usage[name]:
+                usage[name].append(rel_path)
+    return usage
+
+
+def _derive_environment_variables(workspace_path: Path, codebase_context: dict) -> list[dict]:
+    parsed: dict[str, dict] = {}
+    template_paths = _env_template_paths(workspace_path, codebase_context)
+    parsed_from_template = bool(template_paths)
+
+    for rel_path in template_paths:
+        content = _read_workspace_excerpt(workspace_path, rel_path, limit=16000)
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            if stripped.lower().startswith("export "):
+                stripped = stripped[7:].strip()
+            name, raw_value = stripped.split("=", 1)
+            env_name = name.strip()
+            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", env_name):
+                continue
+            sanitized = _sanitize_env_value(raw_value)
+            entry = parsed.setdefault(env_name, {
+                "name": env_name,
+                "required": False,
+                "default": "",
+                "example": "",
+                "category": _infer_env_category(env_name),
+            })
+            if sanitized and not entry.get("default"):
+                entry["default"] = sanitized
+            if sanitized and not entry.get("example"):
+                entry["example"] = sanitized
+            placeholder = not sanitized or any(token in sanitized.lower() for token in ("<", ">", "changeme", "replace", "your-", "your_", "placeholder", "dummy"))
+            entry["required"] = bool(entry.get("required")) or placeholder or entry["category"] == "secret"
+
+    if not parsed:
+        pattern_hits: dict[str, dict] = {}
+        patterns = [
+            r"os\.getenv\(\s*['\"]([A-Z][A-Z0-9_]*)['\"]",
+            r"os\.environ(?:\.get)?\[\s*['\"]([A-Z][A-Z0-9_]*)['\"]\s*\]",
+            r"os\.environ\.get\(\s*['\"]([A-Z][A-Z0-9_]*)['\"]",
+            r"process\.env\.([A-Z][A-Z0-9_]*)",
+            r"import\.meta\.env\.([A-Z][A-Z0-9_]*)",
+        ]
+        for rel_path in _manifest_paths(codebase_context)[:120]:
+            text = _read_workspace_excerpt(workspace_path, rel_path, limit=16000)
+            if not text:
+                continue
+            for pattern in patterns:
+                for match in re.findall(pattern, text):
+                    if match not in pattern_hits:
+                        pattern_hits[match] = {
+                            "name": match,
+                            "required": True,
+                            "default": "",
+                            "example": "",
+                            "category": _infer_env_category(match),
+                        }
+        parsed = pattern_hits
+
+    usage = _scan_environment_variable_usage(workspace_path, codebase_context, sorted(parsed.keys()))
+    env_vars: list[dict] = []
+    ai_related_names: list[str] = []
+    scored_items: list[tuple[int, dict]] = []
+    ai_prefixes = {
+        _env_family_prefix(name)
+        for name in parsed.keys()
+        if _env_family_prefix(name) and _is_ai_related_env(name)
+    }
+
+    for name in sorted(parsed.keys()):
+        item = dict(parsed[name])
+        category = str(item.get("category") or _infer_env_category(name))
+        references = usage.get(name) or []
+        ai_family_env = _is_ai_family_env(name, ai_prefixes)
+        description_prefix = {
+            "frontend": "Frontend-facing setting that affects the client bundle or browser runtime.",
+            "ai": "AI or model-provider configuration referenced by the application runtime.",
+            "secret": "Credential or secret that should be supplied per environment rather than committed into source.",
+            "database": "Database connection or persistence setting used by the application runtime.",
+            "auth": "Authentication, session, or trust-boundary setting that changes request security behavior.",
+            "storage": "Storage or upload configuration used to locate buckets, files, or media backends.",
+            "runtime": "Runtime or network setting that changes host, port, origin, or base URL behavior.",
+            "config": "Environment-driven configuration that changes how the application boots or behaves.",
+        }.get(category, "Environment-driven configuration used by the project at runtime.")
+        if references:
+            description = f"{description_prefix} Referenced in {_format_path_list(references, max_paths=2)}."
+        elif template_paths:
+            description = f"{description_prefix} Declared in {_format_path_list(template_paths[:2], max_paths=2)}."
+        else:
+            description = description_prefix
+        if ai_family_env and category == "secret":
+            category = "ai"
+        item["category"] = category
+        item["description"] = description
+        if ai_family_env:
+            ai_related_names.append(name)
+        score = _env_display_score(name, item, references, parsed_from_template)
+        if ai_family_env and not parsed_from_template and _is_ai_override_env(name):
+            score -= 2
+        item["_score"] = score
+        scored_items.append((score, item))
+
+    collapse_ai_settings = not parsed_from_template and len(ai_related_names) >= 4
+    if collapse_ai_settings:
+        env_vars.append(_summarize_ai_env_entry(sorted(ai_related_names)))
+
+    for score, item in sorted(scored_items, key=lambda pair: (-pair[0], str(pair[1].get("name") or ""))):
+        name = str(item.get("name") or "")
+        if collapse_ai_settings and _is_ai_family_env(name, ai_prefixes):
+            continue
+        if score < (3 if parsed_from_template else 5) and env_vars:
+            continue
+        cleaned = {key: value for key, value in item.items() if key != "_score"}
+        env_vars.append(cleaned)
+
+    return _dedupe_json_items(env_vars)[:10]
+
+
+def _detect_coverage_target(workspace_path: Path, codebase_context: dict) -> str:
+    config_names = {
+        "package.json",
+        "pyproject.toml",
+        "pytest.ini",
+        "mypy.ini",
+        "tox.ini",
+        "setup.cfg",
+        "vitest.config.ts",
+        "vitest.config.js",
+        "jest.config.js",
+        "jest.config.ts",
+    }
+    patterns = [
+        r"coverageThreshold[^0-9]{0,80}(\d+)",
+        r"fail_under\s*=\s*(\d+)",
+        r"--cov-fail-under(?:=|\s+)(\d+)",
+    ]
+    for rel_path in _manifest_paths(codebase_context):
+        if PurePosixPath(rel_path).name.lower() not in config_names:
+            continue
+        text = _read_workspace_excerpt(workspace_path, rel_path, limit=18000)
+        if not text:
+            continue
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                return f"{match.group(1)}% minimum coverage detected in `{rel_path}`."
+    return "No numeric coverage threshold was detected in the indexed test config."
+
+
+def _derive_testing_strategy(project: Project, codebase_context: dict) -> dict:
+    workspace_path = _project_workspace_path(project)
+    if not workspace_path:
+        return {}
+
+    manifest_paths = _manifest_paths(codebase_context)
+    python_test_paths = [path for path in manifest_paths if re.search(r"(^|/)(test_.*\.py|tests\.py)$", path, re.IGNORECASE) or "/tests/" in path.lower()]
+    js_test_paths = [path for path in manifest_paths if re.search(r"(\.test|\.spec)\.(js|jsx|ts|tsx)$", path, re.IGNORECASE)]
+    e2e_paths = [path for path in manifest_paths if any(token in path.lower() for token in ("cypress/", "playwright/", "/e2e/", "e2e."))]
+    integration_paths = [path for path in manifest_paths if any(token in path.lower() for token in ("/integration/", "integration_test", "/api/tests", "/tests/api"))]
+
+    run_commands: list[str] = []
+    for root in _workspace_python_roots(workspace_path, codebase_context):
+        rel_dir = str(root.get("rel_dir") or "")
+        if root.get("manage_py") and any(path.startswith(f"{rel_dir}/") if rel_dir else True for path in python_test_paths):
+            run_commands.append(_prefix_command_for_dir(rel_dir, "python manage.py test"))
+        elif root.get("pyproject") or any(PurePosixPath(path).name.lower() == "pytest.ini" and path.startswith(f"{rel_dir}/") for path in manifest_paths):
+            run_commands.append(_prefix_command_for_dir(rel_dir, "pytest"))
+
+    for manifest in _workspace_package_manifests(workspace_path, codebase_context):
+        scripts = manifest.get("scripts") if isinstance(manifest.get("scripts"), dict) else {}
+        if scripts.get("test"):
+            run_commands.append(_prefix_command_for_dir(str(manifest.get("rel_dir") or ""), _run_script_command(str(manifest.get("package_manager") or "npm"), "test")))
+
+    run_command = "\n".join(_dedupe_json_items(run_commands)[:4]).strip()
+    if python_test_paths and js_test_paths:
+        unit = f"Backend tests live in {_format_path_list(python_test_paths, max_paths=1)} and frontend/unit specs also exist in {_format_path_list(js_test_paths, max_paths=1)}."
+    elif python_test_paths:
+        unit = f"Python test modules are present in {_format_path_list(python_test_paths, max_paths=2)}."
+    elif js_test_paths:
+        unit = f"JavaScript or TypeScript test files are present in {_format_path_list(js_test_paths, max_paths=2)}."
+    else:
+        unit = "No dedicated unit-test files were detected from the indexed repository paths."
+
+    if integration_paths:
+        integration = f"Integration-style coverage appears in {_format_path_list(integration_paths, max_paths=2)}."
+    elif any("/api/tests" in path.lower() for path in python_test_paths):
+        integration = f"API-oriented test coverage appears to live alongside backend tests in {_format_path_list([path for path in python_test_paths if '/api/tests' in path.lower()], max_paths=1)}."
+    else:
+        integration = "No separate integration-test directory was detected from indexed files."
+
+    if e2e_paths:
+        e2e = f"Browser or end-to-end coverage is present in {_format_path_list(e2e_paths, max_paths=2)}."
+    else:
+        e2e = "No dedicated browser-level or end-to-end suite was detected from the indexed repository."
+
+    return {
+        "unit": unit,
+        "integration": integration,
+        "e2e": e2e,
+        "coverage_target": _detect_coverage_target(workspace_path, codebase_context),
+        "run_command": run_command,
+    }
+
+
+def _scan_workspace_pattern_hits(workspace_path: Path, codebase_context: dict) -> dict[str, list[str]]:
+    hits = {
+        "shell_true": [],
+        "csrf_exempt": [],
+        "debug_true": [],
+        "cors_allow_all": [],
+        "secret_key_literal": [],
+        "inmemory_channel_layer": [],
+        "polling_loop": [],
+        "sqlite": [],
+    }
+    candidate_paths: list[str] = []
+    allowed_suffixes = {".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".toml", ".yml", ".yaml", ".ini", ".cfg"}
+    for rel_path in _manifest_paths(codebase_context):
+        lowered = rel_path.lower()
+        file_name = PurePosixPath(rel_path).name.lower()
+        suffix = PurePosixPath(rel_path).suffix.lower()
+        if file_name not in {"manage.py", "package.json"} and suffix not in allowed_suffixes:
+            continue
+        if any(token in lowered for token in ("settings", "config", "consumer", "executor", "sandbox", "workspace", "runtime", "process", "channel", "views", "urls", "auth", "manage.py", "package.json", "pyproject.toml", "pytest.ini", "eslint", "tsconfig", "prettier", "mypy", "ruff")):
+            candidate_paths.append(rel_path)
+    if not candidate_paths:
+        candidate_paths = _manifest_paths(codebase_context)[:120]
+
+    for rel_path in _dedupe_json_items(candidate_paths)[:120]:
+        text = _read_workspace_excerpt(workspace_path, rel_path, limit=20000)
+        if not text:
+            continue
+        lowered = text.lower()
+        if re.search(r"shell\s*=\s*True", text):
+            hits["shell_true"].append(rel_path)
+        if re.search(r"@csrf_exempt\b|csrf_exempt\(", text):
+            hits["csrf_exempt"].append(rel_path)
+        if re.search(r"(?m)^\s*DEBUG\s*=\s*True\b", text):
+            hits["debug_true"].append(rel_path)
+        if re.search(r"(?m)^\s*CORS_ALLOW_ALL_ORIGINS\s*=\s*True\b", text):
+            hits["cors_allow_all"].append(rel_path)
+        if re.search(r"(?m)^\s*SECRET_KEY\s*=\s*['\"][^'\"]+['\"]", text):
+            hits["secret_key_literal"].append(rel_path)
+        if "inmemorychannellayer" in lowered:
+            hits["inmemory_channel_layer"].append(rel_path)
+        if ("while true" in lowered or "for (;;)" in lowered) and ("asyncio.sleep" in lowered or "sleep(" in lowered or "setinterval(" in lowered):
+            hits["polling_loop"].append(rel_path)
+        if "db.sqlite3" in lowered or "sqlite3" in lowered:
+            hits["sqlite"].append(rel_path)
+
+    return {key: _dedupe_json_items(value) for key, value in hits.items()}
+
+
+def _derive_code_quality_standards(workspace_path: Path, codebase_context: dict) -> list[dict]:
+    standards: list[dict] = []
+
+    def add(tool: str, purpose: str, config_file: str) -> None:
+        if not tool or not config_file:
+            return
+        standards.append({
+            "tool": tool,
+            "purpose": purpose,
+            "config_file": config_file,
+        })
+
+    manifest_paths = _manifest_paths(codebase_context)
+    package_manifests = _workspace_package_manifests(workspace_path, codebase_context)
+
+    for rel_path in manifest_paths:
+        file_name = PurePosixPath(rel_path).name.lower()
+        if file_name in {"eslint.config.js", "eslint.config.cjs", ".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json"}:
+            add("ESLint", "Lint rules for JavaScript or TypeScript source are configured here.", rel_path)
+        elif file_name.startswith("tsconfig") and file_name.endswith(".json"):
+            add("TypeScript", "Compiler settings here control type-checking, module resolution, and editor/tooling expectations.", rel_path)
+        elif file_name in {".prettierrc", ".prettierrc.json", ".prettierrc.js", "prettier.config.js", "prettier.config.cjs"}:
+            add("Prettier", "Formatting rules are defined here to keep source files and generated diffs consistent.", rel_path)
+        elif file_name in {"pytest.ini", "tox.ini"}:
+            add("Pytest", "Python test discovery and execution settings are configured here.", rel_path)
+        elif file_name in {"mypy.ini"}:
+            add("MyPy", "Static type-checking rules for Python modules are configured here.", rel_path)
+        elif file_name in {"ruff.toml", ".ruff.toml"}:
+            add("Ruff", "Python linting and formatting rules are configured here.", rel_path)
+
+    for rel_path in manifest_paths:
+        if PurePosixPath(rel_path).name.lower() not in {"pyproject.toml", "setup.cfg"}:
+            continue
+        text = _read_workspace_excerpt(workspace_path, rel_path, limit=16000)
+        if not text:
+            continue
+        lowered = text.lower()
+        if "[tool.ruff" in lowered or "[ruff" in lowered:
+            add("Ruff", "Python linting or formatting rules are defined in this shared tool config.", rel_path)
+        if "[tool.black" in lowered:
+            add("Black", "Python formatting expectations are defined here.", rel_path)
+        if "[tool.mypy" in lowered or "[mypy" in lowered:
+            add("MyPy", "Python type-checking rules are defined here.", rel_path)
+        if "[tool.pytest" in lowered or "[tool.pytest.ini_options" in lowered or "[pytest" in lowered:
+            add("Pytest", "Python test discovery and execution settings are defined here.", rel_path)
+
+    for manifest in package_manifests:
+        scripts = manifest.get("scripts") if isinstance(manifest.get("scripts"), dict) else {}
+        path = str(manifest.get("path") or "")
+        package_manager = str(manifest.get("package_manager") or "npm")
+        if scripts.get("lint") and not any(item.get("tool") == "ESLint" for item in standards):
+            add("Lint script", f"The package manifest exposes `{_run_script_command(package_manager, 'lint')}` as the repo's JavaScript/TypeScript lint entrypoint.", path)
+        if scripts.get("typecheck") and not any(item.get("tool") == "TypeScript" for item in standards):
+            add("Type checking", f"The package manifest exposes `{_run_script_command(package_manager, 'typecheck')}` for static type validation.", path)
+        if scripts.get("format") and not any(item.get("tool") == "Prettier" for item in standards):
+            add("Format script", f"The package manifest exposes `{_run_script_command(package_manager, 'format')}` for source formatting.", path)
+
+    return _dedupe_json_items(standards)[:10]
+
+
+def _derive_quality_guidance(project: Project, codebase_context: dict) -> dict:
+    workspace_path = _project_workspace_path(project)
+    if not workspace_path:
+        return {
+            "security_considerations": [],
+            "performance_notes": [],
+            "testing_strategy": {},
+            "code_quality_standards": [],
+        }
+
+    hits = _scan_workspace_pattern_hits(workspace_path, codebase_context)
+    api_reference = _blueprint_list(codebase_context.get("api_reference"))
+    mutating_public = [
+        f"{item.get('method')} {item.get('path')}"
+        for item in api_reference
+        if str(item.get("method") or "").upper() in {"POST", "PUT", "PATCH", "DELETE"} and not item.get("auth_required")
+    ]
+    csrf_exempt_public = [
+        f"{item.get('method')} {item.get('path')}"
+        for item in api_reference
+        if str(item.get("method") or "").upper() in {"POST", "PUT", "PATCH", "DELETE"} and "csrf is exempted" in str(item.get("access") or "").lower()
+    ]
+
+    security: list[dict] = []
+    if hits.get("shell_true"):
+        security.append({
+            "area": "Shell-based command execution",
+            "severity": "high",
+            "description": f"{_format_path_list(hits.get('shell_true') or [], max_paths=2)} uses subprocess calls with `shell=True`, so command text is expanded by the shell instead of running as structured argv.",
+        })
+    if hits.get("debug_true") or hits.get("cors_allow_all") or hits.get("secret_key_literal"):
+        exposed_settings = []
+        if hits.get("debug_true"):
+            exposed_settings.append("`DEBUG = True`")
+        if hits.get("cors_allow_all"):
+            exposed_settings.append("`CORS_ALLOW_ALL_ORIGINS = True`")
+        if hits.get("secret_key_literal"):
+            exposed_settings.append("a literal `SECRET_KEY`")
+        settings_paths = (hits.get("debug_true") or []) + (hits.get("cors_allow_all") or []) + (hits.get("secret_key_literal") or [])
+        security.append({
+            "area": "Development settings exposed",
+            "severity": "high",
+            "description": f"{_format_path_list(settings_paths, max_paths=2)} enables {', '.join(exposed_settings)}. Those defaults are convenient locally but should not be treated as production-safe runtime config.",
+        })
+    if mutating_public:
+        severity = "high" if csrf_exempt_public else "medium"
+        description = f"The routed API catalog shows mutating operations without explicit auth or permission markers, including {', '.join(f'`{item}`' for item in mutating_public[:3])}."
+        if csrf_exempt_public:
+            description += f" CSRF-exempt handlers were also detected for {', '.join(f'`{item}`' for item in csrf_exempt_public[:2])}."
+        security.append({
+            "area": "Mutating routes without explicit auth markers",
+            "severity": severity,
+            "description": description,
+        })
+
+    performance: list[dict] = []
+    if hits.get("inmemory_channel_layer"):
+        performance.append({
+            "area": "In-memory channel layer",
+            "impact": "high",
+            "description": f"{_format_path_list(hits.get('inmemory_channel_layer') or [], max_paths=1)} uses `InMemoryChannelLayer`, which is fine for local development but does not support multi-process or horizontally scaled websocket delivery.",
+        })
+    if hits.get("polling_loop"):
+        performance.append({
+            "area": "Polling-based process or websocket loops",
+            "impact": "medium",
+            "description": f"{_format_path_list(hits.get('polling_loop') or [], max_paths=2)} contains long-running polling loops with sleep calls, which can become chatty under many concurrent sessions.",
+        })
+    if hits.get("sqlite"):
+        performance.append({
+            "area": "SQLite-backed local state",
+            "impact": "medium",
+            "description": f"{_format_path_list(hits.get('sqlite') or [], max_paths=1)} references SQLite-style local persistence, which is convenient for development but can become a bottleneck for concurrent write-heavy workloads.",
+        })
+
+    return {
+        "security_considerations": _dedupe_json_items(security)[:6],
+        "performance_notes": _dedupe_json_items(performance)[:6],
+        "testing_strategy": _derive_testing_strategy(project, codebase_context),
+        "code_quality_standards": _derive_code_quality_standards(workspace_path, codebase_context),
+    }
+
+
+def _summary_path_with_tokens(codebase_context: dict, *tokens: str) -> str:
+    wanted = [str(token or "").strip().lower() for token in tokens if str(token or "").strip()]
+    best_path = ""
+    best_score = 0
+    for item in _codebase_summary_pool(codebase_context, limit=200):
+        path = str(item.get("path") or "").replace("\\", "/").strip()
+        if not path:
+            continue
+        haystack = " ".join(
+            str(value)
+            for value in [
+                path,
+                item.get("summary"),
+                item.get("purpose"),
+                item.get("why"),
+                item.get("how"),
+                " ".join(item.get("routes") or []),
+                " ".join(item.get("data_models") or []),
+                " ".join(item.get("role_hints") or []),
+                item.get("file_kind"),
+            ]
+            if value
+        ).lower()
+        score = sum(1 for token in wanted if token in haystack)
+        if score > best_score:
+            best_score = score
+            best_path = path
+    return best_path
+
+
+def _setup_commands_by_kind(setup_steps: list[dict], *kinds: str) -> list[str]:
+    wanted = {str(kind or "").strip().lower() for kind in kinds if str(kind or "").strip()}
+    commands: list[str] = []
+    for item in setup_steps:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "").strip().lower()
+        command = str(item.get("command") or "").strip()
+        if wanted and kind not in wanted:
+            continue
+        if command and command not in commands:
+            commands.append(command)
+    return commands
+
+
+def _derive_knowledge_guidance(project: Project, codebase_context: dict, setup_guidance: dict, quality_guidance: dict) -> dict:
+    api_reference = _blueprint_list(codebase_context.get("api_reference"))
+    database_schema = _blueprint_list(codebase_context.get("database_schema"))
+    database_sources = _blueprint_list(codebase_context.get("database_source_files"))
+    top_areas = _top_repository_areas(codebase_context)
+    summary_pool = _codebase_summary_pool(codebase_context, limit=220)
+    summary_paths = [str(item.get("path") or "").replace("\\", "/").strip() for item in summary_pool if str(item.get("path") or "").strip()]
+    setup_steps = _blueprint_list(setup_guidance.get("setup_steps"))
+    testing_strategy = quality_guidance.get("testing_strategy") if isinstance(quality_guidance.get("testing_strategy"), dict) else {}
+    table_names = {str(item.get("table") or "").strip() for item in database_schema if str(item.get("table") or "").strip()}
+    workspace_ops = [item for item in api_reference if "/workspace/" in str(item.get("path") or "")]
+    route_paths = {str(item.get("path") or "").strip() for item in api_reference}
+    has_workspace_runtime = bool(workspace_ops) and any(any(token in path.lower() for token in ("sandbox", "executor", "workspace", "consumer")) for path in summary_paths)
+    has_feature_pipeline = (
+        "/api/projects/<project_id>/pipeline/action/" in route_paths
+        or {"Feature", "FeatureHistory", "FeatureApproval"} <= table_names
+        or any(any(token in path.lower() for token in ("feature", "pipeline")) for path in summary_paths)
+    )
+    has_chat_memory = (
+        any("/chat/" in path for path in route_paths)
+        and ({"ChatMessage", "WorkingMemory", "EpisodicMemory", "SemanticMemory"} & table_names
+             or any(any(token in path.lower() for token in ("memory.py", "project_chat", "chat")) for path in summary_paths))
+    )
+    has_blueprint_pipeline = (
+        any(any(token in str(item.get("path") or "") for token in ("/documentation/", "/agent/deep-docs", "/documentation/runs/")) for item in api_reference)
+        or any(any(token in path.lower() for token in ("deep_documentation.py", "architect.py", "documentation.py")) for path in summary_paths)
+    )
+
+    concepts: list[dict] = []
+
+    def add_concept(concept: str, explanation: str, why_important: str, related_code: str = "", related_concepts: list[str] | None = None) -> None:
+        if not concept or not explanation:
+            return
+        concepts.append({
+            "concept": concept,
+            "explanation": explanation,
+            "why_important": why_important,
+            "related_code": related_code,
+            "related_concepts": related_concepts or [],
+        })
+
+    if has_workspace_runtime:
+        add_concept(
+            "Managed workspace execution",
+            "The codebase exposes workspace-oriented APIs for filesystem access, process I/O, or runtime control, so project execution is mediated by backend handlers rather than only by direct local commands.",
+            "Changes to terminals, preview flows, editors, or runtime state usually cross both client code and backend workspace or process-management modules.",
+            _summary_path_with_tokens(codebase_context, "workspace", "executor", "sandbox"),
+            ["Process IO", "Runtime control"],
+        )
+
+    if has_feature_pipeline:
+        add_concept(
+            "Tracked delivery workflow",
+            "The repository models work items or pipeline stages explicitly, with backend routes and persisted records coordinating approval, implementation, or status changes.",
+            "When work-item behavior changes, the source of truth is usually shared between API handlers, workflow models, and any UI that reflects those stages.",
+            _summary_path_with_tokens(codebase_context, "Feature", "pipeline", "approval"),
+            ["Feature lifecycle", "Background implementation"],
+        )
+
+    if has_blueprint_pipeline:
+        add_concept(
+            "Generated documentation pipeline",
+            "Repository reference or documentation sections are assembled from indexed codebase evidence and generation steps, instead of living only as hand-maintained markdown.",
+            "When generated docs look wrong, the fix is usually in indexing, extraction, or enrichment logic before it is in the rendering layer.",
+            _summary_path_with_tokens(codebase_context, "deep_documentation", "architect", "documentation"),
+            ["Repository indexing", "Documentation runs"],
+        )
+
+    if has_chat_memory:
+        add_concept(
+            "Persistent conversational context",
+            "The project stores chat or memory state in backend models, which lets assistant-style flows reuse earlier context instead of treating each interaction as isolated.",
+            "Changes to assistant behavior often involve both request handling and the persistence or retrieval layer that supplies context.",
+            _summary_path_with_tokens(codebase_context, "project_chat", "memory", "ChatMessage"),
+            ["Chat sessions", "Semantic retrieval"],
+        )
+
+    if database_schema and len(concepts) < 5:
+        add_concept(
+            "Backend data model",
+            f"Structured backend records are defined for entities such as {', '.join(sorted(table_names)[:4])}.",
+            "Those models tell you what the system persists for projects, work items, chat, and long-lived context, so they are the safest starting point before changing request payloads or workflows.",
+            str(database_sources[0] or "") if database_sources else _summary_path_with_tokens(codebase_context, "models", "data-model"),
+            ["Persistence", "API contracts"],
+        )
+
+    if api_reference and len(concepts) < 4:
+        groups = []
+        for item in api_reference:
+            group = str(item.get("group") or "").strip()
+            if group and group not in groups:
+                groups.append(group)
+        first_source = (api_reference[0].get("source") or {}) if isinstance(api_reference[0], dict) else {}
+        route_source = str(first_source.get("url_file") or first_source.get("view_file") or "") if isinstance(first_source, dict) else ""
+        add_concept(
+            "Routed API surface",
+            f"The backend exposes {len(api_reference)} routed API operations grouped into areas such as {', '.join(groups[:4]) or 'the detected route groups'}.",
+            "This is the fastest way to map URL shape to handler ownership before changing backend behavior or frontend fetch calls.",
+            route_source or _summary_path_with_tokens(codebase_context, "urls", "api"),
+            ["Request handling", "Backend services"],
+        )
+
+    if top_areas and len(concepts) < 4:
+        add_concept(
+            "Repository surface areas",
+            f"The repository is split across top-level areas such as {', '.join(top_areas[:4])}.",
+            "Reading the repo as distinct surfaces makes it much easier to find the right runtime, config, and ownership boundary before editing.",
+            _summary_path_with_tokens(codebase_context, "readme", "package", "config"),
+            ["Local development", "Code ownership"],
+        )
+
+    if not concepts:
+        for item in _codebase_summary_pool(codebase_context, limit=12):
+            path = str(item.get("path") or "")
+            purpose = str(item.get("purpose") or "").strip()
+            why = str(item.get("why") or "").strip()
+            if not path or not purpose or not why:
+                continue
+            concept_name = str(item.get("symbol") or PurePosixPath(path).stem.replace("_", " ").replace("-", " ").title()).strip()
+            add_concept(concept_name, purpose, why, path, [str(item.get("file_kind") or "source")])
+            if len(concepts) >= 4:
+                break
+
+    faq: list[dict] = []
+    install_commands = _setup_commands_by_kind(setup_steps, "install")
+    migrate_commands = _setup_commands_by_kind(setup_steps, "migrate")
+    runtime_commands = _setup_commands_by_kind(setup_steps, "runtime")
+    validate_commands = _setup_commands_by_kind(setup_steps, "validate")
+
+    if install_commands or runtime_commands:
+        run_parts: list[str] = []
+        if install_commands:
+            run_parts.append(f"install dependencies with {' and '.join(f'`{command}`' for command in install_commands[:2])}")
+        if migrate_commands:
+            run_parts.append(f"apply migrations with {' and '.join(f'`{command}`' for command in migrate_commands[:1])}")
+        if len(runtime_commands) > 1:
+            run_parts.append(
+                "run the main app processes in separate terminals using "
+                + " and ".join(f"`{command}`" for command in runtime_commands[:2])
+            )
+        elif runtime_commands:
+            run_parts.append(f"start the main runtime with `{runtime_commands[0]}`")
+        faq.append({
+            "question": "How do I run the project locally?",
+            "answer": "Start by " + ", then ".join(run_parts) + "." if run_parts else "Follow the setup steps captured from the repo manifests, env templates, and runtime entrypoints.",
+        })
+    if has_workspace_runtime:
+        faq.append({
+            "question": "How does project execution work?",
+            "answer": "The client-facing runtime features route through workspace or process-management APIs, while backend modules handle file access, process I/O, and runtime state changes.",
+        })
+    if has_blueprint_pipeline:
+        faq.append({
+            "question": "How are generated docs or repository references produced?",
+            "answer": "They are assembled from indexed repository context and generation logic, then merged into the stored project documentation state. If a section looks wrong, inspect extraction and enrichment before only changing display copy.",
+        })
+    if has_feature_pipeline:
+        faq.append({
+            "question": "How do tracked work items move through the system?",
+            "answer": "Work items flow through explicit pipeline or status transitions backed by routes and persisted records, so workflow behavior usually spans both API handlers and data models.",
+        })
+    if testing_strategy:
+        run_command = str(testing_strategy.get("run_command") or "").strip()
+        faq.append({
+            "question": "How should I validate changes before merging?",
+            "answer": f"{testing_strategy.get('unit') or 'Review the detected test layout.'} Use `{run_command}` as the primary validation command." if run_command else str(testing_strategy.get("unit") or "Review the detected test layout before merging."),
+        })
+    if api_reference:
+        source_files = []
+        for item in api_reference[:6]:
+            source = item.get("source") or {}
+            if isinstance(source, dict):
+                for key in ("url_file", "view_file"):
+                    value = str(source.get(key) or "").strip()
+                    if value and value not in source_files:
+                        source_files.append(value)
+        faq.append({
+            "question": "Where are the API routes and handlers defined?",
+            "answer": f"Start with the routed API catalog and the source files behind it, such as {_format_path_list(source_files, max_paths=2)}. The URL wiring tells you which backend module actually owns each endpoint.",
+        })
+    elif database_schema:
+        faq.append({
+            "question": "Where are the main data models defined?",
+            "answer": f"The structured backend schema currently comes from {_format_path_list([str(path) for path in database_sources], max_paths=2) or 'the detected model files'}. Start there before changing API payloads or persistence behavior.",
+        })
+
+    gotchas: list[str] = list(setup_guidance.get("gotchas") or [])
+    if len(runtime_commands) > 1:
+        gotchas.append("Full local development usually requires more than one long-running process, so backend and frontend changes may not appear until both runtimes are up.")
+    if quality_guidance.get("security_considerations"):
+        public_route_note = next(
+            (
+                item for item in quality_guidance.get("security_considerations") or []
+                if "auth" in str(item.get("area") or "").lower() or "route" in str(item.get("area") or "").lower()
+            ),
+            None,
+        )
+        if public_route_note:
+            gotchas.append("Several mutating backend routes do not advertise explicit auth decorators, so do not assume the local API surface is hardened for untrusted exposure.")
+    if quality_guidance.get("performance_notes"):
+        scale_note = next(
+            (
+                item for item in quality_guidance.get("performance_notes") or []
+                if "channel layer" in str(item.get("area") or "").lower() or "polling" in str(item.get("area") or "").lower()
+            ),
+            None,
+        )
+        if scale_note:
+            gotchas.append("Realtime or terminal streaming behavior is tuned for local, single-process development first, so scale assumptions can break before the UI makes that obvious.")
+    if testing_strategy and "no dedicated browser-level" in str(testing_strategy.get("e2e") or "").lower():
+        gotchas.append("No dedicated browser-level or end-to-end suite was detected, so UI regressions may still rely on manual verification.")
+
+    return {
+        "key_concepts": _dedupe_json_items(concepts)[:6],
+        "faq": _dedupe_json_items(faq)[:6],
+        "gotchas": _filter_design_doc_strings(_dedupe_similar_strings(_dedupe_json_items(gotchas)[:8])[:5]),
+    }
+
+
+def _testing_strategy_lines_for_design_doc(project: Project, blueprint: dict, codebase_context: dict) -> list[str]:
+    strategy = blueprint.get("testing_strategy")
+    strategy = strategy if isinstance(strategy, dict) else {}
+    derived = _derive_testing_strategy(project, codebase_context)
+    merged = dict(derived)
+    merged.update({key: value for key, value in strategy.items() if value})
+
+    def cleaned(value) -> str:
+        text = str(value or "").strip()
+        if not text or _looks_like_design_doc_template(text):
+            return ""
+        return text
+
+    lines: list[str] = []
+    unit = cleaned(merged.get("unit"))
+    integration = cleaned(merged.get("integration"))
+    e2e = cleaned(merged.get("e2e"))
+    run_command = cleaned(merged.get("run_command"))
+    if unit:
+        lines.append(f"- Unit: {unit}")
+    if integration:
+        lines.append(f"- Integration: {integration}")
+    if e2e:
+        lines.append(f"- E2E: {e2e}")
+    if run_command:
+        lines.append(f"- Run command: `{run_command}`")
+    if not lines:
+        lines.append("- No evidence-backed testing strategy was detected from the indexed repository yet.")
+    return lines
+
+
 def _derive_repo_guidance(project: Project, codebase_context: dict) -> dict:
     workspace_path = _project_workspace_path(project)
     if not workspace_path:
         return {
             "setup_steps": [],
+            "environment_variables": [],
             "onboarding_checklist": [],
             "gotchas": [],
         }
 
     readme_text = _read_workspace_excerpt(workspace_path, "README.md", "readme.md")
     contributing_text = _read_workspace_excerpt(workspace_path, "CONTRIBUTING.md", "contributing.md")
-    vision_text = _read_workspace_excerpt(workspace_path, "VISION.md", "vision.md", limit=6000)
-    agents_text = _read_workspace_excerpt(workspace_path, "AGENTS.md", "agents.md", limit=6000)
     security_text = _read_workspace_excerpt(workspace_path, "SECURITY.md", "security.md", limit=6000)
-    env_text = _read_workspace_excerpt(workspace_path, ".env.example", ".env.sample", ".env.template", limit=10000)
-
-    package_data = _load_workspace_package_json(workspace_path)
-    scripts = package_data.get("scripts") if isinstance(package_data.get("scripts"), dict) else {}
-    package_manager = _detect_workspace_package_manager(workspace_path, package_data)
-    command_evidence = _extract_shell_commands("\n".join([readme_text, contributing_text, agents_text, vision_text]))
+    command_evidence = _extract_shell_commands("\n".join([readme_text, contributing_text, security_text]))
     top_areas = _top_repository_areas(codebase_context)
+    env_template_paths = _env_template_paths(workspace_path, codebase_context)
+    environment_variables = _derive_environment_variables(workspace_path, codebase_context)
+    package_manifests = _workspace_package_manifests(workspace_path, codebase_context)
+    python_roots = _workspace_python_roots(workspace_path, codebase_context)
+    testing_strategy = _derive_testing_strategy(project, codebase_context)
+    setup_steps: list[dict] = []
 
-    install_command = ""
-    if package_data:
+    if env_template_paths:
+        copy_commands = []
+        for rel_path in env_template_paths[:3]:
+            rel_dir = _normalize_rel_dir(PurePosixPath(rel_path).parent.as_posix())
+            file_name = PurePosixPath(rel_path).name
+            copy_commands.append(_prefix_command_for_dir(rel_dir, f"cp {file_name} .env"))
+        setup_steps.append({
+            "kind": "config",
+            "step": "Create local environment files",
+            "command": "\n".join(_dedupe_json_items(copy_commands)),
+            "explanation": "The repo declares environment templates that should be copied or mirrored into local `.env` files before you start the runtime.",
+            "os_note": "If `cp` is unavailable in your shell, use the platform equivalent copy command instead.",
+        })
+    elif environment_variables:
+        setup_steps.append({
+            "kind": "config",
+            "step": "Review runtime configuration inputs",
+            "command": "",
+            "explanation": "No checked-in env template was detected, but the codebase references environment-driven configuration that should be reviewed before first run.",
+            "os_note": "Use the detected environment variables and config files to decide which local values need to be supplied.",
+        })
+
+    for root in python_roots[:4]:
+        rel_dir = str(root.get("rel_dir") or "")
+        area = f"`{rel_dir}/`" if rel_dir else "the project root"
+        if root.get("requirements"):
+            setup_steps.append({
+                "kind": "install",
+                "step": f"Install Python dependencies for {area}",
+                "command": _prefix_command_for_dir(rel_dir, f"python -m pip install -r {PurePosixPath(str(root.get('requirements'))).name}"),
+                "explanation": "This repository section has an explicit Python requirements file that defines its runtime dependencies.",
+                "os_note": "",
+            })
+        elif root.get("pyproject"):
+            setup_steps.append({
+                "kind": "install",
+                "step": f"Install Python package metadata for {area}",
+                "command": _prefix_command_for_dir(rel_dir, "python -m pip install -e ."),
+                "explanation": "The Python project metadata is managed through `pyproject.toml`, so an editable install keeps local code and the environment aligned.",
+                "os_note": "",
+            })
+        if root.get("manage_py") and str(root.get("framework") or "").lower() == "django":
+            setup_steps.append({
+                "kind": "migrate",
+                "step": f"Apply Django migrations for {area}",
+                "command": _prefix_command_for_dir(rel_dir, "python manage.py migrate"),
+                "explanation": "A Django `manage.py` entrypoint was detected here, so migrations are part of the normal local boot sequence.",
+                "os_note": "",
+            })
+
+    root_workspace_manifest = next((item for item in package_manifests if not item.get("rel_dir") and item.get("workspaces")), None)
+    for manifest in package_manifests[:6]:
+        rel_dir = str(manifest.get("rel_dir") or "")
+        if root_workspace_manifest and rel_dir and manifest.get("path") != root_workspace_manifest.get("path"):
+            continue
+        package_manager = str(manifest.get("package_manager") or "npm")
         install_command = {
             "pnpm": "pnpm install",
             "yarn": "yarn install",
             "bun": "bun install",
             "npm": "npm install",
         }.get(package_manager, "npm install")
-    elif (workspace_path / "requirements.txt").exists():
-        install_command = "python -m pip install -r requirements.txt"
-    elif (workspace_path / "pyproject.toml").exists():
-        install_command = "python -m pip install -e ."
-    elif (workspace_path / "Cargo.toml").exists():
-        install_command = "cargo build"
+        area = f"`{rel_dir}/`" if rel_dir else "the project root"
+        setup_steps.append({
+            "kind": "install",
+            "step": f"Install Node dependencies for {area}",
+            "command": _prefix_command_for_dir(rel_dir, install_command),
+            "explanation": "A package manifest was detected for this repo surface, so install the declared dependencies before running scripts from it.",
+            "os_note": "",
+        })
 
-    build_command = ""
-    if scripts.get("ui:build") and scripts.get("build"):
-        build_command = f"{_run_script_command(package_manager, 'ui:build')} && {_run_script_command(package_manager, 'build')}"
-    elif scripts.get("build"):
-        build_command = _run_script_command(package_manager, "build")
-    elif scripts.get("compile"):
-        build_command = _run_script_command(package_manager, "compile")
+    dev_steps: list[dict] = []
+    for root in python_roots[:4]:
+        rel_dir = str(root.get("rel_dir") or "")
+        area = f"`{rel_dir}/`" if rel_dir else "the project root"
+        if root.get("manage_py") and str(root.get("framework") or "").lower() == "django":
+            dev_steps.append({
+                "kind": "runtime",
+                "step": f"Start the Django runtime for {area}",
+                "command": _prefix_command_for_dir(rel_dir, "python manage.py runserver"),
+                "explanation": "The detected Python entrypoint is a Django management command, so `runserver` is the local application runtime.",
+                "os_note": "",
+            })
 
-    onboarding_command = _pick_command(command_evidence, "onboard")
-    if not onboarding_command and scripts.get("onboard"):
-        onboarding_command = _run_script_command(package_manager, "onboard")
-
-    dev_command = ""
-    for key in ("gateway:watch", "gateway:dev", "dev", "start", "ui:dev"):
-        if scripts.get(key):
-            dev_command = _run_script_command(package_manager, key)
-            break
-    if not dev_command:
-        dev_command = _pick_command(command_evidence, "watch") or _pick_command(command_evidence, "dev")
-
-    contributor_command = _pick_command(command_evidence, "check", "test")
-    if not contributor_command and package_data:
-        segments = []
-        for key in ("build", "check", "test"):
+    for manifest in package_manifests[:6]:
+        scripts = manifest.get("scripts") if isinstance(manifest.get("scripts"), dict) else {}
+        package_manager = str(manifest.get("package_manager") or "npm")
+        rel_dir = str(manifest.get("rel_dir") or "")
+        area = f"`{rel_dir}/`" if rel_dir else "the project root"
+        chosen_script = ""
+        for key in ("dev", "start", "serve", "preview", "watch"):
             if scripts.get(key):
-                segments.append(_run_script_command(package_manager, key))
-        contributor_command = " && ".join(segments[:3])
+                chosen_script = key
+                break
+        if not chosen_script:
+            for key in ("build", "compile"):
+                if scripts.get(key):
+                    chosen_script = key
+                    break
+        if chosen_script:
+            dev_steps.append({
+                "kind": "runtime",
+                "step": f"Run the main package script for {area}",
+                "command": _prefix_command_for_dir(rel_dir, _run_script_command(package_manager, chosen_script)),
+                "explanation": "This command comes from the detected package manifest scripts and is the best evidence-backed entrypoint for that repo surface.",
+                "os_note": "",
+            })
 
-    node_engine = ""
-    engines = package_data.get("engines")
-    if isinstance(engines, dict):
-        node_engine = str(engines.get("node") or "").strip()
+    if not setup_steps and command_evidence:
+        install_command = _pick_command(command_evidence, "install") or _pick_command(command_evidence, "setup")
+        if install_command:
+            setup_steps.append({
+                "kind": "install",
+                "step": "Install dependencies",
+                "command": install_command,
+                "explanation": "This command was extracted directly from the repository documentation or setup notes.",
+                "os_note": "",
+            })
+    if not dev_steps and command_evidence:
+        dev_command = _pick_command(command_evidence, "dev") or _pick_command(command_evidence, "start") or _pick_command(command_evidence, "run")
+        if dev_command:
+            dev_steps.append({
+                "kind": "runtime",
+                "step": "Start the local runtime",
+                "command": dev_command,
+                "explanation": "This command was extracted directly from the repository documentation or onboarding notes.",
+                "os_note": "",
+            })
 
-    node_note = ""
-    if node_engine:
-        node_note = f"package.json requires Node {node_engine}."
-    if "node 24" in readme_text.lower():
-        node_note = f"{node_note} README recommends Node 24 for local development.".strip()
-
-    windows_note = ""
-    readme_lower = readme_text.lower()
-    if "wsl2" in readme_lower:
-        windows_note = "README recommends WSL2 for Windows setup."
-
-    setup_steps = []
-    if install_command:
-        setup_steps.append({
-            "step": "Install workspace dependencies",
-            "command": install_command,
-            "explanation": "Install from the repository root so the detected workspace config and scripts stay in sync.",
-            "os_note": " ".join(part for part in [node_note, windows_note] if part).strip(),
-        })
-    if env_text:
-        env_note = "PowerShell: Copy-Item .env.example .env."
-        if "~/.openclaw/.env" in env_text:
-            env_note = f"{env_note} Daemon installs can also read ~/.openclaw/.env."
-        setup_steps.append({
-            "step": "Create a local env file",
-            "command": "cp .env.example .env",
-            "explanation": "The repo ships a root env example with gateway auth, model provider keys, and channel config.",
-            "os_note": env_note,
-        })
-    if build_command:
-        setup_steps.append({
-            "step": "Build source artifacts",
-            "command": build_command,
-            "explanation": "Use the source build path documented in the repository before running the app locally.",
-            "os_note": "Run from the repo root.",
-        })
-    if onboarding_command:
-        setup_steps.append({
-            "step": "Run the recommended onboarding flow",
-            "command": onboarding_command,
-            "explanation": "The README recommends this as the supported first-run path for configuring the gateway, workspace, and channels.",
-            "os_note": windows_note,
-        })
-    if dev_command:
-        setup_steps.append({
-            "step": "Start the main development loop",
-            "command": dev_command,
-            "explanation": "Use the repo's preferred watch/dev command rather than guessing at the runtime entrypoint.",
-            "os_note": "",
-        })
-    if contributor_command:
-        setup_steps.append({
-            "step": "Run contributor checks before a PR",
-            "command": contributor_command,
-            "explanation": "The contribution guide expects the build, checks, and tests to pass before review.",
-            "os_note": "",
-        })
+    setup_steps.extend(dev_steps[:4])
 
     docs_to_read = []
     for filename in ("README.md", "CONTRIBUTING.md", "VISION.md", "AGENTS.md", "SECURITY.md"):
         if (workspace_path / filename).exists():
             docs_to_read.append(filename)
+    for item in _public_instruction_files(codebase_context):
+        path = str(item.get("path") or "").replace("\\", "/").strip()
+        if path and path not in docs_to_read:
+            docs_to_read.append(path)
 
-    onboarding_checklist = []
+    onboarding_checklist: list[dict] = []
     if docs_to_read:
         onboarding_checklist.append({
             "task": "Read the root project docs first",
             "category": "codebase",
             "estimated_time": "15 min",
-            "why_important": "This repo has explicit setup, product, and contribution guidance in top-level docs.",
+            "why_important": "Top-level docs and instruction files usually explain product context, contribution rules, and setup order faster than reading source files cold.",
             "instructions": f"Start with {', '.join(docs_to_read[:4])}.",
         })
     if top_areas:
@@ -4185,79 +6380,89 @@ def _derive_repo_guidance(project: Project, codebase_context: dict) -> dict:
             "task": "Map the major repo areas",
             "category": "codebase",
             "estimated_time": "10 min",
-            "why_important": "The imported project spans multiple top-level surfaces, so it helps to know the ownership boundaries before editing.",
+            "why_important": "The indexed repository spans multiple top-level surfaces, so it helps to understand the boundaries before choosing where to edit.",
             "instructions": f"Begin with {', '.join(top_areas[:5])} and then open the repo map for file-level detail.",
         })
-    if env_text or security_text:
+    if environment_variables or security_text:
         onboarding_checklist.append({
             "task": "Review environment and security defaults",
             "category": "environment",
             "estimated_time": "10 min",
-            "why_important": "This repo uses real credentials, channels, or runtime services, so the default auth and env behavior matters before first run.",
-            "instructions": "Read .env.example and SECURITY.md before enabling external integrations or remote access.",
+            "why_important": "The repo declares environment-driven configuration and may include local-only security defaults that should be understood before first run.",
+            "instructions": "Compare the detected env templates with SECURITY.md or settings files before enabling external integrations or remote access.",
         })
-    if dev_command or build_command:
-        instructions_parts = []
-        if install_command:
-            instructions_parts.append(f"`{install_command}`")
-        if build_command:
-            instructions_parts.append(f"`{build_command}`")
-        if dev_command:
-            instructions_parts.append(f"`{dev_command}`")
+    if setup_steps:
+        instructions_parts = [
+            f"`{command}`"
+            for command in (
+                _setup_commands_by_kind(setup_steps, "install")[:2]
+                + _setup_commands_by_kind(setup_steps, "migrate")[:1]
+                + _setup_commands_by_kind(setup_steps, "runtime")[:2]
+            )
+            if command
+        ]
         onboarding_checklist.append({
             "task": "Use the documented source workflow",
             "category": "tools",
             "estimated_time": "15 min",
-            "why_important": "The repo already defines a preferred build/watch flow; using it avoids chasing the wrong entrypoint.",
+            "why_important": "Following the detected setup sequence keeps local installs, migrations, and runtime entrypoints aligned with the repo's actual manifests and scripts.",
             "instructions": "Follow this order: " + " then ".join(instructions_parts) if instructions_parts else "Use the documented source workflow from the README.",
+        })
+    if testing_strategy:
+        run_command = str(testing_strategy.get("run_command") or "").strip()
+        onboarding_checklist.append({
+            "task": "Learn the validation command early",
+            "category": "processes",
+            "estimated_time": "10 min",
+            "why_important": "Knowing the test or validation entrypoint up front makes it easier to work in smaller safe changes.",
+            "instructions": f"Use `{run_command}` before opening a PR." if run_command else str(testing_strategy.get("unit") or "Review the detected test layout before opening a PR."),
         })
     if contributing_text:
         onboarding_checklist.append({
             "task": "Follow the contributor rules before opening a PR",
             "category": "processes",
             "estimated_time": "10 min",
-            "why_important": "The contribution guide has explicit expectations around PR scope, testing, and review follow-through.",
-            "instructions": "Check CONTRIBUTING.md for review expectations, screenshot requirements, and the no refactor-only / no test-only known-main-failure rules.",
+            "why_important": "The contribution guide usually captures repo-specific expectations around testing, review, and change scope.",
+            "instructions": "Check CONTRIBUTING.md for the review and validation expectations before shipping changes.",
         })
 
-    gotchas = []
-    if package_manager == "pnpm" and ((workspace_path / "pnpm-workspace.yaml").exists() or package_data.get("workspaces")):
-        gotchas.append("Use `pnpm` from the repo root. The workspace layout is managed as a monorepo, so ad-hoc per-folder installs can leave the tree in a partial state.")
-    if "wsl2" in readme_lower:
-        gotchas.append("Windows support is documented as WSL2-first for the recommended onboarding path, so native Windows runs may not match the main setup guide.")
-    if "auto-installs ui deps on first run" in readme_lower:
-        gotchas.append("`ui:build` also installs UI dependencies on first run, so the first build can take longer and do more work than the command name suggests.")
-    if "runs typescript directly" in readme_lower or "via `tsx`" in readme_text.lower():
-        gotchas.append("The source workflow can run TypeScript directly via `tsx`, while the normal build emits `dist/`. Use the source-mode commands when you want live development behavior.")
-    if "untrusted input" in readme_lower or "pairing" in readme_lower:
-        gotchas.append("This project connects to real messaging channels. Review pairing and auth defaults before exposing the gateway or enabling inbound channels.")
-    if "env-source precedence" in env_text.lower():
-        gotchas.append("Env loading is layered: process env, local `.env`, `~/.openclaw/.env`, then config `env` values. Unexpected behavior can come from a higher-precedence source.")
-
-    def _dedupe(items: list) -> list:
-        deduped = []
-        seen = set()
-        for item in items:
-            key = json.dumps(item, sort_keys=True) if isinstance(item, dict) else str(item)
-            if key in seen:
-                continue
-            seen.add(key)
-            deduped.append(item)
-        return deduped
+    gotchas: list[str] = []
+    if root_workspace_manifest:
+        gotchas.append("The repository appears to use a workspace-aware package manager at the root, so running isolated installs inside child packages can leave the dependency graph out of sync.")
+    if len(env_template_paths) > 1:
+        gotchas.append(f"Configuration is split across multiple env templates: {_format_path_list(env_template_paths, max_paths=3)}.")
+    if python_roots and package_manifests:
+        gotchas.append("This repository mixes Python and Node-based surfaces, so setup and validation span more than one toolchain.")
+    if len(dev_steps) > 1:
+        gotchas.append("Local development appears to require multiple long-running commands or services, so one terminal session may not be enough for the full stack.")
+    if "wsl2" in readme_text.lower():
+        gotchas.append("The README references WSL2 for Windows setup, so native Windows commands may not exactly match the documented path.")
 
     return {
-        "setup_steps": _dedupe(setup_steps)[:6],
-        "onboarding_checklist": _dedupe(onboarding_checklist)[:6],
-        "gotchas": _dedupe(gotchas)[:6],
+        "setup_steps": _dedupe_json_items(setup_steps)[:8],
+        "environment_variables": _dedupe_json_items(environment_variables)[:10],
+        "onboarding_checklist": _dedupe_json_items(onboarding_checklist)[:6],
+        "gotchas": _filter_design_doc_strings(_dedupe_similar_strings(_dedupe_json_items(gotchas)[:8])[:6]),
     }
 
 
 def _merge_repo_guidance_into_blueprint(project: Project, blueprint: dict, codebase_context: dict) -> dict:
     blueprint = dict(blueprint or {})
-    derived = _derive_repo_guidance(project, codebase_context)
-    for field in ("setup_steps", "onboarding_checklist", "gotchas"):
-        if derived.get(field) and _guidance_field_needs_refresh(blueprint.get(field), field):
-            blueprint[field] = derived[field]
+    setup_guidance = _derive_repo_guidance(project, codebase_context)
+    quality_guidance = _derive_quality_guidance(project, codebase_context)
+    knowledge_guidance = _derive_knowledge_guidance(project, codebase_context, setup_guidance, quality_guidance)
+
+    for field in ("setup_steps", "environment_variables", "onboarding_checklist"):
+        if setup_guidance.get(field):
+            blueprint[field] = setup_guidance[field]
+
+    for field in ("security_considerations", "performance_notes", "testing_strategy", "code_quality_standards"):
+        if quality_guidance.get(field):
+            blueprint[field] = quality_guidance[field]
+
+    for field in ("key_concepts", "faq", "gotchas"):
+        if knowledge_guidance.get(field):
+            blueprint[field] = knowledge_guidance[field]
     return blueprint
 
 
@@ -4270,14 +6475,14 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
     key_components = _blueprint_list(blueprint.get('key_components'))
     directories = _blueprint_list(blueprint.get('directory_guide'))
     workflows = _blueprint_list(blueprint.get('common_workflows'))
-    setup_steps = _blueprint_list(blueprint.get('setup_steps'))
-    env_vars = _blueprint_list(blueprint.get('environment_variables'))
-    security = _blueprint_list(blueprint.get('security_considerations'))
-    performance = _blueprint_list(blueprint.get('performance_notes'))
-    integrations = _blueprint_list(blueprint.get('integration_points'))
-    onboarding = _blueprint_list(blueprint.get('onboarding_checklist'))
-    concepts = _blueprint_list(blueprint.get('key_concepts'))
-    gotchas = _blueprint_list(blueprint.get('gotchas'))
+    setup_steps = _filter_design_doc_dict_items(_blueprint_list(blueprint.get('setup_steps')), ('step', 'command', 'explanation', 'os_note'))
+    env_vars = _filter_design_doc_dict_items(_blueprint_list(blueprint.get('environment_variables')), ('name', 'description', 'default', 'example', 'category'))
+    security = _filter_design_doc_dict_items(_blueprint_list(blueprint.get('security_considerations')), ('area', 'description', 'severity'))
+    performance = _filter_design_doc_dict_items(_blueprint_list(blueprint.get('performance_notes')), ('area', 'description', 'impact'))
+    integrations = _filter_design_doc_dict_items(_blueprint_list(blueprint.get('integration_points')), ('name', 'type', 'description', 'evidence'))
+    onboarding = _filter_design_doc_dict_items(_blueprint_list(blueprint.get('onboarding_checklist')), ('task', 'instructions', 'why_important', 'category'))
+    concepts = _filter_design_doc_dict_items(_blueprint_list(blueprint.get('key_concepts')), ('concept', 'explanation', 'why_important', 'why_it_matters'))
+    gotchas = _filter_design_doc_strings(_blueprint_list(blueprint.get('gotchas')))
     feature_inventory = _blueprint_list(blueprint.get('feature_inventory'))
     tech_stack_details = _blueprint_list(blueprint.get('tech_stack_details'))
     change_guide = _blueprint_list(blueprint.get('change_guide'))
@@ -4285,6 +6490,7 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
     pipeline = blueprint.get('sdlc_pipeline') or {}
     routes = _blueprint_list(codebase_context.get('routes'))
     data_models = _blueprint_list(codebase_context.get('data_models'))
+    testing_strategy_lines = _testing_strategy_lines_for_design_doc(project, blueprint, codebase_context)
 
     sections = []
 
@@ -4503,10 +6709,7 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
             ),
             '',
             'Testing strategy:',
-            f"- Unit: {_blueprint_text((blueprint.get('testing_strategy') or {}).get('unit'))}",
-            f"- Integration: {_blueprint_text((blueprint.get('testing_strategy') or {}).get('integration'))}",
-            f"- E2E: {_blueprint_text((blueprint.get('testing_strategy') or {}).get('e2e'))}",
-            f"- Run command: {_blueprint_text((blueprint.get('testing_strategy') or {}).get('run_command'))}",
+            *testing_strategy_lines,
         ],
     })
 
@@ -4610,6 +6813,18 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
 
 def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_context: dict, feature_summary: str) -> dict:
     blueprint = dict(blueprint or {})
+    workspace_path = Path(project.local_path) if project.local_path else None
+    if codebase_context.get('api_reference'):
+        blueprint['api_endpoints'] = _blueprint_list(codebase_context.get('api_reference'))
+    if codebase_context.get('database_schema'):
+        blueprint['database_schema'] = _blueprint_list(codebase_context.get('database_schema'))
+    if codebase_context.get('database_mermaid_erd'):
+        blueprint['mermaid_erd'] = str(codebase_context.get('database_mermaid_erd') or '')
+    evidence_sequence_flows, evidence_common_workflows = _build_evidence_backed_workflows(workspace_path)
+    if evidence_sequence_flows:
+        blueprint['sequence_flows'] = evidence_sequence_flows
+    if evidence_common_workflows:
+        blueprint['common_workflows'] = evidence_common_workflows
     blueprint['mermaid_architecture'] = _normalize_mermaid_chart(blueprint.get('mermaid_architecture', ''), 'graph')
     blueprint['mermaid_service_dependencies'] = _normalize_mermaid_chart(blueprint.get('mermaid_service_dependencies', ''), 'graph')
     blueprint['mermaid_erd'] = _normalize_mermaid_chart(blueprint.get('mermaid_erd', ''), 'erd')
@@ -4628,7 +6843,7 @@ def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_conte
     blueprint['repo_tree'] = str(codebase_context.get('repo_tree') or '')
     blueprint['repo_tree_nodes'] = _blueprint_list(codebase_context.get('repo_tree_nodes'))
     blueprint['readme_excerpt'] = str(codebase_context.get('readme_excerpt') or '')[:4000]
-    blueprint['instruction_files'] = _blueprint_list(codebase_context.get('instruction_files'))
+    blueprint['instruction_files'] = _blueprint_list(_public_instruction_files(codebase_context))
     blueprint['file_structure_visualizer'] = _build_file_structure_visualizer(codebase_context)
     blueprint['change_guide'] = _build_change_guide(codebase_context)
     live_features = _project_features_payload(project)
@@ -4640,21 +6855,17 @@ def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_conte
     }]
     blueprint['sdlc_pipeline'] = _live_pipeline_document(project, live_features)
     blueprint = _merge_repo_guidance_into_blueprint(project, blueprint, codebase_context)
-    ai_design_document = blueprint.get('design_document_markdown')
-    ai_design_sections = blueprint.get('design_document_sections')
-    ai_markdown_ok = isinstance(ai_design_document, str) and len(ai_design_document.strip()) >= 6000
-    ai_sections_ok = isinstance(ai_design_sections, list) and len(ai_design_sections) >= 8
-    if not ai_markdown_ok or not ai_sections_ok:
-        design_document_markdown, design_document_sections = _render_blueprint_design_document(project, blueprint, codebase_context, feature_summary)
-        blueprint['design_document_markdown'] = design_document_markdown
-        blueprint['design_document_sections'] = [
-            {
-                'id': section.get('id'),
-                'title': section.get('title'),
-                'markdown': '\n'.join(section.get('body') or []).strip(),
-            }
-            for section in design_document_sections
-        ]
+    blueprint.update(_build_blueprint_overview_insights(project, blueprint, codebase_context, live_features))
+    design_document_markdown, design_document_sections = _render_blueprint_design_document(project, blueprint, codebase_context, feature_summary)
+    blueprint['design_document_markdown'] = design_document_markdown
+    blueprint['design_document_sections'] = [
+        {
+            'id': section.get('id'),
+            'title': section.get('title'),
+            'markdown': '\n'.join(section.get('body') or []).strip(),
+        }
+        for section in design_document_sections
+    ]
     return blueprint
 
 
@@ -4730,7 +6941,7 @@ Cached Codebase Context:
 {codebase_summary[:5000]}
 """
 
-    if not os.environ.get('OPENAI_API_KEY'):
+    if not ai_config_is_usable(_project_ai_config(project)):
         return _fallback_plan(selected_file, file_inventory, request_text)
 
     try:
@@ -5088,7 +7299,7 @@ def _review_attempt(project: Project, workspace_path: Path, previous_contents: d
             'issues': [],
         }
 
-    if not os.environ.get('OPENAI_API_KEY'):
+    if not ai_config_is_usable(_project_ai_config(project)):
         issues = []
         for result in validation_results:
             if not result.get('success'):
@@ -5156,7 +7367,7 @@ def generate_blueprint_sync(project: Project):
                 logger.exception("Blueprint context build failed for project %s", project.id)
                 codebase_context = {}
 
-        if os.environ.get("OPENAI_API_KEY") and codebase_context:
+        if ai_config_is_usable(_project_ai_config(project)) and codebase_context:
             try:
                 explorer = CodebaseExplorerAgent(ai_config=_project_ai_config(project))
                 exploration_report = explorer.explore_codebase(
@@ -5198,7 +7409,7 @@ def generate_blueprint_sync(project: Project):
         project.save()
     except Exception as exc:
         fallback_blueprint = {
-            "architecture_overview": f"Blueprint generation failed: {str(exc)}. Set your OPENAI_API_KEY environment variable.",
+            "architecture_overview": f"Blueprint generation failed: {str(exc)}. Check the configured DevHub AI provider settings.",
             "tech_stack_details": [{"tech": t, "purpose": "Core technology"} for t in (project.tech_stack or [])],
             "services": [],
             "setup_steps": [],
@@ -5215,6 +7426,56 @@ def generate_blueprint_sync(project: Project):
             logger.exception("Blueprint fallback enrichment failed for project %s", project.id)
         project.blueprint = fallback_blueprint
         project.save()
+
+
+def _generate_blueprint_for_project_id(project_id: str) -> None:
+    close_old_connections()
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        return
+    except OperationalError:
+        logger.warning("Skipped background blueprint generation for project %s because the database was busy.", project_id)
+        return
+    try:
+        generate_blueprint_sync(project)
+    except Exception:
+        logger.exception("Background blueprint generation failed for project %s", project_id)
+    finally:
+        close_old_connections()
+
+
+def _generate_documentation_for_project_id(project_id: str) -> None:
+    close_old_connections()
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        return
+    except OperationalError:
+        logger.warning("Skipped background documentation generation for project %s because the database was busy.", project_id)
+        return
+    try:
+        generate_codebase_reference_sync(project)
+    except Exception:
+        logger.exception("Background documentation generation failed for project %s", project_id)
+    finally:
+        close_old_connections()
+
+
+def _schedule_project_context_generation(project: Project, *, include_documentation: bool = False) -> None:
+    blueprint_thread = threading.Thread(target=_generate_blueprint_for_project_id, args=(str(project.id),))
+    blueprint_thread.daemon = True
+    blueprint_thread.start()
+
+    if not include_documentation:
+        return
+
+    if DocumentationRun.objects.filter(project=project, status__in=['pending', 'running']).exists():
+        return
+
+    documentation_thread = threading.Thread(target=_generate_documentation_for_project_id, args=(str(project.id),))
+    documentation_thread.daemon = True
+    documentation_thread.start()
 
 
 def generate_feature_spec_sync(feature: Feature, project: Project):
@@ -5432,7 +7693,7 @@ Semantic Memory:
         {'latest_request': request_title, 'files': all_applied_files},
     )
 
-    if os.environ.get('OPENAI_API_KEY'):
+    if ai_config_is_usable(_project_ai_config(project)):
         refresh_thread = threading.Thread(target=generate_blueprint_sync, args=(project,))
         refresh_thread.daemon = True
         refresh_thread.start()
@@ -5556,6 +7817,7 @@ CHAT_SPECIAL_CONTEXTS = {
     'conversation': 'Recent chat history in this project',
     'terminal': 'Runtime status and detected commands',
 }
+LEGACY_CHAT_SESSION_ID = "legacy-project-chat"
 
 
 def _chat_workspace_path(project: Project) -> Path | None:
@@ -5618,6 +7880,75 @@ def _dedupe_chat_mentions(*groups: list[dict]) -> list[dict]:
     return merged
 
 
+def _chat_session_id_from_metadata(metadata) -> str:
+    if isinstance(metadata, dict):
+        session_id = str(metadata.get('session_id') or '').strip()
+        if session_id:
+            return session_id
+    return LEGACY_CHAT_SESSION_ID
+
+
+def _chat_message_session_id(message) -> str:
+    if isinstance(message, dict):
+        return _chat_session_id_from_metadata(message.get('metadata') or {})
+    return _chat_session_id_from_metadata(getattr(message, 'metadata', {}) or {})
+
+
+def _chat_session_title(messages: list[dict], session_id: str) -> str:
+    for item in messages:
+        if str(item.get('role') or '') != 'user':
+            continue
+        content = str(item.get('content') or '').strip()
+        if not content:
+            continue
+        first_line = content.splitlines()[0].strip()
+        if not first_line:
+            continue
+        return first_line if len(first_line) <= 72 else f"{first_line[:69]}..."
+    return 'Previous chat' if session_id == LEGACY_CHAT_SESSION_ID else 'New chat'
+
+
+def _serialize_chat_message(item: dict) -> dict:
+    metadata = dict(item.get('metadata') or {})
+    return {
+        'id': item.get('id'),
+        'role': item.get('role'),
+        'content': item.get('content'),
+        'metadata': metadata,
+        'created_at': item.get('created_at'),
+        'session_id': _chat_session_id_from_metadata(metadata),
+    }
+
+
+def _project_chat_messages(project: Project) -> list[dict]:
+    return list(
+        ChatMessage.objects.filter(project=project)
+        .order_by('created_at', 'id')
+        .values('id', 'role', 'content', 'metadata', 'created_at')
+    )
+
+
+def _group_project_chat_sessions(project: Project) -> tuple[dict[str, list[dict]], list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for item in _project_chat_messages(project):
+        grouped.setdefault(_chat_message_session_id(item), []).append(item)
+
+    sessions = []
+    for session_id, messages in grouped.items():
+        latest = messages[-1]
+        sessions.append(
+            {
+                'session_id': session_id,
+                'title': _chat_session_title(messages, session_id),
+                'updated_at': latest.get('created_at'),
+                'message_count': len(messages),
+                'legacy': session_id == LEGACY_CHAT_SESSION_ID,
+            }
+        )
+    sessions.sort(key=lambda item: item.get('updated_at') or timezone.now(), reverse=True)
+    return grouped, sessions
+
+
 def _safe_read_workspace_file(workspace_path: Path, rel_path: str, limit: int = 5000) -> str:
     normalized = str(rel_path or '').replace('\\', '/').strip('/')
     if not normalized:
@@ -5658,12 +7989,45 @@ def _folder_context_block(codebase_context: dict, folder_path: str) -> tuple[str
     return "\n".join(lines), evidence
 
 
+def _lazy_chat_file_context(workspace_path: Path | None, rel_path: str, codebase_context: dict | None = None, limit: int = 5000) -> tuple[str, dict | None]:
+    if not workspace_path or not rel_path:
+        return "", None
+    try:
+        target_path = (workspace_path / rel_path).resolve()
+        if workspace_path.resolve() not in target_path.parents and target_path != workspace_path.resolve():
+            return "", None
+        if not target_path.exists() or not target_path.is_file():
+            return "", None
+    except Exception:
+        return "", None
+
+    normalized = str(rel_path).replace("\\", "/").strip("/")
+    summary = _cached_file_summary(codebase_context or {}, normalized) or _file_summary(target_path, workspace_path, include_excerpt=True)
+    content = read_query_relevant_file_content(workspace_path, normalized, query=normalized, limit=limit)
+    if not content:
+        return "", summary
+
+    blocks = [f"`{normalized}`"]
+    if summary:
+        blocks.append(f"Summary: {summary.get('summary') or summary.get('purpose') or 'No summary available.'}")
+        if summary.get("symbol"):
+            blocks.append(f"Primary symbol: {summary.get('symbol')}")
+        if summary.get("routes"):
+            blocks.append(f"Routes: {', '.join(summary.get('routes')[:6])}")
+        if summary.get("data_models"):
+            blocks.append(f"Models: {', '.join(summary.get('data_models')[:6])}")
+    blocks.append("Content:")
+    blocks.append(content)
+    return "\n".join(blocks), summary
+
+
 def _resolve_chat_context(
     project: Project,
     content: str,
     selected_file: str = '',
     selected_content: str = '',
     context_mentions=None,
+    session_id: str = '',
 ) -> tuple[str, dict]:
     workspace_path = _chat_workspace_path(project)
     codebase_context = {}
@@ -5696,6 +8060,13 @@ def _resolve_chat_context(
         'commands_ran': [],
     }
     context_blocks = []
+    explicit_file_mentions: list[str] = []
+    broad_listing = _query_requests_broad_listing(content)
+    system_explanation = _query_requests_system_explanation(content)
+    retrieval_max_files = 14 if broad_listing else (10 if system_explanation else 6)
+    retrieval_file_limit = 2600 if broad_listing else (2800 if system_explanation else 2200)
+    if system_explanation:
+        trace['approach'] = 'Resolved explicit context mentions, pulled both architectural context and concrete file evidence, and answered against the current workspace.'
 
     for mention in mentions:
         mention_type = mention.get('type')
@@ -5703,40 +8074,62 @@ def _resolve_chat_context(
         lowered = value.lower()
         if mention_type == 'special' and lowered == 'codebase':
             summary = str((codebase_context or {}).get('compact_summary') or '')
-            important_files = list((codebase_context or {}).get('important_files') or [])
+            retrieval = retrieve_relevant_files(
+                codebase_context or {},
+                workspace_path,
+                content,
+                section_key='knowledge',
+                max_files=16 if broad_listing else 8,
+                include_neighbors=True,
+            ) if workspace_path and codebase_context else {'files': [], 'trace': []}
             codebase_parts = []
             if summary:
                 codebase_parts.append(f"=== PROJECT OVERVIEW ===\n{summary[:4000]}")
-            # Include actual file contents from the top important files
-            if important_files and workspace_path:
-                codebase_parts.append("\n=== KEY SOURCE FILES (read these carefully) ===")
+            if retrieval.get('files') and workspace_path:
+                codebase_parts.append("\n=== PLANNED READING LIST ===")
                 chars_used = 0
-                max_chars = 20000
+                max_chars = 32000 if system_explanation else 22000
                 files_included = 0
-                for file_item in important_files[:15]:
+                for file_item in retrieval.get('files', []):
                     if chars_used >= max_chars:
                         break
-                    rel_path = file_item.get('path', '')
+                    rel_path = str(file_item.get('path') or '')
                     if not rel_path:
                         continue
-                    file_content = _safe_read_workspace_file(workspace_path, rel_path, limit=3000)
+                    file_content = read_query_relevant_file_content(workspace_path, rel_path, query=content, limit=3200 if not broad_listing else 2600)
                     if not file_content:
                         continue
-                    file_summary = file_item.get('summary', '')
+                    file_summary = file_item.get('summary') or file_item.get('purpose') or ''
                     block = f"\n--- FILE: {rel_path} ---\nSummary: {file_summary}\nContent:\n{file_content}\n--- END FILE ---"
                     codebase_parts.append(block)
                     chars_used += len(block)
                     files_included += 1
-                    trace['files_accessed'].append({'path': rel_path, 'source': 'codebase_scan', 'reason': f'Top important file included in @codebase context.'})
+                for item in retrieval.get('trace', [])[:20]:
+                    trace['files_accessed'].append({
+                        'path': item.get('path'),
+                        'source': item.get('source') or 'retrieval',
+                        'reason': item.get('reason') or 'Selected by codebase retrieval.',
+                    })
             if codebase_parts:
                 context_blocks.append(f"@codebase\n" + "\n".join(codebase_parts))
-                trace['context_sources'].append({'label': '@codebase', 'detail': f'Used indexed repository summary plus contents of {files_included} key source files.'})
+                trace['context_sources'].append({'label': '@codebase', 'detail': f'Used manifest-backed retrieval plus contents of {files_included} planned files.'})
         elif mention_type == 'special' and lowered == 'currentfile':
             if selected_file:
-                current_content = selected_content or (_safe_read_workspace_file(workspace_path, selected_file) if workspace_path else '')
-                if current_content:
-                    context_blocks.append(f"@currentFile `{selected_file}`\n{current_content}")
+                explicit_file_mentions.append(selected_file)
+                if selected_content:
+                    context_blocks.append(f"@currentFile `{selected_file}`\n{selected_content}")
                     trace['files_accessed'].append({'path': selected_file, 'source': 'current_file', 'reason': 'Explicit current file context requested.'})
+                else:
+                    current_block, current_summary = _lazy_chat_file_context(workspace_path, selected_file, codebase_context, limit=5000)
+                    if current_block:
+                        context_blocks.append(f"@currentFile\n{current_block}")
+                        trace['files_accessed'].append({
+                            'path': selected_file,
+                            'source': 'lazy_file',
+                            'reason': 'Explicit current file context requested, loaded directly from the workspace on demand.',
+                        })
+                        if current_summary and not _cached_file_summary(codebase_context, selected_file):
+                            trace['context_sources'].append({'label': '@currentFile', 'detail': 'Loaded a file on demand even though it was not part of the cached blueprint index.'})
         elif mention_type == 'special' and lowered == 'readme':
             if workspace_path:
                 doc_files = ['README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'VISION.md', 'AGENTS.md']
@@ -5755,12 +8148,15 @@ def _resolve_chat_context(
                 context_blocks.append(f"@rules\n{project_instructions[:4000]}")
                 trace['context_sources'].append({'label': '@rules', 'detail': 'Loaded workspace rules and project instruction files.'})
         elif mention_type == 'special' and lowered == 'conversation':
-            recent = list(ChatMessage.objects.filter(project=project).order_by('-created_at')[:8].values('role', 'content'))
-            recent.reverse()
+            grouped_sessions, _ = _group_project_chat_sessions(project)
+            recent = [
+                {'role': item.get('role'), 'content': item.get('content')}
+                for item in grouped_sessions.get(session_id or LEGACY_CHAT_SESSION_ID, [])[-8:]
+            ]
             if recent:
                 history_text = "\n".join(f"{item['role']}: {item['content'][:500]}" for item in recent)
                 context_blocks.append(f"@conversation\n{history_text}")
-                trace['context_sources'].append({'label': '@conversation', 'detail': 'Loaded recent project chat history.'})
+                trace['context_sources'].append({'label': '@conversation', 'detail': 'Loaded recent chat history from the active session.'})
         elif mention_type == 'special' and lowered == 'terminal':
             if runtime:
                 context_blocks.append(f"@terminal\n{json.dumps(runtime, indent=2)[:3000]}")
@@ -5771,10 +8167,54 @@ def _resolve_chat_context(
                 context_blocks.append(f"@{value}\n{folder_block}")
                 trace['files_accessed'].extend(evidence)
         elif mention_type == 'file' and workspace_path:
-            file_content = _safe_read_workspace_file(workspace_path, value, limit=5000)
-            if file_content:
-                context_blocks.append(f"@{value}\n{file_content}")
-                trace['files_accessed'].append({'path': value, 'source': 'file', 'reason': 'Explicit file mention requested.'})
+            explicit_file_mentions.append(value)
+            file_block, file_summary = _lazy_chat_file_context(workspace_path, value, codebase_context, limit=5000)
+            if file_block:
+                context_blocks.append(f"@{value}\n{file_block}")
+                trace['files_accessed'].append({
+                    'path': value,
+                    'source': 'lazy_file',
+                    'reason': 'Explicit file mention requested and loaded directly from the workspace on demand.',
+                })
+                if file_summary and not _cached_file_summary(codebase_context, value):
+                    trace['context_sources'].append({'label': f'@{value}', 'detail': 'Loaded a skipped or uncached file lazily from disk for this chat turn.'})
+
+    if workspace_path and codebase_context and not any(block.startswith('@codebase') for block in context_blocks):
+        retrieval = retrieve_relevant_files(
+            codebase_context,
+            workspace_path,
+            content,
+            explicit_paths=explicit_file_mentions,
+            max_files=retrieval_max_files,
+            include_neighbors=True,
+        )
+        planned_blocks = []
+        for item in retrieval.get('files', [])[:retrieval_max_files]:
+            rel_path = str(item.get('path') or '')
+            if not rel_path:
+                continue
+            file_content = read_query_relevant_file_content(workspace_path, rel_path, query=content, limit=retrieval_file_limit)
+            if not file_content:
+                continue
+            planned_blocks.append(
+                f"--- FILE: {rel_path} ---\n"
+                f"Summary: {item.get('summary') or item.get('purpose') or 'No summary available.'}\n"
+                f"Content:\n{file_content}\n"
+                f"--- END FILE ---"
+            )
+        if planned_blocks:
+            context_blocks.append("@codebase-planned\n" + "\n\n".join(planned_blocks))
+            trace['context_sources'].append({'label': '@codebase-planned', 'detail': f"Planned and loaded {len(planned_blocks)} files based on the current question before answering."})
+            existing_paths = {str(item.get('path') or '') for item in trace['files_accessed']}
+            for item in retrieval.get('trace', [])[:16]:
+                rel_path = str(item.get('path') or '')
+                if rel_path in existing_paths:
+                    continue
+                trace['files_accessed'].append({
+                    'path': rel_path,
+                    'source': item.get('source') or 'retrieval',
+                    'reason': item.get('reason') or 'Selected by manifest-backed retrieval for this chat turn.',
+                })
 
     return "\n\n".join(block for block in context_blocks if block).strip(), trace
 
@@ -6052,6 +8492,327 @@ def _work_items_summary(project: Project, features_payload: list[dict] | None = 
         'in_progress': in_progress,
         'completed_like': counts.get('staging', 0),
         'empty': len(features_payload) == 0,
+    }
+
+
+def _overview_time_label(value) -> str:
+    if not value:
+        return ""
+    try:
+        delta = timezone.now() - value
+    except Exception:
+        return str(value)
+    seconds = max(0, int(delta.total_seconds()))
+    if seconds < 60:
+        return "just now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} hr ago"
+    days = hours // 24
+    if days < 7:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    return value.strftime("%Y-%m-%d")
+
+
+def _overview_severity_weight(value: str) -> int:
+    normalized = str(value or "").strip().lower()
+    return {
+        "critical": 4,
+        "high": 3,
+        "medium": 2,
+        "warning": 2,
+        "low": 1,
+        "info": 0,
+    }.get(normalized, 0)
+
+
+def _build_overview_project_health(blueprint: dict, runtime: dict, features_payload: list[dict]) -> list[dict]:
+    counts = _feature_stage_counts(features_payload)
+    active_count = counts.get('development', 0) + counts.get('testing', 0) + counts.get('code_review', 0)
+    runtime_type = str(runtime.get('runtime_type') or '').strip().lower()
+    runtime_command = str(runtime.get('run_command') or '').strip()
+    testing = blueprint.get('testing_strategy') if isinstance(blueprint.get('testing_strategy'), dict) else {}
+    validation_command = str(testing.get('run_command') or '').strip()
+    instruction_files = _blueprint_list(blueprint.get('instruction_files'))
+    doc_paths = []
+    if str(blueprint.get('readme_excerpt') or '').strip():
+        doc_paths.append('README.md')
+    for item in instruction_files[:3]:
+        if isinstance(item, dict) and item.get('path'):
+            doc_paths.append(str(item.get('path')))
+    doc_paths = _dedupe_json_items(doc_paths)
+    return [
+        {
+            'label': 'Runtime',
+            'value': runtime_type.title() if runtime_type and runtime_type != 'unknown' else 'Not detected',
+            'detail': runtime_command or 'No primary run command was detected from the indexed entrypoints.',
+            'tone': 'good' if runtime_command else 'warn',
+        },
+        {
+            'label': 'Validation',
+            'value': 'Command detected' if validation_command else 'Manual validation',
+            'detail': validation_command or str(testing.get('unit') or 'No primary validation command was detected yet.'),
+            'tone': 'good' if validation_command else 'warn',
+        },
+        {
+            'label': 'Docs',
+            'value': f'{len(doc_paths)} source{"s" if len(doc_paths) != 1 else ""}' if doc_paths else 'Thin docs',
+            'detail': _format_path_list(doc_paths, max_paths=3) or 'No root README or instruction file was detected in the indexed paths.',
+            'tone': 'good' if doc_paths else 'warn',
+        },
+        {
+            'label': 'Active Work',
+            'value': f'{active_count} active / {len(features_payload)} total' if features_payload else 'No tracked work',
+            'detail': f"Backlog {counts.get('backlog', 0)}, development {counts.get('development', 0)}, testing {counts.get('testing', 0)}, review {counts.get('code_review', 0)}.",
+            'tone': 'neutral' if features_payload else 'warn',
+        },
+    ]
+
+
+def _build_overview_current_risks(blueprint: dict) -> list[dict]:
+    items: list[dict] = []
+    seen: set[str] = set()
+    for item in _blueprint_list(blueprint.get('security_considerations'))[:3]:
+        if not isinstance(item, dict):
+            continue
+        detail = str(item.get('description') or '').strip()
+        if not detail or detail in seen:
+            continue
+        seen.add(detail)
+        items.append({
+            'title': str(item.get('area') or 'Security consideration').strip(),
+            'severity': str(item.get('severity') or 'medium').strip().lower(),
+            'detail': detail,
+        })
+    for item in _blueprint_list(blueprint.get('performance_notes'))[:2]:
+        if not isinstance(item, dict):
+            continue
+        detail = str(item.get('description') or '').strip()
+        if not detail or detail in seen:
+            continue
+        seen.add(detail)
+        items.append({
+            'title': str(item.get('area') or 'Performance note').strip(),
+            'severity': str(item.get('impact') or 'medium').strip().lower(),
+            'detail': detail,
+        })
+    for note in _blueprint_list(blueprint.get('gotchas'))[:2]:
+        detail = str(note or '').strip()
+        if not detail or detail in seen:
+            continue
+        seen.add(detail)
+        items.append({
+            'title': 'Operational gotcha',
+            'severity': 'medium',
+            'detail': detail,
+        })
+    items.sort(key=lambda item: (-_overview_severity_weight(str(item.get('severity') or '')), str(item.get('title') or '')))
+    return items[:5]
+
+
+def _build_overview_runtime_entrypoints(project: Project, codebase_context: dict, runtime: dict) -> list[dict]:
+    workspace_path = _project_workspace_path(project)
+    if not workspace_path:
+        return []
+
+    items: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(label: str, path: str = "", command: str = "", detail: str = "") -> None:
+        normalized_path = str(path or "").replace("\\", "/").strip()
+        normalized_command = str(command or "").strip()
+        normalized_detail = str(detail or "").strip()
+        if not (normalized_path or normalized_command or normalized_detail):
+            return
+        key = (normalized_path, normalized_command)
+        if key in seen:
+            return
+        seen.add(key)
+        items.append({
+            'label': label,
+            'path': normalized_path,
+            'command': normalized_command,
+            'detail': normalized_detail,
+        })
+
+    runtime_type = str(runtime.get('runtime_type') or '').strip().lower()
+    if runtime_type and runtime_type != 'unknown':
+        runtime_detail = 'Detected from repository entrypoints.'
+        if runtime.get('preview_url'):
+            runtime_detail = f"Preview URL: {runtime.get('preview_url')}"
+        add(
+            f"{runtime_type.title()} runtime",
+            str(runtime.get('entrypoint') or ''),
+            str(runtime.get('run_command') or ''),
+            runtime_detail,
+        )
+    if runtime.get('setup_command'):
+        add(
+            'Setup command',
+            str(runtime.get('entrypoint') or ''),
+            str(runtime.get('setup_command') or ''),
+            'Detected setup or install command for the active runtime.',
+        )
+
+    for root in _workspace_python_roots(workspace_path, codebase_context)[:4]:
+        rel_dir = str(root.get('rel_dir') or '')
+        manage_py = str(root.get('manage_py') or '')
+        if manage_py:
+            command = _prefix_command_for_dir(rel_dir, 'python manage.py runserver') if str(root.get('framework') or '').lower() == 'django' else ''
+            detail = 'Django management entrypoint.' if str(root.get('framework') or '').lower() == 'django' else 'Python entrypoint root.'
+            add(f"Python entrypoint in {rel_dir or 'project root'}", manage_py, command, detail)
+
+    for manifest in _workspace_package_manifests(workspace_path, codebase_context)[:6]:
+        scripts = manifest.get('scripts') if isinstance(manifest.get('scripts'), dict) else {}
+        package_manager = str(manifest.get('package_manager') or 'npm')
+        rel_dir = str(manifest.get('rel_dir') or '')
+        for script_name in ('dev', 'start', 'serve', 'preview'):
+            if scripts.get(script_name):
+                add(
+                    f"Package script in {rel_dir or 'project root'}",
+                    str(manifest.get('path') or ''),
+                    _prefix_command_for_dir(rel_dir, _run_script_command(package_manager, script_name)),
+                    f"Uses `{script_name}` from `{manifest.get('path')}`.",
+                )
+                break
+
+    return items[:5]
+
+
+def _build_overview_read_first(blueprint: dict, codebase_context: dict, runtime_entrypoints: list[dict]) -> list[dict]:
+    items: list[dict] = []
+    seen: set[str] = set()
+
+    def add(title: str, path: str, reason: str) -> None:
+        normalized = str(path or '').replace("\\", "/").strip()
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        items.append({
+            'title': title,
+            'path': normalized,
+            'reason': reason,
+        })
+
+    if str(blueprint.get('readme_excerpt') or '').strip():
+        add('Root README', 'README.md', 'Fastest way to understand project purpose, stack, and setup expectations.')
+    for item in _blueprint_list(blueprint.get('instruction_files'))[:2]:
+        if isinstance(item, dict) and item.get('path'):
+            add(PurePosixPath(str(item.get('path'))).name, str(item.get('path')), 'Project-specific guidance detected from indexed instruction files.')
+    for entry in runtime_entrypoints[:2]:
+        if isinstance(entry, dict) and entry.get('path'):
+            add('Runtime entrypoint', str(entry.get('path')), 'Useful for understanding how the application boots locally.')
+    api_source_paths: list[str] = []
+    for item in _blueprint_list(blueprint.get('api_endpoints'))[:8]:
+        if not isinstance(item, dict):
+            continue
+        source = item.get('source') or {}
+        if not isinstance(source, dict):
+            continue
+        for key in ('url_file', 'view_file'):
+            value = str(source.get(key) or '').strip()
+            if value:
+                api_source_paths.append(value)
+    if api_source_paths:
+        add('Primary backend routes', api_source_paths[0], 'Start here to trace routed endpoints back to their handlers.')
+    database_sources = _blueprint_list(codebase_context.get('database_source_files'))
+    if database_sources:
+        add('Primary data model', str(database_sources[0]), 'Useful before changing persistence rules, schema, or API payloads.')
+    return items[:5]
+
+
+def _build_overview_recent_changes(project: Project) -> list[dict]:
+    items: list[dict] = []
+    changesets = Changeset.objects.filter(project=project).prefetch_related('files_changed', 'feature').order_by('-created_at')[:4]
+    for changeset in changesets:
+        file_list = list(changeset.files_changed.values_list('file_path', flat=True)[:3])
+        detail = str(changeset.description or '').strip()
+        if not detail and file_list:
+            detail = f"Affects {_format_path_list(file_list, max_paths=3)}."
+        items.append({
+            'title': changeset.title,
+            'status': changeset.status,
+            'detail': detail or 'Recorded project changeset.',
+            'meta': _overview_time_label(changeset.created_at),
+        })
+    if items:
+        return items
+
+    history = FeatureHistory.objects.select_related('feature').order_by('-at')[:4]
+    for entry in history:
+        stage = str(entry.stage or '').replace('_', ' ').strip() or 'workflow'
+        action = str(entry.action or 'updated').replace('_', ' ').strip()
+        detail = str(entry.comment or '').strip() or f"{action.title()} in {stage} by {entry.by}."
+        items.append({
+            'title': entry.feature.title if entry.feature_id else 'Tracked work item',
+            'status': stage,
+            'detail': detail,
+            'meta': _overview_time_label(entry.at),
+        })
+    return items
+
+
+def _build_overview_next_steps(blueprint: dict, runtime_entrypoints: list[dict], read_first: list[dict], features_payload: list[dict]) -> list[dict]:
+    items: list[dict] = []
+    seen: set[str] = set()
+
+    def add(title: str, detail: str) -> None:
+        normalized_title = str(title or '').strip()
+        normalized_detail = str(detail or '').strip()
+        if not normalized_title or not normalized_detail:
+            return
+        key = f"{normalized_title}|{normalized_detail}"
+        if key in seen:
+            return
+        seen.add(key)
+        items.append({
+            'title': normalized_title,
+            'detail': normalized_detail,
+        })
+
+    for item in _blueprint_list(blueprint.get('onboarding_checklist'))[:2]:
+        if isinstance(item, dict):
+            add(str(item.get('task') or '').strip(), str(item.get('instructions') or item.get('why_important') or '').strip())
+
+    first_runtime = next((item for item in runtime_entrypoints if isinstance(item, dict) and item.get('command')), None)
+    if first_runtime:
+        runtime_path = str(first_runtime.get('path') or '').strip()
+        runtime_command = str(first_runtime.get('command') or '').strip()
+        location = f" from `{runtime_path}`" if runtime_path else ""
+        add('Run the main entrypoint locally', f"Use `{runtime_command}`{location} to confirm the current baseline before changing behavior.")
+
+    testing = blueprint.get('testing_strategy') if isinstance(blueprint.get('testing_strategy'), dict) else {}
+    validation_command = str(testing.get('run_command') or '').strip()
+    if validation_command:
+        add('Validate the current baseline', f"Run `{validation_command}` early so later regressions are easier to isolate.")
+
+    if read_first:
+        read_paths = [str(item.get('path') or '') for item in read_first[:3] if isinstance(item, dict) and item.get('path')]
+        if read_paths:
+            add('Read the core repo files first', f"Start with {_format_path_list(read_paths, max_paths=3)} before editing deeper modules.")
+
+    active_count = sum(1 for item in features_payload if str(item.get('status') or '') in {'development', 'testing', 'code_review'})
+    if active_count:
+        add('Check in-flight work before large edits', f"There {'is' if active_count == 1 else 'are'} {active_count} active tracked work item{'s' if active_count != 1 else ''} that may already touch the same surfaces.")
+
+    return items[:5]
+
+
+def _build_blueprint_overview_insights(project: Project, blueprint: dict, codebase_context: dict, features_payload: list[dict]) -> dict:
+    workspace_path = _project_workspace_path(project)
+    runtime = detect_runtime(workspace_path) if workspace_path else {}
+    runtime_entrypoints = _build_overview_runtime_entrypoints(project, codebase_context, runtime)
+    read_first = _build_overview_read_first(blueprint, codebase_context, runtime_entrypoints)
+    return {
+        'overview_project_health': _build_overview_project_health(blueprint, runtime, features_payload),
+        'overview_current_risks': _build_overview_current_risks(blueprint),
+        'overview_runtime_entrypoints': runtime_entrypoints,
+        'overview_read_first': read_first,
+        'overview_recent_changes': _build_overview_recent_changes(project),
+        'overview_next_steps': _build_overview_next_steps(blueprint, runtime_entrypoints, read_first, features_payload),
     }
 
 
@@ -6429,9 +9190,10 @@ def create_project(request):
         except Exception:
             logger.exception("Failed to initialize project memory for project %s", project.id)
 
-        thread = threading.Thread(target=generate_blueprint_sync, args=(project,))
-        thread.daemon = True
-        thread.start()
+        _schedule_project_context_generation(
+            project,
+            include_documentation=bool(github_url or local_path),
+        )
 
         return JsonResponse({
             'id': str(project.id),
@@ -6439,6 +9201,7 @@ def create_project(request):
             'description': project.description,
             'workspace_id': project.workspace_id,
             'status': 'ready',
+            'context_initializing': True,
             'runtime': detect_runtime(Path(project.local_path)),
         }, status=201)
     except Exception as exc:
@@ -6472,7 +9235,38 @@ def get_project(request, project_id):
             if project.blueprint:
                 try:
                     codebase_context = build_blueprint_context(project, workspace_path)
-                    enriched_blueprint = _merge_repo_guidance_into_blueprint(project, project.blueprint, codebase_context)
+                    enriched_blueprint = dict(project.blueprint or {})
+                    evidence_sequence_flows, evidence_common_workflows = _build_evidence_backed_workflows(workspace_path)
+                    blueprint_backfilled = False
+                    api_reference = _blueprint_list(codebase_context.get('api_reference'))
+                    if api_reference and enriched_blueprint.get('api_endpoints') != api_reference:
+                        enriched_blueprint['api_endpoints'] = api_reference
+                        blueprint_backfilled = True
+                    if evidence_sequence_flows and enriched_blueprint.get('sequence_flows') != evidence_sequence_flows:
+                        enriched_blueprint['sequence_flows'] = evidence_sequence_flows
+                        blueprint_backfilled = True
+                    if evidence_common_workflows and enriched_blueprint.get('common_workflows') != evidence_common_workflows:
+                        enriched_blueprint['common_workflows'] = evidence_common_workflows
+                        blueprint_backfilled = True
+                    enriched_blueprint = _merge_repo_guidance_into_blueprint(project, enriched_blueprint, codebase_context)
+                    enriched_blueprint.update(_build_blueprint_overview_insights(project, enriched_blueprint, codebase_context, features_payload))
+                    if blueprint_backfilled:
+                        feature_summary = _render_project_features_summary(project, limit=20)
+                        design_document_markdown, design_document_sections = _render_blueprint_design_document(
+                            project,
+                            enriched_blueprint,
+                            codebase_context,
+                            feature_summary,
+                        )
+                        enriched_blueprint['design_document_markdown'] = design_document_markdown
+                        enriched_blueprint['design_document_sections'] = [
+                            {
+                                'id': section.get('id'),
+                                'title': section.get('title'),
+                                'markdown': '\n'.join(section.get('body') or []).strip(),
+                            }
+                            for section in design_document_sections
+                        ]
                     if enriched_blueprint != (project.blueprint or {}):
                         project.blueprint = enriched_blueprint
                         project.save(update_fields=['blueprint'])
@@ -6492,6 +9286,8 @@ def get_project(request, project_id):
         }
         documentation_run = DocumentationRun.objects.filter(project=project).prefetch_related('sections').first()
         documentation = _documentation_run_payload(documentation_run)
+        documentation_status = str(documentation.get('status') or '').lower()
+        context_initializing = (not bool(project.blueprint)) or documentation_status in {'pending', 'running'}
 
         return JsonResponse({
             'id': str(project.id),
@@ -6511,6 +9307,7 @@ def get_project(request, project_id):
             'onboarding_summary': onboarding_summary,
             'blueprint_meta': blueprint_meta,
             'documentation': documentation,
+            'context_initializing': context_initializing,
             'runtime': runtime,
         })
     except Project.DoesNotExist:
@@ -6791,11 +9588,21 @@ def project_chat(request, project_id):
         return JsonResponse({'error': 'Project not found'}, status=404)
 
     if request.method == 'GET':
-        messages = list(ChatMessage.objects.filter(project=project).order_by('created_at').values('id', 'role', 'content', 'metadata', 'created_at'))
-        return JsonResponse({'messages': messages})
+        requested_session_id = str(request.GET.get('session_id') or '').strip()
+        grouped_sessions, sessions = _group_project_chat_sessions(project)
+        active_session_id = requested_session_id or (sessions[0]['session_id'] if sessions else '')
+        active_messages = [_serialize_chat_message(item) for item in grouped_sessions.get(active_session_id, [])]
+        return JsonResponse(
+            {
+                'messages': active_messages,
+                'sessions': sessions,
+                'active_session_id': active_session_id or None,
+            }
+        )
 
     if request.method == 'POST':
         content = ''
+        session_id = ''
         try:
             body = _parse_json_body(request)
             content = str(body.get('content') or '').strip()
@@ -6803,6 +9610,7 @@ def project_chat(request, project_id):
             selected_content = str(body.get('selected_content') or '')
             context_mentions = body.get('context_mentions') or []
             apply_changes = body.get('apply_changes')
+            session_id = str(body.get('session_id') or '').strip() or str(uuid.uuid4())
             if not content:
                 return JsonResponse({'error': 'Message is required'}, status=400)
 
@@ -6812,6 +9620,7 @@ def project_chat(request, project_id):
                     _infer_inline_chat_mentions(content),
                 ),
                 'selected_file': selected_file or None,
+                'session_id': session_id,
             }
             ChatMessage.objects.create(project=project, role='user', content=content, metadata=user_trace)
 
@@ -6825,6 +9634,7 @@ def project_chat(request, project_id):
                 selected_file=selected_file,
                 selected_content=selected_content,
                 context_mentions=context_mentions,
+                session_id=session_id,
             )
 
             if should_apply_changes and project.workspace_id:
@@ -6842,11 +9652,13 @@ def project_chat(request, project_id):
                         else f"Applied the requested update to {len(applied_list)} file(s): {', '.join(applied_list)}."
                     )
                     assistant_trace = _build_chat_trace_from_changes(applied_changes, context_trace, memory_context)
+                    assistant_trace['session_id'] = session_id
                 except Exception as exc:
                     logger.exception("Chat code application failed for project %s", project.id)
                     ai_response = f"I understood this as a code-change request, but the edit failed: {str(exc)}"
                     assistant_trace = {
                         'approach': context_trace.get('approach') or 'Tried to apply a code change request.',
+                        'session_id': session_id,
                         'context_mentions': context_trace.get('context_mentions') or [],
                         'context_sources': context_trace.get('context_sources') or [],
                         'files_accessed': context_trace.get('files_accessed') or [],
@@ -6862,8 +9674,8 @@ def project_chat(request, project_id):
                     arch = json.dumps(blueprint.get('architecture_overview', ''))[:800]
                     tech = ", ".join(project.tech_stack) if project.tech_stack else "Unknown"
 
-                    recent = list(ChatMessage.objects.filter(project=project).order_by('-created_at')[:10].values('role', 'content'))
-                    recent.reverse()
+                    grouped_sessions, _ = _group_project_chat_sessions(project)
+                    recent = grouped_sessions.get(session_id, [])[-10:]
                     history_text = "\n".join([f"{message['role']}: {message['content']}" for message in recent])
 
                     file_context = "No file selected."
@@ -6877,7 +9689,7 @@ def project_chat(request, project_id):
                             except Exception:
                                 file_context += "(Unable to read file content.)"
                     if resolved_context_text:
-                        file_context += f"\n\nExplicit context mentions:\n{resolved_context_text[:24000]}"
+                        file_context += f"\n\nExplicit context mentions:\n{resolved_context_text[:48000]}"
 
                     agent = BaseAgent(
                         role="DevHub AI Assistant",
@@ -6889,6 +9701,10 @@ Cached Codebase Summary: {memory_context.get('blueprint_summary', '')[:3000]}
 Episodic Memory: {memory_context.get('episodic_summary', '')[:1200]}
 
 Help the developer understand, plan and implement features, debug issues, and reason about the current code.
+Default to depth, not brevity: unless the user explicitly asks for a short or compact answer, give a thorough answer.
+For implementation or architecture questions, explain the real code path step by step using the retrieved evidence, not generic possibilities.
+When the question is system-level or end-to-end, cover all relevant layers that appear in context, including backend and frontend pieces when both are involved.
+Prefer sections like overview, backend, frontend, flow, and files to change when that helps clarity.
 When @codebase is mentioned, provide thorough, evidence-based answers citing specific file paths, function names, and code patterns you can see in the context.
 When relevant, use the active file context and keep answers action-oriented and detailed.""",
                         ai_config=_project_ai_config(project),
@@ -6900,6 +9716,7 @@ When relevant, use the active file context and keep answers action-oriented and 
                     )
                     assistant_trace = {
                         'approach': context_trace.get('approach') or 'Answered the question using project memory, semantic recall, and explicit workspace context.',
+                        'session_id': session_id,
                         'context_mentions': context_trace.get('context_mentions') or [],
                         'context_sources': context_trace.get('context_sources') or [],
                         'files_accessed': context_trace.get('files_accessed') or [],
@@ -6914,9 +9731,10 @@ When relevant, use the active file context and keep answers action-oriented and 
                     }
                 except Exception as exc:
                     logger.exception("Chat assistant response failed for project %s", project.id)
-                    ai_response = f"AI agent unavailable ({str(exc)}). Set OPENAI_API_KEY in your environment to enable AI chat."
+                    ai_response = f"AI agent unavailable ({str(exc)}). Check the configured DevHub AI provider settings to enable chat."
                     assistant_trace = {
                         'approach': context_trace.get('approach') or 'Tried to answer using workspace context.',
+                        'session_id': session_id,
                         'context_mentions': context_trace.get('context_mentions') or [],
                         'context_sources': context_trace.get('context_sources') or [],
                         'files_accessed': context_trace.get('files_accessed') or [],
@@ -6925,28 +9743,34 @@ When relevant, use the active file context and keep answers action-oriented and 
                     }
 
             try:
-                ChatMessage.objects.create(project=project, role='assistant', content=ai_response, metadata=assistant_trace)
+                assistant_metadata = dict(assistant_trace or {})
+                assistant_metadata['session_id'] = session_id
+                ChatMessage.objects.create(project=project, role='assistant', content=ai_response, metadata=assistant_metadata)
             except Exception:
                 logger.exception("Failed to persist assistant chat message for project %s", project.id)
+            _, sessions = _group_project_chat_sessions(project)
             return JsonResponse({
                 'user_message': content,
                 'assistant_message': ai_response,
                 'applied_changes': applied_changes,
                 'trace': assistant_trace,
+                'session_id': session_id,
+                'sessions': sessions,
             })
         except Exception as exc:
             logger.exception("Unhandled project_chat failure for project %s", project.id)
             fallback = f"Chat request failed unexpectedly: {str(exc)}"
             if content:
                 try:
-                    ChatMessage.objects.create(project=project, role='assistant', content=fallback, metadata={'error': str(exc)})
+                    ChatMessage.objects.create(project=project, role='assistant', content=fallback, metadata={'error': str(exc), 'session_id': session_id or LEGACY_CHAT_SESSION_ID})
                 except Exception:
                     logger.exception("Failed to persist fallback assistant message for project %s", project.id)
             return JsonResponse({
                 'user_message': content,
                 'assistant_message': fallback,
                 'applied_changes': None,
-                'trace': {'error': str(exc)},
+                'trace': {'error': str(exc), 'session_id': session_id or None},
+                'session_id': session_id or None,
             })
 
     return JsonResponse({'error': 'Method not allowed'}, status=405)
@@ -7017,11 +9841,7 @@ def deep_documentation_progress(request, project_id):
 
 @csrf_exempt
 def deep_documentation_stream(request, project_id):
-    """SSE endpoint that generates each Blueprint section with a dedicated LLM call.
-
-    Streams progress events as sections complete (Services → API → Database →
-    Workflows → Setup → Quality → Knowledge).
-    """
+    """SSE endpoint that generates either the full Blueprint or one requested section."""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
@@ -7037,16 +9857,27 @@ def deep_documentation_stream(request, project_id):
     if not workspace_path or not workspace_path.is_dir():
         return JsonResponse({'error': 'Project has no valid workspace path'}, status=400)
 
+    body = _parse_json_body(request)
+    requested_section = str(body.get('section_key') or '').strip().lower()
+    if requested_section and requested_section not in BLUEPRINT_SECTION_FIELDS:
+        return JsonResponse({'error': f'Unsupported Blueprint section: {requested_section}'}, status=400)
+
     def _sse(payload: dict) -> str:
         return f"data: {json.dumps(payload)}\n\n"
 
     def event_stream():
+        total_sections = 1 if requested_section else 7
+        completion_label = (
+            f"{BLUEPRINT_SECTION_LABELS.get(requested_section, requested_section)} complete"
+            if requested_section
+            else 'Blueprint complete'
+        )
         initial_event = {
             'section_key': 'build_context',
             'section_label': 'Preparing codebase context',
             'status': 'started',
             'progress_pct': 0,
-            'total_sections': 7,
+            'total_sections': total_sections,
             'completed_sections': 0,
             'section_data': {},
         }
@@ -7062,7 +9893,7 @@ def deep_documentation_stream(request, project_id):
                 'section_label': 'Preparing codebase context',
                 'status': 'failed',
                 'progress_pct': 0,
-                'total_sections': 7,
+                'total_sections': total_sections,
                 'completed_sections': 0,
                 'section_data': {'_error': str(exc)},
                 'error': str(exc),
@@ -7078,7 +9909,7 @@ def deep_documentation_stream(request, project_id):
                 'section_label': 'Preparing codebase context',
                 'status': 'failed',
                 'progress_pct': 0,
-                'total_sections': 7,
+                'total_sections': total_sections,
                 'completed_sections': 0,
                 'section_data': {'_error': message},
                 'error': message,
@@ -7092,7 +9923,7 @@ def deep_documentation_stream(request, project_id):
             'section_label': 'Codebase context ready',
             'status': 'completed',
             'progress_pct': 1,
-            'total_sections': 7,
+            'total_sections': total_sections,
             'completed_sections': 0,
             'section_data': {},
         }
@@ -7100,43 +9931,124 @@ def deep_documentation_stream(request, project_id):
         yield _sse(context_ready_event)
 
         agent = DeepDocumentationAgent(ai_config=_project_ai_config(project))
-        existing_blueprint = project.blueprint or {}
+        feature_summary = _render_project_features_summary(project, limit=20)
 
-        for event in agent.generate_all_sections(
-            project_name=project.name,
-            cache=codebase_context,
-            workspace_path=workspace_path,
-            existing_blueprint=existing_blueprint,
-        ):
-            if event.get('status') != 'started':
-                # Persist each completed section into the project blueprint.
-                try:
-                    close_old_connections()
-                    project.refresh_from_db()
-                    current_bp = project.blueprint or {}
-                    section_data = event.get('section_data', {})
-                    for key, value in section_data.items():
-                        if key != '_error':
-                            current_bp[key] = value
-                    project.blueprint = current_bp
-                    project.save()
-                except Exception:
-                    logger.exception("Failed to persist section %s for project %s", event.get('section_key'), project_id)
+        def _persist_section_update(section_key: str, section_data: dict[str, Any]) -> dict[str, Any]:
+            close_old_connections()
+            project.refresh_from_db()
+            current_bp = dict(project.blueprint or {})
+            for key, value in section_data.items():
+                if key != '_error':
+                    current_bp[key] = value
+            refreshed = _enrich_blueprint_document(project, current_bp, codebase_context, feature_summary)
+            if isinstance(refreshed, dict):
+                refreshed["_meta"] = {
+                    "codebase_fingerprint": codebase_context.get("fingerprint") if isinstance(codebase_context, dict) else None,
+                    "indexed_files": codebase_context.get("file_count") if isinstance(codebase_context, dict) else None,
+                    "cached": True if codebase_context else False,
+                }
+            _persist_blueprint_state(project, refreshed)
+            if section_key in BLUEPRINT_SECTION_FIELDS:
+                return _slice_blueprint_section(refreshed, section_key)
+            return dict(section_data or {})
 
-            # Send SSE event (without the full blueprint_snapshot to keep payload small)
-            sse_payload = {
-                'section_key': event.get('section_key'),
-                'section_label': event.get('section_label'),
-                'section_data': event.get('section_data'),
-                'progress_pct': event.get('progress_pct'),
-                'status': event.get('status'),
-                'total_sections': event.get('total_sections'),
-                'completed_sections': event.get('completed_sections'),
+        if requested_section:
+            started_event = {
+                'section_key': requested_section,
+                'section_label': BLUEPRINT_SECTION_LABELS.get(requested_section, requested_section),
+                'section_data': {},
+                'progress_pct': 5,
+                'status': 'started',
+                'total_sections': total_sections,
+                'completed_sections': 0,
             }
-            _safe_write_deep_docs_progress(workspace_path, sse_payload)
-            yield _sse(sse_payload)
+            _safe_write_deep_docs_progress(workspace_path, started_event)
+            yield _sse(started_event)
 
-        done_event = {'status': 'done', 'section_key': 'complete', 'section_label': 'Blueprint complete', 'progress_pct': 100, 'total_sections': 7, 'completed_sections': 7, 'section_data': {}}
+            try:
+                project.refresh_from_db()
+                current_bp = dict(project.blueprint or {})
+                if requested_section in TOKEN_FREE_BLUEPRINT_SECTION_KEYS:
+                    refreshed = _enrich_blueprint_document(project, current_bp, codebase_context, feature_summary)
+                    if isinstance(refreshed, dict):
+                        refreshed["_meta"] = {
+                            "codebase_fingerprint": codebase_context.get("fingerprint") if isinstance(codebase_context, dict) else None,
+                            "indexed_files": codebase_context.get("file_count") if isinstance(codebase_context, dict) else None,
+                            "cached": True if codebase_context else False,
+                        }
+                    _persist_blueprint_state(project, refreshed)
+                    section_data = _slice_blueprint_section(refreshed, requested_section)
+                else:
+                    section_data = agent.generate_section(
+                        requested_section,
+                        project.name,
+                        codebase_context,
+                        workspace_path,
+                        existing_blueprint=current_bp,
+                    )
+                    section_data = _persist_section_update(requested_section, section_data)
+            except Exception as exc:
+                logger.exception("Failed to generate section %s for project %s", requested_section, project_id)
+                failed_event = {
+                    'section_key': requested_section,
+                    'section_label': BLUEPRINT_SECTION_LABELS.get(requested_section, requested_section),
+                    'section_data': {'_error': str(exc)},
+                    'progress_pct': 100,
+                    'status': 'failed',
+                    'total_sections': total_sections,
+                    'completed_sections': 1,
+                    'error': str(exc),
+                }
+                _safe_write_deep_docs_progress(workspace_path, failed_event)
+                yield _sse(failed_event)
+                return
+
+            completed_event = {
+                'section_key': requested_section,
+                'section_label': BLUEPRINT_SECTION_LABELS.get(requested_section, requested_section),
+                'section_data': section_data,
+                'progress_pct': 100,
+                'status': 'completed',
+                'total_sections': total_sections,
+                'completed_sections': 1,
+            }
+            _safe_write_deep_docs_progress(workspace_path, completed_event)
+            yield _sse(completed_event)
+        else:
+            for event in agent.generate_all_sections(
+                project_name=project.name,
+                cache=codebase_context,
+                workspace_path=workspace_path,
+                existing_blueprint=project.blueprint or {},
+            ):
+                section_data = dict(event.get('section_data') or {})
+                if event.get('status') != 'started':
+                    try:
+                        section_data = _persist_section_update(str(event.get('section_key') or ''), section_data)
+                    except Exception:
+                        logger.exception("Failed to persist section %s for project %s", event.get('section_key'), project_id)
+
+                sse_payload = {
+                    'section_key': event.get('section_key'),
+                    'section_label': event.get('section_label'),
+                    'section_data': section_data,
+                    'progress_pct': event.get('progress_pct'),
+                    'status': event.get('status'),
+                    'total_sections': event.get('total_sections'),
+                    'completed_sections': event.get('completed_sections'),
+                }
+                _safe_write_deep_docs_progress(workspace_path, sse_payload)
+                yield _sse(sse_payload)
+
+        done_event = {
+            'status': 'done',
+            'section_key': 'complete',
+            'section_label': completion_label,
+            'progress_pct': 100,
+            'total_sections': total_sections,
+            'completed_sections': total_sections,
+            'section_data': {},
+        }
         _safe_write_deep_docs_progress(workspace_path, done_event)
         yield _sse(done_event)
 

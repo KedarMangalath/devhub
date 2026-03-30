@@ -1,22 +1,50 @@
+import ast
 import hashlib
 import json
 import os
+import posixpath
 import re
+from collections import defaultdict
 from pathlib import Path
 
+from agents.api_reference import build_api_reference_catalog
 from agents.workspace import SKIP_DIRS
 from django.db import OperationalError, ProgrammingError
 from core.models import Changeset, ChatMessage, EpisodicMemory, Project, SemanticMemory, WorkingMemory
 
 INDEXABLE_EXTENSIONS = {'.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.json', '.md'}
-BLUEPRINT_CACHE_VERSION = 5
+BLUEPRINT_CACHE_VERSION = 9
 BLUEPRINT_CONFIG_FILES = {
-    'package.json', 'package-lock.json', 'requirements.txt', 'pyproject.toml', 'manage.py',
+    'package.json', 'requirements.txt', 'pyproject.toml', 'manage.py',
     'vite.config.js', 'vite.config.ts', 'next.config.js', 'next.config.mjs', 'docker-compose.yml',
     'dockerfile', 'readme.md', 'README.md', '.env.example', 'tsconfig.json',
 }
+BLUEPRINT_MAX_FILE_BYTES = 256 * 1024
+BLUEPRINT_MAX_JSON_BYTES = 96 * 1024
+BLUEPRINT_EXCERPT_CHARS = 1400
+BLUEPRINT_SKIP_FILE_NAMES = {
+    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb',
+    'cargo.lock', 'poetry.lock', 'composer.lock',
+}
+BLUEPRINT_SKIP_DIRS = {'dist', 'build', '.next', 'coverage', 'vendor', 'out', 'tmp', 'temp'}
 BLUEPRINT_CACHE_FILE = 'blueprint-context.json'
+BLUEPRINT_MANIFEST_FILE = 'manifest.json'
+BLUEPRINT_DEPENDENCY_GRAPH_FILE = 'dependency-graph.json'
 REPO_MAP_FILE = 'repo-map.md'
+BLUEPRINT_TIER_1_NAMES = {
+    'readme.md', 'contributing.md', 'security.md', '.env.example',
+    'package.json', 'requirements.txt', 'pyproject.toml', 'manage.py',
+    'main.py', 'app.py', 'main.ts', 'main.tsx', 'main.js', 'main.jsx',
+    'index.ts', 'index.tsx', 'index.js', 'index.jsx',
+    'vite.config.ts', 'vite.config.js', 'next.config.js', 'next.config.mjs',
+    'dockerfile', 'docker-compose.yml', 'tsconfig.json', 'urls.py',
+}
+BLUEPRINT_TIER_1_TOKENS = ('router', 'routes', 'urls', 'config', 'settings')
+BLUEPRINT_SUMMARY_SIZE_THRESHOLD = 20 * 1024
+BLUEPRINT_LARGE_FILE_CHUNK_LINES = 120
+BLUEPRINT_LARGE_FILE_CHUNK_OVERLAP = 20
+BLUEPRINT_DISCOVERY_CONTENT_BYTES = 12 * 1024
+BLUEPRINT_DISCOVERY_MAX_SCAN_FILES = 72
 INSTRUCTION_FILES = [
     'DEVHUB.md',
     'AGENTS.md',
@@ -29,6 +57,20 @@ STOPWORDS = {
     'were', 'been', 'http', 'https', 'file', 'files', 'code', 'user', 'using', 'used',
 }
 MEMORY_DB_ERRORS = (OperationalError, ProgrammingError)
+QUERY_INTENT_ALIASES = {
+    'sandbox': {'sandbox', 'executor', 'process', 'spawn', 'terminal', 'runtime', 'isolation', 'workspace', 'pty', 'stdin', 'stdout', 'stderr', 'io'},
+    'auth': {'auth', 'authentication', 'authorize', 'authorization', 'session', 'token', 'jwt', 'login', 'permission', 'acl'},
+    'api': {'api', 'endpoint', 'route', 'router', 'handler', 'view', 'controller', 'request', 'response'},
+    'backend': {'backend', 'server', 'service', 'worker', 'api', 'process', 'runtime'},
+    'database': {'database', 'db', 'model', 'schema', 'entity', 'orm', 'migration', 'table', 'query'},
+    'queue': {'queue', 'job', 'worker', 'task', 'background', 'scheduler', 'cron'},
+    'config': {'config', 'settings', 'env', 'environment', 'flag', 'option', 'manifest'},
+    'frontend': {'frontend', 'ui', 'component', 'page', 'view', 'screen', 'client'},
+    'styling': {'color', 'colors', 'highlight', 'hover', 'theme', 'styling', 'style', 'css', 'class', 'tailwind', 'bg', 'text', 'accent'},
+    'navigation': {'sidebar', 'nav', 'navigation', 'tab', 'tabs', 'menu', 'panel', 'item', 'items', 'selected', 'active'},
+    'chat': {'chat', 'message', 'assistant', 'conversation', 'prompt', 'mention', 'context'},
+    'docs': {'docs', 'documentation', 'blueprint', 'wiki', 'reference', 'onboarding', 'readme'},
+}
 
 
 def _tokenize(text: str) -> list[str]:
@@ -88,19 +130,21 @@ def _detect_language(file_path: Path) -> str:
 
 
 def _workspace_fingerprint(workspace_path: Path) -> str:
+    manifest = _build_blueprint_manifest(workspace_path)
+    return _manifest_fingerprint(manifest.get('files') or [])
+
+
+def _manifest_fingerprint(entries: list[dict]) -> str:
     digest = hashlib.sha1()
     digest.update(f'blueprint-cache-v{BLUEPRINT_CACHE_VERSION}'.encode('utf-8'))
-    for file_path in sorted(_iter_blueprint_files(workspace_path), key=lambda item: str(item)):
-        rel_path = str(file_path.relative_to(workspace_path)).replace('\\', '/')
-        if rel_path.startswith('.devhub/'):
-            continue
-        try:
-            stat = file_path.stat()
-        except OSError:
+    for entry in sorted(entries, key=lambda item: str(item.get('path') or '')):
+        rel_path = str(entry.get('path') or '')
+        if not rel_path or rel_path.startswith('.devhub/'):
             continue
         digest.update(rel_path.encode('utf-8', errors='ignore'))
-        digest.update(str(stat.st_size).encode('utf-8'))
-        digest.update(str(getattr(stat, 'st_mtime_ns', int(stat.st_mtime * 1_000_000_000))).encode('utf-8'))
+        digest.update(str(entry.get('size') or 0).encode('utf-8'))
+        digest.update(str(entry.get('modified') or 0).encode('utf-8'))
+        digest.update(str(entry.get('tier') or 3).encode('utf-8'))
     return digest.hexdigest()
 
 
@@ -164,6 +208,390 @@ def _extract_data_models(content: str, language: str) -> list[str]:
                 if symbol not in models:
                     models.append(symbol)
     return models[:10]
+
+
+def _safe_source_text(source: str, node: ast.AST | None) -> str:
+    if node is None:
+        return ''
+    try:
+        text = ast.get_source_segment(source, node)
+    except Exception:
+        text = ''
+    if text:
+        return " ".join(text.split())
+    if isinstance(node, ast.Constant):
+        return repr(node.value)
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _safe_source_text(source, node.value)
+        return f"{base}.{node.attr}".strip(".")
+    if isinstance(node, ast.Tuple):
+        return "(" + ", ".join(_safe_source_text(source, item) for item in node.elts) + ")"
+    if isinstance(node, ast.List):
+        return "[" + ", ".join(_safe_source_text(source, item) for item in node.elts) + "]"
+    if isinstance(node, ast.Set):
+        return "{" + ", ".join(_safe_source_text(source, item) for item in node.elts) + "}"
+    return ''
+
+
+def _call_name(node: ast.AST | None) -> str:
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return ''
+
+
+def _meta_value_to_strings(source: str, node: ast.AST | None) -> list[str]:
+    if node is None:
+        return []
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        items = []
+        for child in node.elts:
+            rendered = _safe_source_text(source, child)
+            if rendered:
+                items.append(rendered)
+        return items
+    rendered = _safe_source_text(source, node)
+    return [rendered] if rendered else []
+
+
+def _field_call_signature(source: str, call: ast.Call) -> str:
+    field_type = _call_name(call.func) or 'Field'
+    arguments = []
+    for arg in call.args:
+        text = _safe_source_text(source, arg)
+        if text:
+            arguments.append(text)
+    for keyword in call.keywords:
+        if keyword.arg:
+            text = _safe_source_text(source, keyword.value)
+            arguments.append(f"{keyword.arg}={text}")
+    return f"{field_type}({', '.join(arguments)})" if arguments else field_type
+
+
+def _constraint_parts(field_name: str, field_type: str, call: ast.Call, source: str, target_model: str = '') -> list[str]:
+    keywords = {keyword.arg: keyword.value for keyword in call.keywords if keyword.arg}
+    parts: list[str] = []
+    primary_key = keywords.get('primary_key')
+    unique = keywords.get('unique')
+    nullable = keywords.get('null')
+    blank = keywords.get('blank')
+
+    if isinstance(primary_key, ast.Constant) and bool(primary_key.value):
+        parts.append('PK')
+    if target_model and field_type == 'ForeignKey':
+        parts.append(f'FK({target_model})')
+    elif target_model and field_type == 'OneToOneField':
+        parts.append(f'ONE_TO_ONE({target_model})')
+    elif target_model and field_type == 'ManyToManyField':
+        parts.append(f'M2M({target_model})')
+    if isinstance(unique, ast.Constant) and bool(unique.value):
+        parts.append('UNIQUE')
+    if not (isinstance(nullable, ast.Constant) and bool(nullable.value)) and field_type != 'ManyToManyField':
+        parts.append('NOT NULL')
+    if isinstance(blank, ast.Constant) and bool(blank.value):
+        parts.append('blank=True')
+
+    for key in ('default', 'related_name', 'on_delete', 'editable', 'auto_now_add', 'auto_now', 'max_length'):
+        if key in keywords:
+            parts.append(f"{key}={_safe_source_text(source, keywords[key])}")
+
+    choices = keywords.get('choices')
+    if isinstance(choices, (ast.List, ast.Tuple, ast.Set)):
+        parts.append(f"choices={len(choices.elts)} values")
+
+    if field_name == 'id' and 'PK' not in parts:
+        parts.insert(0, 'PK')
+    return parts
+
+
+def _relationship_cardinality(field_type: str) -> str:
+    return {
+        'ForeignKey': 'many-to-one',
+        'OneToOneField': 'one-to-one',
+        'ManyToManyField': 'many-to-many',
+    }.get(field_type, '')
+
+
+def _target_model_from_call(source: str, call: ast.Call) -> str:
+    if call.args:
+        target = _safe_source_text(source, call.args[0])
+    else:
+        keywords = {keyword.arg: keyword.value for keyword in call.keywords if keyword.arg}
+        target = _safe_source_text(source, keywords.get('to'))
+    return target.replace("'", "").replace('"', '').split('.')[-1]
+
+
+def _field_description(field_name: str, field_type: str, target_model: str = '') -> str:
+    lowered = field_name.lower()
+    if target_model:
+        return f"References the related `{target_model}` record through the ORM association."
+    if lowered == 'id':
+        return "Primary identifier for this record."
+    if lowered.endswith('_at') or lowered in {'at', 'registered_at', 'started_at', 'completed_at'}:
+        return "Timestamp used to record when this event or record state was written."
+    if lowered in {'name', 'title'}:
+        return "Human-readable label shown in the product and internal workflows."
+    if lowered == 'description':
+        return "Long-form text describing the record's purpose or requirements."
+    if lowered == 'status':
+        return "Lifecycle or processing state for the record."
+    if lowered in {'metadata', 'context', 'blueprint', 'ai_config', 'spec'}:
+        return "Structured JSON payload persisted alongside the record for richer application state."
+    if lowered in {'content', 'summary', 'diff_content'}:
+        return "Main persisted text content for this record."
+    if lowered in {'file_path', 'local_path'}:
+        return "Filesystem path or repository-relative path associated with the record."
+    if lowered in {'github_url', 'preview_url'}:
+        return "External URL stored with the record."
+    if lowered in {'logs', 'tests', 'suggestions', 'blockers', 'keywords', 'related_files', 'team_members', 'tech_stack'}:
+        return "Collection field storing repeated structured values for this record."
+    if field_type.endswith('JSONField'):
+        return "JSON-backed field used to store flexible structured data."
+    if field_type.endswith('TextField'):
+        return "Free-form text captured for the record."
+    if field_type.endswith('CharField'):
+        return "Short string field used by the application domain."
+    if field_type.endswith('BooleanField'):
+        return "Boolean flag that tracks a persisted yes/no state."
+    if field_type.endswith('IntegerField') or field_type.endswith('PositiveIntegerField'):
+        return "Numeric field used by the application when counting or scoring data."
+    return "Persisted application field defined on the model."
+
+
+def _mermaid_scalar_type(field_type: str) -> str:
+    lowered = field_type.lower()
+    if 'uuid' in lowered:
+        return 'uuid'
+    if 'json' in lowered:
+        return 'json'
+    if 'boolean' in lowered:
+        return 'boolean'
+    if 'datetime' in lowered:
+        return 'datetime'
+    if 'integer' in lowered or 'positiveinteger' in lowered or 'bigauto' in lowered:
+        return 'int'
+    if 'text' in lowered:
+        return 'text'
+    if 'url' in lowered:
+        return 'string'
+    return 'string'
+
+
+def _model_description(model_name: str, source_path: str, field_names: list[str], relationships: list[dict], inbound: list[str]) -> str:
+    timestamp_fields = [name for name in field_names if name.endswith('_at') or name in {'at', 'registered_at'}]
+    json_fields = [name for name in field_names if any(token in name for token in ('metadata', 'context', 'blueprint', 'config', 'spec', 'logs', 'tests', 'suggestions', 'blockers', 'keywords', 'related_files', 'tech_stack', 'team_members'))]
+    parts = [
+        f"Django model defined in `{source_path}` that persists `{model_name}` records for the application domain.",
+        f"It stores {len(field_names)} mapped field{'s' if len(field_names) != 1 else ''}",
+    ]
+    if relationships:
+        targets = ", ".join(f"`{item['target_model']}`" for item in relationships[:5] if item.get('target_model'))
+        if targets:
+            parts.append(f" and links to {targets}")
+    parts[-1] += "."
+    if timestamp_fields:
+        parts.append(f"The model tracks lifecycle timing through {', '.join(f'`{name}`' for name in timestamp_fields[:3])}.")
+    if json_fields:
+        parts.append(f"It also keeps flexible structured state in {', '.join(f'`{name}`' for name in json_fields[:3])}.")
+    if inbound:
+        parts.append(f"Other persisted records point back to it from {', '.join(inbound[:4])}.")
+    return " ".join(parts)
+
+
+def _relationship_summary(model_name: str, relationships: list[dict], inbound: list[str]) -> str:
+    statements: list[str] = []
+    for relation in relationships:
+        target = relation.get('target_model')
+        field_name = relation.get('field_name')
+        cardinality = relation.get('cardinality')
+        on_delete = relation.get('on_delete')
+        related_name = relation.get('related_name')
+        if not target or not field_name:
+            continue
+        line = f"`{field_name}` is a {cardinality} relationship from `{model_name}` to `{target}`"
+        if on_delete:
+            line += f" with `on_delete={on_delete}`"
+        if related_name:
+            line += f" and `related_name={related_name}`"
+        line += "."
+        statements.append(line)
+    statements.extend(inbound)
+    return " ".join(statements) if statements else "No persisted relationships were clearly detected from the scanned model classes."
+
+
+def _extract_django_model_schema(workspace_path: Path, manifest_entries: list[dict] | None = None) -> dict:
+    manifest_entries = manifest_entries or []
+    python_paths = [
+        str(item.get('path') or '')
+        for item in manifest_entries
+        if str(item.get('path') or '').endswith('.py') and not str(item.get('path') or '').startswith('.devhub/')
+    ]
+    if not python_paths:
+        python_paths = [
+            str(path.relative_to(workspace_path)).replace('\\', '/')
+            for path in _iter_blueprint_files(workspace_path)
+            if path.suffix.lower() == '.py'
+        ]
+
+    parsed_models: list[dict] = []
+    source_files: set[str] = set()
+
+    for rel_path in python_paths:
+        file_path = workspace_path / rel_path
+        try:
+            source = file_path.read_text(encoding='utf-8', errors='ignore')
+        except Exception:
+            continue
+        if 'models.Model' not in source:
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            base_names = {_safe_source_text(source, base) for base in node.bases}
+            if not any(base.endswith('models.Model') or base == 'Model' for base in base_names):
+                continue
+
+            model_fields: list[dict] = []
+            model_relationships: list[dict] = []
+            model_indexes: list[str] = []
+
+            for child in node.body:
+                if isinstance(child, ast.Assign) and len(child.targets) == 1 and isinstance(child.targets[0], ast.Name) and isinstance(child.value, ast.Call):
+                    field_name = child.targets[0].id
+                    field_type = _call_name(child.value.func) or 'Field'
+                    target_model = ''
+                    if field_type in {'ForeignKey', 'OneToOneField', 'ManyToManyField'}:
+                        target_model = _target_model_from_call(source, child.value)
+                        model_relationships.append(
+                            {
+                                'field_name': field_name,
+                                'field_type': field_type,
+                                'target_model': target_model,
+                                'cardinality': _relationship_cardinality(field_type),
+                                'on_delete': _safe_source_text(source, next((keyword.value for keyword in child.value.keywords if keyword.arg == 'on_delete'), None)),
+                                'related_name': _safe_source_text(source, next((keyword.value for keyword in child.value.keywords if keyword.arg == 'related_name'), None)).replace("'", "").replace('"', ''),
+                            }
+                        )
+                    model_fields.append(
+                        {
+                            'name': field_name,
+                            'type': _field_call_signature(source, child.value),
+                            'constraints': ", ".join(_constraint_parts(field_name, field_type, child.value, source, target_model)),
+                            'description': _field_description(field_name, field_type, target_model),
+                            'field_type': field_type,
+                        }
+                    )
+                elif isinstance(child, ast.ClassDef) and child.name == 'Meta':
+                    for meta_child in child.body:
+                        if not isinstance(meta_child, ast.Assign) or len(meta_child.targets) != 1 or not isinstance(meta_child.targets[0], ast.Name):
+                            continue
+                        meta_name = meta_child.targets[0].id
+                        if meta_name == 'unique_together':
+                            value = _safe_source_text(source, meta_child.value)
+                            if value:
+                                model_indexes.append(f"unique_together={value}")
+                        elif meta_name == 'indexes':
+                            for value in _meta_value_to_strings(source, meta_child.value):
+                                model_indexes.append(value)
+                        elif meta_name == 'constraints':
+                            for value in _meta_value_to_strings(source, meta_child.value):
+                                model_indexes.append(value)
+
+            if not model_fields:
+                continue
+
+            parsed_models.append(
+                {
+                    'name': node.name,
+                    'source_path': rel_path,
+                    'fields': model_fields,
+                    'relationships': model_relationships,
+                    'indexes': model_indexes,
+                }
+            )
+            source_files.add(rel_path)
+
+    if not parsed_models:
+        return {
+            'database_schema': [],
+            'database_mermaid_erd': '',
+            'database_source_files': [],
+            'database_model_names': [],
+        }
+
+    model_names = {model['name'] for model in parsed_models}
+    inbound_relationships: dict[str, list[str]] = defaultdict(list)
+    mermaid_relationships: list[str] = []
+
+    for model in parsed_models:
+        for relation in model.get('relationships') or []:
+            target = relation.get('target_model')
+            if not target or target not in model_names:
+                continue
+            source_name = model['name']
+            field_name = relation.get('field_name') or 'relates_to'
+            if relation.get('field_type') == 'ForeignKey':
+                mermaid_relationships.append(f"  {target} ||--o{{ {source_name} : {field_name}")
+                inbound_relationships[target].append(f"`{source_name}.{field_name}` gives `{target}` a one-to-many reverse relation.")
+            elif relation.get('field_type') == 'OneToOneField':
+                mermaid_relationships.append(f"  {target} ||--|| {source_name} : {field_name}")
+                inbound_relationships[target].append(f"`{source_name}.{field_name}` creates a one-to-one reverse relation back to `{target}`.")
+            elif relation.get('field_type') == 'ManyToManyField':
+                mermaid_relationships.append(f"  {source_name} }}o--o{{ {target} : {field_name}")
+                inbound_relationships[target].append(f"`{source_name}.{field_name}` participates in a many-to-many relation with `{target}`.")
+
+    schema_rows: list[dict] = []
+    mermaid_lines = ['erDiagram']
+    for model in sorted(parsed_models, key=lambda item: (item['source_path'], item['name'])):
+        mermaid_lines.append(f"  {model['name']} {{")
+        for field in model['fields']:
+            mermaid_lines.append(f"    {_mermaid_scalar_type(field['type'])} {field['name']}")
+        mermaid_lines.append("  }")
+        schema_rows.append(
+            {
+                'table': model['name'],
+                'description': _model_description(
+                    model['name'],
+                    model['source_path'],
+                    [field['name'] for field in model['fields']],
+                    model['relationships'],
+                    inbound_relationships.get(model['name'], []),
+                ),
+                'key_fields': [
+                    {
+                        'name': field['name'],
+                        'type': field['type'],
+                        'constraints': field['constraints'],
+                        'description': field['description'],
+                    }
+                    for field in model['fields']
+                ],
+                'relationships': _relationship_summary(model['name'], model['relationships'], inbound_relationships.get(model['name'], [])),
+                'indexes': model['indexes'],
+            }
+        )
+
+    seen_relationships: set[str] = set()
+    for relation_line in mermaid_relationships:
+        if relation_line in seen_relationships:
+            continue
+        seen_relationships.add(relation_line)
+        mermaid_lines.append(relation_line)
+
+    return {
+        'database_schema': schema_rows,
+        'database_mermaid_erd': "\n".join(mermaid_lines),
+        'database_source_files': sorted(source_files),
+        'database_model_names': [item['table'] for item in schema_rows],
+    }
 
 
 def _extract_markdown_headings(content: str, limit: int = 8) -> list[str]:
@@ -345,7 +773,53 @@ def _build_file_explanation(rel_path: str, language: str, symbol: str, role_hint
     return file_kind, purpose, why, how
 
 
-def _file_summary(file_path: Path, workspace_path: Path) -> dict | None:
+def _is_likely_minified(rel_path: str, content: str) -> bool:
+    lowered = str(rel_path or '').lower()
+    if any(token in lowered for token in ('.min.js', '.min.css', '.bundle.js', '.bundle.css')):
+        return True
+    lines = (content or '').splitlines()
+    if not lines:
+        return False
+    sample = lines[:8]
+    if any(len(line) > 1200 for line in sample):
+        return True
+    long_lines = sum(1 for line in sample if len(line) > 400)
+    return long_lines >= 3
+
+
+def _should_index_blueprint_file(file_path: Path, workspace_path: Path, config_names: set[str]) -> bool:
+    rel_path = str(file_path.relative_to(workspace_path)).replace('\\', '/')
+    file_name = file_path.name.lower()
+    if file_name in BLUEPRINT_SKIP_FILE_NAMES:
+        return False
+    if any(part.lower() in BLUEPRINT_SKIP_DIRS for part in file_path.relative_to(workspace_path).parts[:-1]):
+        return False
+    if file_path.suffix.lower() == '.map':
+        return False
+    if not (file_path.suffix.lower() in INDEXABLE_EXTENSIONS or file_name in config_names):
+        return False
+    try:
+        size = file_path.stat().st_size
+    except OSError:
+        return False
+    if size <= 0:
+        return False
+    if file_path.suffix.lower() == '.json' and file_name not in config_names and size > BLUEPRINT_MAX_JSON_BYTES:
+        return False
+    if size > BLUEPRINT_MAX_FILE_BYTES and file_name not in config_names:
+        return False
+    try:
+        content_probe = file_path.read_text(encoding='utf-8', errors='ignore')[:4000]
+    except Exception:
+        return False
+    if not content_probe.strip():
+        return False
+    if _is_likely_minified(rel_path, content_probe):
+        return False
+    return True
+
+
+def _file_summary(file_path: Path, workspace_path: Path, *, include_excerpt: bool = False, excerpt_chars: int = BLUEPRINT_EXCERPT_CHARS) -> dict | None:
     try:
         content = file_path.read_text(encoding='utf-8', errors='ignore')
     except Exception:
@@ -353,6 +827,11 @@ def _file_summary(file_path: Path, workspace_path: Path) -> dict | None:
 
     rel_path = str(file_path.relative_to(workspace_path)).replace('\\', '/')
     language = _detect_language(file_path)
+    try:
+        size = int(file_path.stat().st_size)
+    except OSError:
+        size = len(content.encode('utf-8', errors='ignore'))
+    tier, tier_reason = _classify_manifest_tier(rel_path, size, language, {name.lower() for name in BLUEPRINT_CONFIG_FILES})
     symbol = _extract_symbol(content)
     imports = _extract_imports(content, language)
     routes = _extract_routes(content, language)
@@ -404,6 +883,9 @@ def _file_summary(file_path: Path, workspace_path: Path) -> dict | None:
 
     return {
         'path': rel_path,
+        'size': size,
+        'tier': tier,
+        'tier_reason': tier_reason,
         'file_kind': file_kind,
         'language': language,
         'lines': line_count,
@@ -418,7 +900,7 @@ def _file_summary(file_path: Path, workspace_path: Path) -> dict | None:
         'purpose': purpose,
         'why': why,
         'how': how,
-        'excerpt': content[:1400],
+        'excerpt': content[:excerpt_chars] if include_excerpt and excerpt_chars > 0 else '',
         'brief': f"{rel_path} ({language}{', ' + ', '.join(role_hints) if role_hints else ''})",
         'summary': summary[:600],
     }
@@ -449,12 +931,778 @@ def _devhub_meta_dir(workspace_path: Path) -> Path:
     return path
 
 
+def _manifest_path(workspace_path: Path) -> Path:
+    return _devhub_meta_dir(workspace_path) / BLUEPRINT_MANIFEST_FILE
+
+
+def _dependency_graph_path(workspace_path: Path) -> Path:
+    return _devhub_meta_dir(workspace_path) / BLUEPRINT_DEPENDENCY_GRAPH_FILE
+
+
 def _blueprint_cache_path(workspace_path: Path) -> Path:
     return _devhub_meta_dir(workspace_path) / BLUEPRINT_CACHE_FILE
 
 
 def _repo_map_path(workspace_path: Path) -> Path:
     return _devhub_meta_dir(workspace_path) / REPO_MAP_FILE
+
+
+def _classify_manifest_tier(rel_path: str, size: int, language: str, config_names: set[str]) -> tuple[int, str]:
+    lowered_path = str(rel_path or '').lower()
+    file_name = Path(lowered_path).name
+    parts = [part.lower() for part in Path(lowered_path).parts]
+
+    if file_name in BLUEPRINT_SKIP_FILE_NAMES:
+        return 3, 'lockfile'
+    if any(token in lowered_path for token in ('.min.js', '.min.css', '.bundle.js', '.bundle.css')):
+        return 3, 'minified-asset'
+    if any(part in BLUEPRINT_SKIP_DIRS for part in parts[:-1]):
+        return 3, 'generated-dir'
+    if lowered_path.endswith('.map'):
+        return 3, 'sourcemap'
+    if '/migrations/' in lowered_path and file_name != '__init__.py':
+        return 3, 'migration'
+    if file_name in BLUEPRINT_TIER_1_NAMES or file_name in config_names:
+        return 1, 'critical-config'
+    if any(token in file_name for token in BLUEPRINT_TIER_1_TOKENS):
+        return 1, 'entry-routing'
+    if size > BLUEPRINT_MAX_FILE_BYTES:
+        return 3, 'oversized'
+    if language == 'json' and size > BLUEPRINT_MAX_JSON_BYTES and file_name not in config_names:
+        return 3, 'large-json'
+    if not (Path(rel_path).suffix.lower() in INDEXABLE_EXTENSIONS or file_name in config_names):
+        return 3, 'non-indexable'
+    if size > BLUEPRINT_SUMMARY_SIZE_THRESHOLD:
+        return 2, 'large-source'
+    return 2, 'source-summary'
+
+
+def _build_blueprint_manifest(workspace_path: Path) -> dict:
+    manifest_files: list[dict] = []
+    is_ignored = _build_gitignore_matcher(workspace_path)
+    config_names = {name.lower() for name in BLUEPRINT_CONFIG_FILES}
+    project_root_markers = {'.git', 'package.json', 'Cargo.toml', 'go.mod', 'pom.xml', 'setup.py', 'pyproject.toml'}
+    nested_project_roots: set[str] = set()
+
+    for root, dirs, files in os.walk(workspace_path):
+        dirs[:] = [directory for directory in dirs if directory not in SKIP_DIRS]
+        rel_root = str(Path(root).relative_to(workspace_path)).replace('\\', '/')
+        depth = 0 if rel_root == '.' else rel_root.count('/') + 1
+
+        if is_ignored(rel_root, is_dir=True):
+            dirs.clear()
+            continue
+
+        if any(rel_root == npr or rel_root.startswith(npr + '/') for npr in nested_project_roots):
+            dirs.clear()
+            continue
+
+        if depth >= 2:
+            file_set = set(files) | set(dirs)
+            if file_set & project_root_markers:
+                nested_project_roots.add(rel_root)
+                dirs.clear()
+                continue
+
+        for filename in files:
+            path = Path(root) / filename
+            rel_path = str(path.relative_to(workspace_path)).replace('\\', '/')
+            if rel_path.startswith('.devhub/'):
+                continue
+            if is_ignored(rel_path):
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            language = _detect_language(path)
+            tier, tier_reason = _classify_manifest_tier(rel_path, stat.st_size, language, config_names)
+            manifest_files.append(
+                {
+                    'path': rel_path,
+                    'size': int(stat.st_size),
+                    'extension': path.suffix.lower(),
+                    'language': language,
+                    'modified': int(getattr(stat, 'st_mtime_ns', int(stat.st_mtime * 1_000_000_000))),
+                    'depth': depth if rel_root == '.' else rel_path.count('/') + 1,
+                    'tier': tier,
+                    'tier_reason': tier_reason,
+                }
+            )
+
+    manifest = {
+        'cache_version': BLUEPRINT_CACHE_VERSION,
+        'file_count': len(manifest_files),
+        'files': sorted(manifest_files, key=lambda item: str(item.get('path') or '').lower()),
+    }
+    _manifest_path(workspace_path).write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+    return manifest
+
+
+def _chunk_file_by_lines(rel_path: str, content: str, chunk_lines: int = BLUEPRINT_LARGE_FILE_CHUNK_LINES, overlap: int = BLUEPRINT_LARGE_FILE_CHUNK_OVERLAP) -> list[dict]:
+    lines = (content or '').splitlines()
+    if not lines:
+        return []
+    if len(lines) <= chunk_lines:
+        return [{
+            'header': f"lines 1-{len(lines)} of `{rel_path}`",
+            'start_line': 1,
+            'end_line': len(lines),
+            'content': content,
+        }]
+
+    chunks: list[dict] = []
+    start = 0
+    while start < len(lines):
+        end = min(len(lines), start + chunk_lines)
+        block = "\n".join(lines[start:end])
+        chunks.append(
+            {
+                'header': f"lines {start + 1}-{end} of `{rel_path}`",
+                'start_line': start + 1,
+                'end_line': end,
+                'content': block,
+            }
+        )
+        if end >= len(lines):
+            break
+        start = max(end - overlap, start + 1)
+    return chunks
+
+
+def _score_chunk(query: str, rel_path: str, header: str, content: str) -> float:
+    query_tokens = set(_tokenize(f'{query} {rel_path} {header}'))
+    if not query_tokens:
+        return 1.0
+    haystack_tokens = set(_tokenize(f'{rel_path} {header} {content[:1200]}'))
+    overlap = len(query_tokens & haystack_tokens)
+    return float(overlap) + (0.5 if overlap else 0.0)
+
+
+def read_query_relevant_file_content(workspace_path: Path, rel_path: str, query: str = '', limit: int = 8000, force_full: bool = False) -> str:
+    try:
+        file_path = workspace_path / rel_path
+        if not file_path.exists() or not file_path.is_file():
+            return ''
+        content = file_path.read_text(encoding='utf-8', errors='ignore')
+    except Exception:
+        return ''
+
+    if force_full or len(content) <= limit:
+        return content[:limit]
+
+    chunks = _chunk_file_by_lines(rel_path, content)
+    if not chunks:
+        return content[:limit]
+    ranked = sorted(chunks, key=lambda item: _score_chunk(query, rel_path, item['header'], item['content']), reverse=True)
+    selected: list[str] = []
+    used = 0
+    for chunk in ranked[:3]:
+        block = f"[Chunk: {chunk['header']}]\n{chunk['content']}\n"
+        if used + len(block) > limit and selected:
+            break
+        selected.append(block[: max(0, limit - used)])
+        used += len(selected[-1])
+        if used >= limit:
+            break
+    return "\n".join(selected)[:limit] if selected else content[:limit]
+
+
+def _resolve_import_reference_path(source_path: str, raw_import: str, known_paths: set[str]) -> str:
+    text = str(raw_import or '').strip()
+    if not text:
+        return ''
+    patterns = [
+        r"from\s+['\"]([^'\"]+)['\"]",
+        r"require\(\s*['\"]([^'\"]+)['\"]\s*\)",
+        r"from\s+([A-Za-z0-9_\.\/-]+)",
+        r"import\s+([A-Za-z0-9_\.\/-]+)",
+    ]
+    target = ''
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            target = str(match.group(1) or '').strip()
+            break
+    if not target:
+        return ''
+    if target.startswith('.'):
+        base = Path(source_path).parent.as_posix()
+        normalized = Path(posixpath.normpath(posixpath.join(base, target))).as_posix().lstrip('./')
+        candidates = [
+            normalized,
+            f'{normalized}.ts',
+            f'{normalized}.tsx',
+            f'{normalized}.js',
+            f'{normalized}.jsx',
+            f'{normalized}.py',
+            f'{normalized}.json',
+            f'{normalized}/index.ts',
+            f'{normalized}/index.tsx',
+            f'{normalized}/index.js',
+            f'{normalized}/index.jsx',
+            f'{normalized}/__init__.py',
+        ]
+    else:
+        lowered = target.lower()
+        candidates = [
+            path for path in known_paths
+            if path.lower().endswith(f'/{lowered}.py')
+            or path.lower().endswith(f'/{lowered}.ts')
+            or path.lower().endswith(f'/{lowered}.tsx')
+            or path.lower().endswith(f'/{lowered}.js')
+            or path.lower().endswith(f'/{lowered}.jsx')
+            or Path(path).stem.lower() == lowered
+        ]
+    for candidate in candidates:
+        normalized = str(candidate).replace('\\', '/').lstrip('./')
+        if normalized in known_paths:
+            return normalized
+    return ''
+
+
+def _build_dependency_graph_payload(file_summaries: list[dict]) -> dict:
+    known_paths = {str(item.get('path') or '') for item in file_summaries if item.get('path')}
+    adjacency: dict[str, list[str]] = {}
+    reverse_adjacency: dict[str, list[str]] = {}
+    edges: list[dict] = []
+    for item in file_summaries:
+        source_path = str(item.get('path') or '')
+        if not source_path:
+            continue
+        for raw_import in item.get('imports') or []:
+            target_path = _resolve_import_reference_path(source_path, str(raw_import), known_paths)
+            if not target_path or target_path == source_path:
+                continue
+            adjacency.setdefault(source_path, [])
+            if target_path not in adjacency[source_path]:
+                adjacency[source_path].append(target_path)
+            reverse_adjacency.setdefault(target_path, [])
+            if source_path not in reverse_adjacency[target_path]:
+                reverse_adjacency[target_path].append(source_path)
+            edge = {'from': source_path, 'to': target_path, 'reason': str(raw_import)}
+            if edge not in edges:
+                edges.append(edge)
+    return {
+        'edges': edges[:1200],
+        'adjacency': adjacency,
+        'reverse_adjacency': reverse_adjacency,
+    }
+
+
+def _manifest_entry_map(cache: dict) -> dict[str, dict]:
+    return {
+        str(item.get('path') or ''): item
+        for item in (cache.get('manifest') or [])
+        if item.get('path')
+    }
+
+
+def _summary_pool(cache: dict, limit: int = 400) -> list[dict]:
+    seen: set[str] = set()
+    items: list[dict] = []
+    for item in list(cache.get('all_file_summaries') or []) + list(cache.get('important_files') or []):
+        path = str(item.get('path') or '')
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _query_requests_broad_listing(query: str) -> bool:
+    lowered = str(query or '').lower()
+    return bool(re.search(r'\b(all|every|individual)\b', lowered) and re.search(r'\b(files?|modules?|folders?|directories?)\b', lowered))
+
+
+def _query_requests_system_explanation(query: str) -> bool:
+    lowered = str(query or '').lower()
+    explanation_markers = (
+        'how does', 'how do', 'how is', 'how are', 'tell me about',
+        'walk me through', 'explain', 'overview', 'architecture', 'flow',
+        'end to end', 'end-to-end', 'works', 'work',
+    )
+    return any(marker in lowered for marker in explanation_markers)
+
+
+def _expanded_query_keywords(query: str) -> set[str]:
+    lowered_query = str(query or '').lower()
+    keywords = set(_tokenize(query))
+    for alias_keywords in QUERY_INTENT_ALIASES.values():
+        if any(keyword in lowered_query for keyword in alias_keywords):
+            keywords.update(alias_keywords)
+    return {keyword for keyword in keywords if len(keyword) > 2}
+
+
+def _safe_query_patterns(query: str, limit: int = 6) -> list[str]:
+    patterns: list[str] = []
+    seen: set[str] = set()
+
+    quoted = re.findall(r'["\']([^"\']{3,80})["\']', str(query or ''))
+    for item in quoted:
+        normalized = item.strip().lower()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            patterns.append(normalized)
+        if len(patterns) >= limit:
+            return patterns
+
+    code_like = re.findall(r'[A-Za-z0-9_./-]{3,}', str(query or ''))
+    for item in code_like:
+        normalized = item.strip().lower().strip('.,:;()[]{}')
+        if not normalized or normalized in seen:
+            continue
+        if normalized.count('/') >= 1 or '.' in normalized or '_' in normalized:
+            seen.add(normalized)
+            patterns.append(normalized)
+        if len(patterns) >= limit:
+            break
+    return patterns
+
+
+def _manifest_query_path_matches(manifest_map: dict[str, dict], query: str, limit: int = 18) -> list[str]:
+    lowered = str(query or '').lower()
+    candidates: list[str] = []
+    patterns = [
+        r'\b(?:files?|modules?|directories?|folders?)\s+(?:in|under|inside)\s+([a-zA-Z0-9_./-]+)',
+        r'\b(?:about|within)\s+([a-zA-Z0-9_./-]+)\b',
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, lowered):
+            candidate = str(match.group(1) or '').strip().strip('.,:;')
+            if candidate:
+                candidates.append(candidate)
+
+    matched_paths: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized_candidate = candidate.strip('/').replace('\\', '/')
+        for path, entry in manifest_map.items():
+            normalized_path = str(path or '').replace('\\', '/')
+            path_parts = normalized_path.split('/')
+            if normalized_path.startswith(f'{normalized_candidate}/') or normalized_path == normalized_candidate:
+                if normalized_path not in seen and '.' in Path(normalized_path).name:
+                    seen.add(normalized_path)
+                    matched_paths.append(normalized_path)
+            elif normalized_candidate in path_parts[:-1]:
+                if normalized_path not in seen and '.' in Path(normalized_path).name:
+                    seen.add(normalized_path)
+                    matched_paths.append(normalized_path)
+            if len(matched_paths) >= limit:
+                return matched_paths
+    return matched_paths
+
+
+def _score_discovery_text(text: str, query_keywords: set[str], query_patterns: list[str]) -> float:
+    haystack = str(text or '').lower()
+    if not haystack:
+        return 0.0
+    score = 0.0
+    for pattern in query_patterns:
+        if pattern and pattern in haystack:
+            score += 8.0
+    for keyword in query_keywords:
+        if keyword in haystack:
+            score += 1.8
+    return score
+
+
+def _discover_query_candidates(
+    manifest_map: dict[str, dict],
+    summary_lookup: dict[str, dict],
+    workspace_path: Path,
+    query: str,
+    *,
+    limit: int = 24,
+) -> list[dict]:
+    query_keywords = _expanded_query_keywords(query)
+    query_patterns = _safe_query_patterns(query)
+    if not query_keywords and not query_patterns:
+        return []
+
+    candidate_scores: dict[str, dict] = {}
+
+    def register(path: str, score: float, source: str, reason: str):
+        normalized = str(path or '').replace('\\', '/').strip('/')
+        if not normalized or normalized not in manifest_map or score <= 0:
+            return
+        existing = candidate_scores.get(normalized)
+        if existing and existing.get('score', 0) >= score:
+            return
+        candidate_scores[normalized] = {
+            'path': normalized,
+            'score': score,
+            'source': source,
+            'reason': reason,
+            'tier': int((manifest_map.get(normalized) or {}).get('tier') or 3),
+        }
+
+    for path, entry in manifest_map.items():
+        path_lower = path.lower()
+        stem_lower = Path(path_lower).stem
+        parent_lower = Path(path_lower).parent.as_posix()
+        manifest_score = _score_discovery_text(
+            " ".join(filter(None, [path_lower, stem_lower, parent_lower])),
+            query_keywords,
+            query_patterns,
+        )
+        if manifest_score:
+            register(path, manifest_score + (2.0 if int(entry.get('tier') or 3) == 1 else 0.0), 'discovery_path', 'Matched query terms against file path or folder names before content loading.')
+
+    for path, summary in summary_lookup.items():
+        summary_text = " ".join(
+            str(value)
+            for value in [
+                summary.get('symbol'),
+                summary.get('summary'),
+                summary.get('purpose'),
+                summary.get('why'),
+                summary.get('how'),
+                " ".join(summary.get('imports') or []),
+                " ".join(summary.get('routes') or []),
+                " ".join(summary.get('data_models') or []),
+                " ".join(summary.get('headings') or []),
+                " ".join(summary.get('json_keys') or []),
+                " ".join(summary.get('commands') or []),
+                " ".join(summary.get('role_hints') or []),
+                summary.get('file_kind'),
+            ]
+            if value
+        )
+        summary_score = _score_discovery_text(summary_text, query_keywords, query_patterns)
+        if summary_score:
+            register(path, summary_score + 3.0, 'discovery_index', 'Matched indexed symbols, summaries, or extracted metadata before full file reads.')
+
+    ranked_paths = sorted(
+        candidate_scores.values(),
+        key=lambda item: (-float(item.get('score') or 0), str(item.get('path') or '')),
+    )
+    fallback_scan_candidates: list[dict] = []
+    for path, item in sorted(
+        summary_lookup.items(),
+        key=lambda pair: (
+            int((manifest_map.get(pair[0]) or {}).get('tier') or pair[1].get('tier') or 3),
+            int((manifest_map.get(pair[0]) or {}).get('size') or pair[1].get('size') or 0),
+            str(pair[0]),
+        ),
+    ):
+        tier = int((manifest_map.get(path) or {}).get('tier') or item.get('tier') or 3)
+        if tier > 2:
+            continue
+        fallback_scan_candidates.append(
+            {
+                'path': path,
+                'score': 0.0,
+                'source': 'discovery_fallback',
+                'reason': 'Scanned as part of the bounded fallback candidate pool for content discovery.',
+                'tier': tier,
+            }
+        )
+    scan_queue: list[dict] = []
+    scan_queue.extend(ranked_paths)
+    known_scan_paths = {str(item.get('path') or '') for item in ranked_paths}
+    for item in fallback_scan_candidates:
+        path = str(item.get('path') or '')
+        if path in known_scan_paths:
+            continue
+        known_scan_paths.add(path)
+        scan_queue.append(item)
+    scan_budget = min(BLUEPRINT_DISCOVERY_MAX_SCAN_FILES, max(limit * 3, len(ranked_paths), 24))
+    scanned = 0
+    for item in scan_queue:
+        if scanned >= scan_budget:
+            break
+        path = str(item.get('path') or '')
+        entry = manifest_map.get(path) or {}
+        if int(entry.get('tier') or 3) == 3 and path not in summary_lookup:
+            continue
+        excerpt = _read_text_excerpt(workspace_path / path, limit=BLUEPRINT_DISCOVERY_CONTENT_BYTES)
+        if not excerpt:
+            continue
+        scanned += 1
+        content_score = _score_discovery_text(excerpt, query_keywords, query_patterns)
+        if content_score:
+            register(path, float(item.get('score') or 0) + content_score + 6.0, 'discovery_content', 'Matched query terms inside file contents during bounded grep-style discovery.')
+
+    return sorted(
+        candidate_scores.values(),
+        key=lambda item: (-float(item.get('score') or 0), str(item.get('path') or '')),
+    )[:limit]
+
+
+def _layer_bucket_for_path(path: str) -> str:
+    normalized = str(path or '').replace('\\', '/').lower().strip('/')
+    if not normalized:
+        return ''
+    parts = normalized.split('/')
+    if not parts:
+        return ''
+    first = parts[0]
+    if first in {'frontend', 'client', 'web', 'ui'}:
+        return 'frontend'
+    if first in {'backend', 'server', 'api'}:
+        return 'backend'
+    return ''
+
+
+def _layer_coverage_candidates(summary_lookup: dict[str, dict], query: str, section_key: str = '') -> list[dict]:
+    if not _query_requests_system_explanation(query):
+        return []
+
+    best_by_layer: dict[str, tuple[float, dict]] = {}
+    for item in summary_lookup.values():
+        path = str(item.get('path') or '')
+        layer = _layer_bucket_for_path(path)
+        if not layer:
+            continue
+        score = _score_summary_for_query(item, query, section_key=section_key)
+        if score <= 0:
+            continue
+        current = best_by_layer.get(layer)
+        if not current or score > current[0]:
+            best_by_layer[layer] = (score, item)
+
+    results: list[dict] = []
+    for layer in ('backend', 'frontend'):
+        current = best_by_layer.get(layer)
+        if not current:
+            continue
+        score, item = current
+        results.append({
+            'path': str(item.get('path') or ''),
+            'score': score,
+            'source': f'{layer}_coverage',
+            'reason': f'Included to cover the {layer} side of the system for an architectural or end-to-end question.',
+            'tier': int(item.get('tier') or 2),
+        })
+    return results
+
+
+def _frontend_ui_priority_score(path: str, haystack: str, lowered_query: str) -> float:
+    path_lower = str(path or '').lower()
+    score = 0.0
+    if not any(keyword in lowered_query for keyword in (QUERY_INTENT_ALIASES['frontend'] | QUERY_INTENT_ALIASES['styling'] | QUERY_INTENT_ALIASES['navigation'])):
+        return score
+    if path_lower.startswith('frontend/'):
+        score += 4.0
+    if any(token in path_lower for token in ('src/components/', 'src/pages/', '.tsx', '.ts', '.css')):
+        score += 2.5
+    if any(token in path_lower for token in ('projectview', 'dashboard', 'codeworkspace', 'sidebar', 'layout', 'nav')):
+        score += 4.0
+    if any(token in haystack for token in ('hover:bg', 'bg-[', 'text-[', 'active', 'selected', 'rounded', 'className'.lower(), 'tailwind')):
+        score += 3.0
+    if 'sidebar' in lowered_query and any(token in path_lower for token in ('projectview', 'sidebar', 'dashboard', 'codeworkspace')):
+        score += 5.0
+    if any(token in lowered_query for token in ('highlight', 'color', 'hover', 'theme')) and any(token in path_lower for token in ('projectview', 'codeworkspace', 'dashboard', '.css', '.tsx')):
+        score += 4.0
+    return score
+
+
+def _score_summary_for_query(item: dict, query: str, section_key: str = '') -> float:
+    path = str(item.get('path') or '')
+    tier = int(item.get('tier') or 2)
+    score = 0.0
+    if tier == 1:
+        score += 5.0
+    if item.get('routes'):
+        score += 2.0
+    if item.get('data_models'):
+        score += 2.0
+    tokens = set(_tokenize(query))
+    haystack = " ".join(
+        str(value)
+        for value in [
+            item.get('path'),
+            item.get('summary'),
+            item.get('purpose'),
+            item.get('why'),
+            item.get('how'),
+            item.get('symbol'),
+            " ".join(item.get('imports') or []),
+            " ".join(item.get('routes') or []),
+            " ".join(item.get('data_models') or []),
+            " ".join(item.get('headings') or []),
+            " ".join(item.get('json_keys') or []),
+            " ".join(item.get('commands') or []),
+            " ".join(item.get('role_hints') or []),
+            item.get('file_kind'),
+        ]
+        if value
+    ).lower()
+    if tokens:
+        for token in tokens:
+            if token in haystack:
+                score += 2.5
+            elif token in path.lower():
+                score += 3.0
+    lowered_query = str(query or '').lower()
+    expanded_keywords: set[str] = set(tokens)
+    for keywords in QUERY_INTENT_ALIASES.values():
+        if any(keyword in lowered_query for keyword in keywords):
+            expanded_keywords.update(keywords)
+
+    for keyword in expanded_keywords:
+        if keyword in haystack:
+            score += 0.75
+        if keyword in path.lower():
+            score += 1.0
+
+    for concept, keywords in QUERY_INTENT_ALIASES.items():
+        if not any(keyword in lowered_query for keyword in keywords):
+            continue
+        path_lower = path.lower()
+        keyword_overlap = sum(1 for keyword in keywords if keyword in haystack or keyword in path_lower)
+        if keyword_overlap:
+            score += keyword_overlap * (3.0 if concept == 'sandbox' else 1.8)
+        if concept == 'sandbox' and any(token in path_lower for token in ('sandbox/', 'sandbox\\', 'executor.py', 'workspace.py', 'workspace_', 'runtime', 'process')):
+            score += 8.0
+    score += _frontend_ui_priority_score(path, haystack, lowered_query)
+    section_tokens = {
+        'services': {'service', 'worker', 'main', 'server', 'app', 'component'},
+        'api': {'api', 'route', 'router', 'view', 'controller', 'endpoint', 'urls'},
+        'database': {'model', 'schema', 'entity', 'migration', 'database', 'orm'},
+        'workflows': {'workflow', 'agent', 'task', 'pipeline', 'feature'},
+        'setup': {'readme', 'package', 'requirements', 'env', 'setup', 'docker', 'config'},
+        'quality': {'test', 'spec', 'security', 'lint', 'quality', 'auth'},
+        'knowledge': {'readme', 'doc', 'core', 'base', 'architecture', 'concept'},
+    }
+    for token in section_tokens.get(section_key, set()):
+        if token in haystack or token in path.lower():
+            score += 1.5
+    return score
+
+
+def retrieve_relevant_files(
+    cache: dict,
+    workspace_path: Path,
+    query: str,
+    *,
+    explicit_paths: list[str] | None = None,
+    section_key: str = '',
+    max_files: int = 12,
+    include_neighbors: bool = True,
+) -> dict:
+    manifest_map = _manifest_entry_map(cache)
+    summary_lookup = {str(item.get('path') or ''): item for item in _summary_pool(cache)}
+    dependency_graph = cache.get('dependency_graph') or {}
+    adjacency = dependency_graph.get('adjacency') or {}
+    reverse_adjacency = dependency_graph.get('reverse_adjacency') or {}
+
+    selected_paths: list[str] = []
+    trace: list[dict] = []
+    seen_paths: set[str] = set()
+    broad_listing = _query_requests_broad_listing(query)
+    target_limit = max(max_files, 14) if broad_listing else max_files
+
+    for raw_path in explicit_paths or []:
+        normalized = str(raw_path or '').replace('\\', '/').strip('/')
+        if not normalized or normalized not in manifest_map or normalized in seen_paths:
+            continue
+        seen_paths.add(normalized)
+        selected_paths.append(normalized)
+        tier = int((manifest_map.get(normalized) or {}).get('tier') or 3)
+        trace.append({'path': normalized, 'source': 'explicit', 'tier': tier, 'reason': 'Explicitly requested by query context.'})
+
+    for matched_path in _manifest_query_path_matches(manifest_map, query, limit=max(max_files, 18)):
+        if matched_path in seen_paths:
+            continue
+        seen_paths.add(matched_path)
+        selected_paths.append(matched_path)
+        trace.append({'path': matched_path, 'source': 'query_path', 'tier': int((manifest_map.get(matched_path) or {}).get('tier') or 2), 'reason': 'Matched a folder or path referenced directly in the question.'})
+        if len(selected_paths) >= target_limit:
+            break
+
+    discovery_limit = min(max(target_limit * 2, 12), 28)
+    for discovered in _discover_query_candidates(
+        manifest_map,
+        summary_lookup,
+        workspace_path,
+        query,
+        limit=discovery_limit,
+    ):
+        path = str(discovered.get('path') or '')
+        if not path or path in seen_paths:
+            continue
+        seen_paths.add(path)
+        selected_paths.append(path)
+        trace.append({
+            'path': path,
+            'source': discovered.get('source') or 'discovery',
+            'tier': int(discovered.get('tier') or 2),
+            'reason': discovered.get('reason') or 'Discovered as a likely match before full retrieval scoring.',
+        })
+        if len(selected_paths) >= target_limit:
+            break
+
+    for layer_item in _layer_coverage_candidates(summary_lookup, query, section_key=section_key):
+        path = str(layer_item.get('path') or '')
+        if not path or path in seen_paths:
+            continue
+        seen_paths.add(path)
+        selected_paths.append(path)
+        trace.append({
+            'path': path,
+            'source': layer_item.get('source') or 'layer_coverage',
+            'tier': int(layer_item.get('tier') or 2),
+            'reason': layer_item.get('reason') or 'Included to cover another major layer of the system.',
+        })
+        if len(selected_paths) >= target_limit:
+            break
+
+    scored: list[tuple[float, dict]] = []
+    for item in summary_lookup.values():
+        score = _score_summary_for_query(item, query, section_key=section_key)
+        if score > 0:
+            scored.append((score, item))
+    scored.sort(key=lambda pair: (-pair[0], str(pair[1].get('path') or '')))
+
+    for score, item in scored:
+        path = str(item.get('path') or '')
+        if not path or path in seen_paths:
+            continue
+        seen_paths.add(path)
+        selected_paths.append(path)
+        trace.append({'path': path, 'source': 'retrieval', 'tier': int(item.get('tier') or 2), 'reason': f'Matched query/section relevance with score {score:.1f}.'})
+        if len(selected_paths) >= target_limit:
+            break
+
+    for item in summary_lookup.values():
+        path = str(item.get('path') or '')
+        if not path or path in seen_paths or int(item.get('tier') or 2) != 1:
+            continue
+        seen_paths.add(path)
+        selected_paths.append(path)
+        trace.append({'path': path, 'source': 'tier1', 'tier': 1, 'reason': 'Always-include Tier 1 file for repository context.'})
+        if len(selected_paths) >= target_limit:
+            break
+
+    if include_neighbors:
+        neighbor_candidates: list[str] = []
+        for path in list(selected_paths):
+            neighbor_candidates.extend(list(adjacency.get(path) or [])[:2])
+            neighbor_candidates.extend(list(reverse_adjacency.get(path) or [])[:2])
+        for path in neighbor_candidates:
+            if path in seen_paths or path not in manifest_map:
+                continue
+            seen_paths.add(path)
+            selected_paths.append(path)
+            trace.append({'path': path, 'source': 'dependency', 'tier': int((manifest_map.get(path) or {}).get('tier') or 2), 'reason': 'One-hop dependency/dependent expansion.'})
+            limit_with_neighbors = target_limit + 4
+            if len(selected_paths) >= limit_with_neighbors:
+                break
+
+    files: list[dict] = []
+    for path in selected_paths[: max_files + 4]:
+        manifest_entry = dict(manifest_map.get(path) or {'path': path, 'tier': 3})
+        summary = dict(summary_lookup.get(path) or {})
+        files.append({**manifest_entry, **summary, 'path': path, 'tier': int(manifest_entry.get('tier') or summary.get('tier') or 3)})
+
+    return {
+        'files': files,
+        'trace': trace,
+    }
 
 
 def _instruction_context(workspace_path: Path) -> list[dict]:
@@ -607,7 +1855,9 @@ def _build_repo_tree_nodes(indexed_paths: list[str], project_name: str, max_node
 
 def build_blueprint_context(project: Project, workspace_path: Path, force: bool = False) -> dict:
     cache_path = _blueprint_cache_path(workspace_path)
-    fingerprint = _workspace_fingerprint(workspace_path)
+    manifest = _build_blueprint_manifest(workspace_path)
+    manifest_entries = list(manifest.get('files') or [])
+    fingerprint = _manifest_fingerprint(manifest_entries)
 
     if not force and cache_path.exists():
         try:
@@ -626,21 +1876,25 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
 
     file_summaries = []
     directory_counts: dict[str, int] = {}
-    for file_path in _iter_blueprint_files(workspace_path):
-        rel_path = str(file_path.relative_to(workspace_path)).replace('\\', '/')
-        if rel_path.startswith('.devhub/'):
+    for entry in manifest_entries:
+        rel_path = str(entry.get('path') or '')
+        tier = int(entry.get('tier') or 3)
+        if not rel_path or rel_path.startswith('.devhub/'):
             continue
-        directory = rel_path.split('/')[0] if '/' in rel_path else '.'
+        directory = rel_path.split('/')[0] if '/' in rel_path else 'project root'
         directory_counts[directory] = directory_counts.get(directory, 0) + 1
-        summary = _file_summary(file_path, workspace_path)
+        if tier == 3:
+            continue
+        summary = _file_summary(workspace_path / rel_path, workspace_path, include_excerpt=(tier == 1))
         if summary:
             file_summaries.append(summary)
 
     indexed_paths = [item.get('path') for item in file_summaries if item.get('path')]
 
     ranked_files = sorted(file_summaries, key=_score_blueprint_file, reverse=True)
-    important_files = ranked_files[:40]
-    all_file_summaries = ranked_files[:200]
+    important_files = ranked_files[:60]
+    all_file_summaries = ranked_files[:500]
+    dependency_graph = _build_dependency_graph_payload(all_file_summaries)
     routes = []
     data_models = []
     for item in all_file_summaries:
@@ -650,6 +1904,8 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
         for model in item.get('data_models') or []:
             if model not in data_models:
                 data_models.append(model)
+    database_analysis = _extract_django_model_schema(workspace_path, manifest_entries)
+    api_reference = build_api_reference_catalog(workspace_path)
 
     readme_excerpt = ''
     for candidate in ('README.md', 'readme.md'):
@@ -661,6 +1917,7 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
     compact_lines = [
         f"Project: {project.name}",
         f"Fingerprint: {fingerprint}",
+        f"Manifest files: {len(manifest_entries)}",
         f"Indexed files: {len(file_summaries)}",
         "Top directories:",
     ]
@@ -673,9 +1930,15 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
         compact_lines.append("Detected routes/endpoints:")
         for route in routes[:20]:
             compact_lines.append(f"- {route}")
+    if api_reference:
+        compact_lines.append(f"API reference entries: {len(api_reference)}")
     if data_models:
         compact_lines.append("Detected data models/types:")
         for model in data_models[:20]:
+            compact_lines.append(f"- {model}")
+    if database_analysis.get('database_model_names'):
+        compact_lines.append("Persisted backend models:")
+        for model in (database_analysis.get('database_model_names') or [])[:20]:
             compact_lines.append(f"- {model}")
     if instruction_files:
         compact_lines.append("Project instructions:")
@@ -689,13 +1952,21 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
     cache = {
         'cache_version': BLUEPRINT_CACHE_VERSION,
         'fingerprint': fingerprint,
+        'manifest_file_count': len(manifest_entries),
         'file_count': len(file_summaries),
         'directory_counts': directory_counts,
+        'manifest': manifest_entries[:6000],
         'indexed_paths': indexed_paths[:4000],
         'important_files': important_files,
         'all_file_summaries': all_file_summaries,
+        'dependency_graph': dependency_graph,
         'routes': routes[:24],
+        'api_reference': api_reference[:200],
         'data_models': data_models[:24],
+        'database_schema': database_analysis.get('database_schema') or [],
+        'database_mermaid_erd': database_analysis.get('database_mermaid_erd') or '',
+        'database_source_files': database_analysis.get('database_source_files') or [],
+        'database_model_names': database_analysis.get('database_model_names') or [],
         'readme_excerpt': readme_excerpt[:4000],
         'instruction_files': instruction_files,
         'repo_tree': repo_tree,
@@ -704,6 +1975,7 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
     }
 
     cache_path.write_text(json.dumps(cache, indent=2), encoding='utf-8')
+    _dependency_graph_path(workspace_path).write_text(json.dumps(dependency_graph, indent=2), encoding='utf-8')
     _repo_map_path(workspace_path).write_text(_render_repo_map(project, cache), encoding='utf-8')
     upsert_working_memory(project, 'blueprint_context', compact_summary, {
         'fingerprint': fingerprint,
@@ -726,109 +1998,112 @@ def _read_text_excerpt(file_path: Path, limit: int = 4000) -> str:
 
 def read_deep_file_content(workspace_path: Path, rel_path: str, limit: int = 8000) -> str:
     """Read full file content (up to *limit* chars) for targeted deep analysis."""
-    try:
-        file_path = workspace_path / rel_path
-        if file_path.exists() and file_path.is_file():
-            return file_path.read_text(encoding='utf-8', errors='ignore')[:limit]
-    except Exception:
-        return ''
-    return ''
+    return read_query_relevant_file_content(workspace_path, rel_path, query=rel_path, limit=limit)
 
 
-def select_files_for_section(cache: dict, section_key: str) -> list[dict]:
+def select_files_for_section(cache: dict, section_key: str, workspace_path: Path | None = None) -> list[dict]:
     """Return the most relevant indexed files for a given Blueprint section.
 
     Uses role hints and path-name heuristics to rank files by relevance.
     """
-    important_files = list((cache.get('important_files') or [])[:40])
-    expanded_files = list((cache.get('all_file_summaries') or [])[:200])
-    all_files: list[dict] = []
-    seen_paths: set[str] = set()
-    for item in [*expanded_files, *important_files]:
-        path = str(item.get('path') or '')
-        if not path or path in seen_paths:
-            continue
-        seen_paths.add(path)
-        all_files.append(item)
-
-    # Section-specific relevance matchers
-    matchers: dict[str, dict] = {
-        'services': {
-            'role_hints': {'api', 'routing', 'ui'},
-            'path_tokens': {'app', 'main', 'index', 'server', 'views', 'urls', 'router', 'service', 'worker'},
-        },
-        'api': {
-            'role_hints': {'api', 'routing'},
-            'path_tokens': {'urls', 'router', 'views', 'api', 'routes', 'endpoint', 'controller'},
-        },
-        'database': {
-            'role_hints': {'data-model'},
-            'path_tokens': {'model', 'schema', 'migration', 'database', 'entity', 'orm'},
-        },
-        'workflows': {
-            'role_hints': {'api', 'routing', 'ui'},
-            'path_tokens': {'workflow', 'pipeline', 'agent', 'task', 'feature', 'views', 'main'},
-        },
-        'setup': {
-            'role_hints': {'config', 'docs'},
-            'path_tokens': {'package.json', 'requirements', 'manage', 'docker', 'env', 'readme', 'config', 'setup', 'vite.config'},
-        },
-        'quality': {
-            'role_hints': {'config', 'docs'},
-            'path_tokens': {'test', 'spec', 'eslint', 'prettier', 'security', 'auth', 'middleware', 'lint', 'pyproject'},
-        },
-        'knowledge': {
-            'role_hints': {'api', 'ui', 'routing', 'data-model'},
-            'path_tokens': {'readme', 'doc', 'agent', 'base', 'core', 'main', 'app', 'index'},
-        },
+    section_queries = {
+        'services': 'find service entrypoints, major components, workers, servers, app shells, and runtime orchestration files',
+        'api': 'find API routes, router files, endpoint handlers, views, and request-processing modules',
+        'database': 'find models, schemas, entities, migrations, and persistence layer files',
+        'workflows': 'find workflow, agent, pipeline, task, sequence, and end-to-end execution files',
+        'setup': 'find README, setup docs, package manifests, env templates, config, and run commands',
+        'quality': 'find tests, security rules, linting, validation, auth, performance, and quality-related files',
+        'knowledge': 'find docs, architectural core files, concepts, FAQs, and newcomer-facing reference files',
     }
+    if workspace_path:
+        if section_key == 'database' and cache.get('database_source_files'):
+            summary_lookup = {str(item.get('path') or ''): item for item in _summary_pool(cache, limit=200)}
+            structured_files = [
+                summary_lookup[path]
+                for path in cache.get('database_source_files') or []
+                if path in summary_lookup
+            ]
+            if structured_files:
+                return structured_files[:12]
+        retrieval = retrieve_relevant_files(
+            cache,
+            workspace_path,
+            section_queries.get(section_key, section_key),
+            section_key=section_key,
+            max_files=12,
+            include_neighbors=True,
+        )
+        if retrieval.get('files'):
+            return retrieval['files'][:12]
+    return _summary_pool(cache, limit=12)
 
-    matcher = matchers.get(section_key, {'role_hints': set(), 'path_tokens': set()})
 
-    def relevance_score(item: dict) -> float:
-        score = 0.0
-        hints = set(item.get('role_hints') or [])
-        if hints & matcher['role_hints']:
-            score += 10.0
 
-        path_lower = str(item.get('path', '')).lower()
-        for token in matcher['path_tokens']:
-            if token in path_lower:
-                score += 5.0
+import fnmatch
 
-        if item.get('routes'):
-            if section_key in ('api', 'services', 'workflows'):
-                score += 8.0
-        if item.get('data_models'):
-            if section_key == 'database':
-                score += 8.0
+def _build_gitignore_matcher(workspace_path: Path):
+    gitignore_path = workspace_path / '.gitignore'
+    rules = []
+    if gitignore_path.exists():
+        try:
+            for line in gitignore_path.read_text(encoding='utf-8', errors='ignore').splitlines():
+                line = line.strip()
+                if line and not line.startswith('#') and not line.startswith('!'):
+                    if line.endswith('/'):
+                        line = line[:-1]
+                    rules.append(line)
+        except Exception:
+            pass
 
-        # Larger files tend to have more detail
-        lines = item.get('lines', 0)
-        if lines > 100:
-            score += 2.0
-        if lines > 300:
-            score += 2.0
-
-        return score
-
-    scored = [(relevance_score(item), item) for item in all_files]
-    scored.sort(key=lambda x: -x[0])
-
-    # Return top files with a non-zero score, fallback to top important files
-    result = [item for score, item in scored if score > 0][:12]
-    if not result:
-        result = all_files[:12] or important_files[:12]
-    return result
-
+    def is_ignored(rel_path: str, is_dir: bool = False) -> bool:
+        if not rules:
+            return False
+        parts = rel_path.split('/')
+        for rule in rules:
+            if rule.startswith('/'):
+                if fnmatch.fnmatch((rel_path + '/') if is_dir else rel_path, rule[1:] + '*'):
+                    return True
+            else:
+                for part in parts:
+                    if fnmatch.fnmatch(part, rule):
+                        return True
+                if fnmatch.fnmatch(rel_path, rule) or fnmatch.fnmatch(rel_path, '*/' + rule):
+                    return True
+        return False
+    return is_ignored
 
 
 def _iter_workspace_files(workspace_path: Path) -> list[Path]:
     items: list[Path] = []
+    is_ignored = _build_gitignore_matcher(workspace_path)
+    project_root_markers = {'.git', 'package.json', 'Cargo.toml', 'go.mod', 'pom.xml', 'setup.py', 'pyproject.toml'}
+    nested_project_roots: set[str] = set()
+
     for root, dirs, files in os.walk(workspace_path):
         dirs[:] = [directory for directory in dirs if directory not in SKIP_DIRS]
+        rel_root = str(Path(root).relative_to(workspace_path)).replace('\\', '/')
+        depth = 0 if rel_root == '.' else rel_root.count('/') + 1
+
+        if is_ignored(rel_root, is_dir=True):
+            dirs.clear()
+            continue
+
+        if any(rel_root == npr or rel_root.startswith(npr + '/') for npr in nested_project_roots):
+            dirs.clear()
+            continue
+
+        if depth >= 2:
+            file_set = set(files) | set(dirs)
+            if file_set & project_root_markers:
+                nested_project_roots.add(rel_root)
+                dirs.clear()
+                continue
+
         for filename in files:
             path = Path(root) / filename
+            rel_path = str(path.relative_to(workspace_path)).replace('\\', '/')
+            if is_ignored(rel_path):
+                continue
             if path.suffix.lower() in INDEXABLE_EXTENSIONS:
                 items.append(path)
     return items
@@ -837,6 +2112,7 @@ def _iter_workspace_files(workspace_path: Path) -> list[Path]:
 def _iter_blueprint_files(workspace_path: Path) -> list[Path]:
     config_names = {name.lower() for name in BLUEPRINT_CONFIG_FILES}
     items: list[Path] = []
+    is_ignored = _build_gitignore_matcher(workspace_path)
 
     # Project root marker files — if a subdirectory contains any of these,
     # it's a separate project and should not be indexed as part of this codebase.
@@ -846,9 +2122,13 @@ def _iter_blueprint_files(workspace_path: Path) -> list[Path]:
     nested_project_roots: set[str] = set()
 
     for root, dirs, files in os.walk(workspace_path):
-        dirs[:] = [directory for directory in dirs if directory not in SKIP_DIRS]
+        dirs[:] = [directory for directory in dirs if directory not in SKIP_DIRS and directory.lower() not in BLUEPRINT_SKIP_DIRS]
         rel_root = str(Path(root).relative_to(workspace_path)).replace('\\', '/')
         depth = 0 if rel_root == '.' else rel_root.count('/') + 1
+
+        if is_ignored(rel_root, is_dir=True):
+            dirs.clear()
+            continue
 
         # Check if this directory is under a known nested project root — skip it.
         if any(rel_root == npr or rel_root.startswith(npr + '/') for npr in nested_project_roots):
@@ -870,7 +2150,9 @@ def _iter_blueprint_files(workspace_path: Path) -> list[Path]:
             rel_path = str(path.relative_to(workspace_path)).replace('\\', '/')
             if rel_path.startswith('.devhub/'):
                 continue
-            if path.suffix.lower() in INDEXABLE_EXTENSIONS or filename.lower() in config_names:
+            if is_ignored(rel_path):
+                continue
+            if _should_index_blueprint_file(path, workspace_path, config_names):
                 items.append(path)
     return items
 
@@ -937,13 +2219,22 @@ def recall_semantic_memory(project: Project, query: str, selected_file: str = ''
         return []
 
     query_tokens = set(_tokenize(f'{query} {selected_file}'))
+    lowered_query = str(query or '').lower()
+    expanded_keywords: set[str] = set(query_tokens)
+    for keywords in QUERY_INTENT_ALIASES.values():
+        if any(keyword in lowered_query for keyword in keywords):
+            expanded_keywords.update(keywords)
     results = []
     for entry in entries:
         keywords = set(entry.keywords or [])
-        overlap = len(query_tokens & keywords)
+        overlap = len(expanded_keywords & keywords)
         if not overlap and selected_file and selected_file != entry.file_path:
             continue
         score = float(overlap)
+        path_lower = str(entry.file_path or '').lower()
+        if any(keyword in lowered_query for keyword in QUERY_INTENT_ALIASES['sandbox']):
+            if any(token in path_lower for token in ('sandbox/', 'sandbox\\', 'executor.py', 'workspace.py', 'workspace_', 'runtime', 'process')):
+                score += 6.0
         if entry.file_path == selected_file:
             score += 4.0
         elif selected_file and entry.file_path.startswith('/'.join(selected_file.split('/')[:-1])):

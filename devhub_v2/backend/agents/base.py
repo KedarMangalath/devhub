@@ -1,6 +1,7 @@
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import tempfile
 from urllib.error import HTTPError, URLError
@@ -12,6 +13,9 @@ from openai import OpenAI
 
 SUPPORTED_PROVIDERS = {"openai", "claude", "gemini", "openrouter"}
 SUPPORTED_GEMINI_MODES = {"api_key", "gemini_cli", "vertexai"}
+DEFAULT_GEMINI_MODEL = "gemini-3.1-pro-preview"
+DEFAULT_VERTEX_PROJECT = "noted-computing-459609-n2"
+DEFAULT_VERTEX_LOCATION = "global"
 
 
 def default_model_for_provider(provider: str, gemini_mode: str = "api_key") -> str:
@@ -22,26 +26,29 @@ def default_model_for_provider(provider: str, gemini_mode: str = "api_key") -> s
         return os.environ.get("DEVHUB_CLAUDE_MODEL", "claude-3-5-sonnet-latest")
     if provider == "gemini":
         if gemini_mode == "vertexai":
-            return os.environ.get("DEVHUB_VERTEX_MODEL", "gemini-2.5-pro")
-        return os.environ.get("DEVHUB_GEMINI_MODEL", "gemini-2.5-pro")
+            return os.environ.get("DEVHUB_VERTEX_MODEL", DEFAULT_GEMINI_MODEL)
+        return os.environ.get("DEVHUB_GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
     if provider == "openrouter":
         return os.environ.get("DEVHUB_OPENROUTER_MODEL", "openai/gpt-4o-mini")
     return os.environ.get("DEVHUB_OPENAI_MODEL", os.environ.get("DEVHUB_MODEL", "gpt-4o-mini"))
 
 
 def default_ai_config() -> dict:
-    default_provider = _string_value(os.environ.get("DEVHUB_DEFAULT_PROVIDER") or "openai").lower() or "openai"
+    default_provider = _string_value(os.environ.get("DEVHUB_DEFAULT_PROVIDER") or "gemini").lower() or "gemini"
     if default_provider not in SUPPORTED_PROVIDERS:
-        default_provider = "openai"
+        default_provider = "gemini"
+    default_gemini_mode = _string_value(os.environ.get("DEVHUB_GEMINI_MODE") or "vertexai").lower() or "vertexai"
+    if default_gemini_mode not in SUPPORTED_GEMINI_MODES:
+        default_gemini_mode = "vertexai"
     return {
         "provider": default_provider,
-        "model": default_model_for_provider(default_provider),
+        "model": default_model_for_provider(default_provider, default_gemini_mode),
         "api_key": "",
         "base_url": "",
-        "gemini_mode": "api_key",
+        "gemini_mode": default_gemini_mode,
         "gemini_cli_command": os.environ.get("DEVHUB_GEMINI_CLI_COMMAND", "gemini"),
-        "vertex_project": os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
-        "vertex_location": os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+        "vertex_project": os.environ.get("VERTEX_PROJECT_ID", os.environ.get("GOOGLE_CLOUD_PROJECT", DEFAULT_VERTEX_PROJECT)),
+        "vertex_location": os.environ.get("DEVHUB_VERTEX_LOCATION", os.environ.get("GOOGLE_CLOUD_LOCATION", DEFAULT_VERTEX_LOCATION)),
         "vertex_access_token": "",
     }
 
@@ -50,6 +57,36 @@ def _string_value(value) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _gemini_cli_command_available(command_text: str) -> bool:
+    command_text = _string_value(command_text)
+    if not command_text:
+        return False
+    try:
+        parts = shlex.split(command_text, posix=False)
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    return shutil.which(parts[0]) is not None
+
+
+def _resolve_gcloud_executable() -> str:
+    candidates = ["gcloud", "gcloud.cmd", "gcloud.exe"] if os.name == "nt" else ["gcloud"]
+    for candidate in candidates:
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    raise ValueError("Vertex AI auth is not configured. Provide an access token or install gcloud.")
+
+
+def _vertexai_base_url_for_location(location: str, api_version: str = "v1") -> str:
+    normalized_location = _string_value(location).lower()
+    if normalized_location == "global":
+        return f"https://aiplatform.googleapis.com/{api_version}"
+    host_prefix = normalized_location or DEFAULT_VERTEX_LOCATION
+    return f"https://{host_prefix}-aiplatform.googleapis.com/{api_version}"
 
 
 def normalize_ai_config(config: dict | None) -> dict:
@@ -66,6 +103,23 @@ def normalize_ai_config(config: dict | None) -> dict:
 
     for key in ("model", "api_key", "base_url", "gemini_cli_command", "vertex_project", "vertex_location", "vertex_access_token"):
         normalized[key] = _string_value(raw.get(key) or normalized.get(key))
+
+    if normalized["provider"] == "gemini":
+        if normalized["model"] in {"", "gemini-2.5-pro"}:
+            normalized["model"] = DEFAULT_GEMINI_MODEL
+
+        raw_vertex_project = _string_value(raw.get("vertex_project"))
+        if not normalized["vertex_project"]:
+            normalized["vertex_project"] = os.environ.get("VERTEX_PROJECT_ID", os.environ.get("GOOGLE_CLOUD_PROJECT", DEFAULT_VERTEX_PROJECT))
+        elif normalized["vertex_project"] == DEFAULT_VERTEX_PROJECT and not raw_vertex_project:
+            normalized["vertex_project"] = DEFAULT_VERTEX_PROJECT
+
+        raw_vertex_location = _string_value(raw.get("vertex_location")).lower()
+        if not normalized["vertex_location"] or raw_vertex_location in {"", "us-central1"}:
+            normalized["vertex_location"] = DEFAULT_VERTEX_LOCATION
+
+        if normalized["gemini_mode"] == "gemini_cli" and not _gemini_cli_command_available(normalized.get("gemini_cli_command") or "gemini"):
+            normalized["gemini_mode"] = "vertexai"
 
     if not normalized["model"]:
         normalized["model"] = default_model_for_provider(normalized["provider"], normalized["gemini_mode"])
@@ -91,6 +145,45 @@ def has_any_ai_credentials() -> bool:
         "GOOGLE_CLOUD_ACCESS_TOKEN",
     ]
     return any(_string_value(os.environ.get(key)) for key in keys)
+
+
+def ai_config_is_usable(config: dict | None = None) -> bool:
+    normalized = normalize_ai_config(config)
+    provider = normalized.get("provider") or "openai"
+    gemini_mode = normalized.get("gemini_mode") or "api_key"
+
+    if provider == "gemini":
+        if gemini_mode == "vertexai":
+            return bool(
+                _string_value(normalized.get("vertex_project"))
+                or _string_value(os.environ.get("VERTEX_PROJECT_ID"))
+                or _string_value(os.environ.get("GOOGLE_CLOUD_PROJECT"))
+            )
+        if gemini_mode == "gemini_cli":
+            command_text = _string_value(normalized.get("gemini_cli_command")) or os.environ.get("DEVHUB_GEMINI_CLI_COMMAND") or "gemini"
+            if _gemini_cli_command_available(command_text):
+                return True
+            return bool(
+                _string_value(normalized.get("vertex_project"))
+                or _string_value(os.environ.get("VERTEX_PROJECT_ID"))
+                or _string_value(os.environ.get("GOOGLE_CLOUD_PROJECT"))
+            )
+        return bool(
+            _string_value(normalized.get("api_key"))
+            or _string_value(os.environ.get("GEMINI_API_KEY"))
+            or _string_value(os.environ.get("GOOGLE_API_KEY"))
+            or _string_value(os.environ.get("DEVHUB_GEMINI_API_KEY"))
+            or _string_value(os.environ.get("DEVHUB_API_KEY"))
+        )
+
+    provider_keys = {
+        "openai": ("OPENAI_API_KEY", "DEVHUB_API_KEY"),
+        "openrouter": ("OPENROUTER_API_KEY", "DEVHUB_OPENROUTER_API_KEY", "DEVHUB_API_KEY"),
+        "claude": ("ANTHROPIC_API_KEY", "DEVHUB_ANTHROPIC_API_KEY", "DEVHUB_API_KEY"),
+    }
+    if _string_value(normalized.get("api_key")):
+        return True
+    return any(_string_value(os.environ.get(key)) for key in provider_keys.get(provider, ()))
 
 
 class BaseAgent:
@@ -242,7 +335,20 @@ class BaseAgent:
     def _gemini_completion(self, messages: list[dict], response_schema: bool = False) -> str:
         gemini_mode = self.ai_config.get("gemini_mode", "api_key")
         if gemini_mode == "gemini_cli":
-            return self._gemini_cli_completion(messages, response_schema=response_schema)
+            try:
+                return self._gemini_cli_completion(messages, response_schema=response_schema)
+            except ValueError as exc:
+                if "not installed" not in str(exc).lower():
+                    raise
+                fallback_config = dict(self.ai_config)
+                fallback_config["gemini_mode"] = "vertexai"
+                fallback_agent = BaseAgent(
+                    role=self.role,
+                    system_instruction=self.system_instruction,
+                    model=self.model,
+                    ai_config=fallback_config,
+                )
+                return fallback_agent._vertexai_completion(messages, response_schema=response_schema)
         if gemini_mode == "vertexai":
             return self._vertexai_completion(messages, response_schema=response_schema)
         return self._gemini_api_completion(messages, response_schema=response_schema)
@@ -270,8 +376,8 @@ class BaseAgent:
         return self._gemini_text_from_response(response)
 
     def _vertexai_completion(self, messages: list[dict], response_schema: bool = False) -> str:
-        project = self.ai_config.get("vertex_project") or os.environ.get("GOOGLE_CLOUD_PROJECT")
-        location = self.ai_config.get("vertex_location") or os.environ.get("GOOGLE_CLOUD_LOCATION") or "us-central1"
+        project = self.ai_config.get("vertex_project") or os.environ.get("VERTEX_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT") or DEFAULT_VERTEX_PROJECT
+        location = self.ai_config.get("vertex_location") or os.environ.get("DEVHUB_VERTEX_LOCATION") or os.environ.get("GOOGLE_CLOUD_LOCATION") or DEFAULT_VERTEX_LOCATION
         if not project:
             raise ValueError("Vertex AI requires a Google Cloud project ID.")
 
@@ -292,7 +398,7 @@ class BaseAgent:
         if custom_base:
             base_url = custom_base.rstrip("/")
         else:
-            base_url = f"https://{location}-aiplatform.googleapis.com/v1"
+            base_url = _vertexai_base_url_for_location(location, api_version="v1")
 
         url = f"{base_url}/projects/{quote(project)}/locations/{quote(location)}/publishers/google/models/{quote(self.model)}:generateContent"
         response = self._http_json(
@@ -316,8 +422,9 @@ class BaseAgent:
                 return value
 
         try:
+            gcloud_executable = _resolve_gcloud_executable()
             result = subprocess.run(
-                ["gcloud", "auth", "print-access-token"],
+                [gcloud_executable, "auth", "print-access-token"],
                 capture_output=True,
                 text=True,
                 timeout=20,

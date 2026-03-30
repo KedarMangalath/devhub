@@ -13,7 +13,7 @@ Your job is to inspect structured repository evidence and produce grounded, low-
 Only make claims that are directly supported by the provided repository evidence.
 If a detail is uncertain, say 'Not clearly detected from the scanned codebase'.
 Return ONLY valid JSON with no markdown.""",
-            model=(ai_config or {}).get("model") or os.environ.get("DEVHUB_BLUEPRINT_MODEL", "gpt-4o-mini"),
+            model=(ai_config or {}).get("model") or os.environ.get("DEVHUB_BLUEPRINT_MODEL", "gemini-3.1-pro-preview"),
             ai_config=ai_config,
         )
 

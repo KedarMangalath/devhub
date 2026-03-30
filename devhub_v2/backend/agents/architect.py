@@ -9,13 +9,13 @@ class ArchitectAgent(BaseAgent):
         super().__init__(
             role="Software Architect",
             system_instruction=(
-                "You are an expert Software Architect for the DevHub platform. "
+                "You are an expert software architect and technical design writer. "
                 "You generate exhaustive, evidence-first project blueprints that work like an internal engineering wiki and a hand-written staff-level design document. "
                 "Do not invent services, endpoints, schema, or workflows that are not supported by the supplied repository evidence. "
                 "If information is incomplete, say that it was not clearly detected from the codebase. "
                 "Return only valid JSON with no markdown wrappers."
             ),
-            model=(ai_config or {}).get("model") or os.environ.get("DEVHUB_BLUEPRINT_MODEL", "gpt-4o-mini"),
+            model=(ai_config or {}).get("model") or os.environ.get("DEVHUB_BLUEPRINT_MODEL", "gemini-3.1-pro-preview"),
             ai_config=ai_config,
         )
 
@@ -147,11 +147,7 @@ Return ONLY one JSON object with all keys below populated with project-specific 
   ],
   "key_concepts": [
     {{"concept": "Concept", "explanation": "Detailed explanation", "why_important": "why it matters", "related_code": "path", "related_concepts": ["related concepts"]}}
-  ],
-  "design_document_sections": [
-    {{"id": "executive-summary", "title": "Executive Summary", "markdown": "2-8 paragraphs of detailed markdown for this section."}}
-  ],
-  "design_document_markdown": "A long-form engineering design document in markdown. It should read like a polished internal architecture doc with a title, metadata, table of contents, and deeply detailed sections."
+  ]
 }}
 
 Rules:
@@ -166,6 +162,9 @@ Rules:
 - Never invent files, folders, services, routes, entities, or dependencies that do not appear in the supplied repository evidence.
 - Prefer empty arrays or explicit "not clearly detected" text over speculation.
 - Cover the major frontend, backend, data, workflow, and onboarding surfaces of the project.
+- For database_schema and mermaid_erd, focus EXCLUSIVELY on backend entity models or actual database tables. Strictly ignore frontend UI props, transient states, or DTOs unless the project lacks a backend entirely.
+- Ensure the mermaid_erd includes ALL primary models and accurately maps their relationships, rather than summarizing a tiny subset.
+- For Mermaid graph/flowchart output, quote node labels whenever they contain spaces, slashes, parentheses, or punctuation, for example `API["Backend API / Django"]`.
 - For repo_tree, return a gitingest-style textual tree derived from the repository layout.
 - For sequence_flows, include at least the most important user/application interactions you can ground in the codebase.
 - For repository_map, turn the repo into a newcomer-friendly map of major areas and how they connect.
@@ -173,13 +172,6 @@ Rules:
 - For change_guide, show a new engineer where to start when changing UI, APIs, data models, or runtime behavior.
 - For feature_inventory and sdlc_pipeline, connect the tracked features/workflow with the actual project operating model when evidence exists.
 - For faq and gotchas, optimize for a new engineer joining the team.
-- For design_document_sections, include at least 12 substantial sections with specific, grounded content.
-- For design_document_markdown, produce a polished markdown document with:
-  - title and metadata
-  - table of contents
-  - numbered sections
-  - concrete file/module references when possible
-  - explicit unknowns where evidence is incomplete
 - Return only JSON.
 """
 
@@ -241,109 +233,33 @@ Rules:
             "mermaid_erd": "",
             "data_flow": "Not clearly detected from the fallback analysis. Review routes, important files, and runtime entrypoints.",
             "sequence_flows": [],
-            "tech_stack_details": [
-                {
-                    "tech": item,
-                    "purpose": "Core technology in this project",
-                    "why_chosen": "Detected from project metadata",
-                    "version": "unknown",
-                    "category": "framework",
-                }
-                for item in (tech_stack or [])
-            ],
-            "services": [
-                {
-                    "name": item.get("name") or project_name,
-                    "type": item.get("type") or "application",
-                    "description": ", ".join(item.get("responsibilities") or ["Detected from cached repository context"]),
-                    "port": None,
-                    "tech": ", ".join(tech_stack or []),
-                    "health_endpoint": None,
-                    "dependencies": [],
-                    "key_files": item.get("key_files") or [],
-                }
-                for item in (
-                    services[:6]
-                    or [{"name": project_name, "type": "application", "responsibilities": ["Main application service"], "key_files": [file.get("path") for file in important_files[:8]]}]
-                )
-            ],
-            "api_endpoints": [
-                {
-                    "method": "unknown",
-                    "path": route,
-                    "description": "Detected from repository route patterns.",
-                    "request_body": None,
-                    "response": "Not clearly detected from the scanned codebase",
-                    "auth_required": False,
-                    "curl_example": f"curl http://localhost{route if str(route).startswith('/') else '/' + str(route)}",
-                }
-                for route in routes[:16]
-            ],
-            "database_schema": [
-                {
-                    "table": model,
-                    "description": "Detected data model/type from the scanned codebase.",
-                    "key_fields": [],
-                    "relationships": "Not clearly detected from the fallback analysis.",
-                    "indexes": [],
-                }
-                for model in data_models[:16]
-            ],
-            "key_components": [
-                {
-                    "name": item.get("file_path", "").split("/")[-1] or "Component",
-                    "file_path": item.get("file_path"),
-                    "purpose": item.get("summary") or "Detected from repository context.",
-                    "complexity": "medium",
-                    "dependencies": [],
-                    "exports": "",
-                    "lines_estimate": "",
-                }
-                for item in (
-                    key_components[:16]
-                    or [{"file_path": file.get("path"), "summary": file.get("summary")} for file in important_files[:16]]
-                )
-            ],
+            "tech_stack_details": [],
+            "services": [],
+            "api_endpoints": [],
+            "database_schema": [],
+            "key_components": [],
             "directory_guide": [
                 {
                     "path": entry["area"],
                     "purpose": entry["description"],
                     "key_files": entry["important_files"],
-                    "pattern": "Not clearly detected from the fallback analysis.",
+                    "pattern": "Not clearly detected from the fallback analysis",
                 }
                 for entry in repo_map_entries
             ],
             "repository_map": repo_map_entries,
-            "setup_steps": [
-                {"step": "Review repository map", "command": "Open .devhub/repo-map.md", "explanation": "Get oriented in the codebase quickly.", "os_note": "Available inside the project workspace."},
-                {"step": "Read local setup docs", "command": "Check README and runtime config", "explanation": "Use the detected setup files before running the app.", "os_note": ""},
-                {"step": "Run the project", "command": "See detected runtime command in DevHub", "explanation": "Start the app with the detected runtime.", "os_note": ""},
-            ],
-            "environment_variables": [{"name": "OPENAI_API_KEY", "description": "Required for AI blueprint generation in DevHub", "required": False, "default": None, "example": "sk-...", "category": "api_key"}],
-            "security_considerations": [{"area": "Fallback mode", "description": "Full AI blueprint generation failed, so manually review auth, validation, and secrets management.", "severity": "medium"}],
-            "performance_notes": [{"area": "Fallback mode", "description": "Profile runtime hotspots manually until a richer blueprint is generated.", "impact": "medium"}],
-            "testing_strategy": {"unit": "Not clearly detected", "integration": "Not clearly detected", "e2e": "Not clearly detected", "coverage_target": "Unknown", "run_command": ""},
-            "code_quality_standards": [{"tool": "Repository scan", "purpose": "Use repo map and important files to orient code reviews", "config_file": ".devhub/repo-map.md"}],
-            "common_workflows": [{"title": "Inspect important files", "steps": [f"Open {file.get('path')}" for file in important_files[:8]]}] if important_files else [],
-            "feature_inventory": [{"title": "Tracked feature context", "status": "unknown", "description": feature_summary[:800] or "No tracked feature summary available.", "implementation_notes": "Use the Features/Pipeline tabs for live feature state."}],
-            "sdlc_pipeline": {
-                "stages": [
-                    {"name": "Backlog", "purpose": "Ideas and planned work", "entry_criteria": ["Feature created"], "exit_criteria": ["Implementation starts"]},
-                    {"name": "Development", "purpose": "AI or human implementation", "entry_criteria": ["Work selected"], "exit_criteria": ["Validation and review ready"]},
-                    {"name": "Testing", "purpose": "Validation and simulation", "entry_criteria": ["Implementation completed"], "exit_criteria": ["Review ready"]},
-                    {"name": "Code Review", "purpose": "Approval and review", "entry_criteria": ["Testing completed"], "exit_criteria": ["Approved"]},
-                    {"name": "Staging", "purpose": "Pre-release verification", "entry_criteria": ["Approved"], "exit_criteria": ["Ready to ship"]},
-                ],
-                "approval_gates": ["Feature approvals are tracked through DevHub pipeline actions."],
-                "ai_capabilities": ["AI can generate blueprints, plan features, implement changes, and simulate tests."],
-                "team_workflow": "Use Features and Pipeline together to move work from planning into implementation and review.",
-            },
+            "setup_steps": [],
+            "environment_variables": [],
+            "security_considerations": [],
+            "performance_notes": [],
+            "testing_strategy": {},
+            "code_quality_standards": [],
+            "common_workflows": [],
+            "feature_inventory": [],
+            "sdlc_pipeline": {},
             "integration_points": [],
-            "faq": [{"question": "Why is this blueprint in fallback mode?", "answer": f"AI generation failed with: {error}. The fallback document is still grounded in the scanned repository context and repo map."}],
-            "gotchas": [f"AI blueprint generation failed: {error}", "Use .devhub/repo-map.md plus the important files list to navigate the project until a richer blueprint is regenerated."],
-            "onboarding_checklist": [
-                {"task": "Read the repo map", "category": "codebase", "estimated_time": "10 min", "why_important": "It gives a fast overview of the project structure.", "instructions": "Open .devhub/repo-map.md in the workspace."},
-                {"task": "Inspect runtime entrypoints", "category": "environment", "estimated_time": "10 min", "why_important": "You need to know how the app starts before making changes.", "instructions": "Review the detected runtime config, README, and important files."},
-            ],
-            "key_concepts": [{"concept": project_name, "explanation": "The project should be understood through the detected services, components, and repo map areas.", "why_important": "New engineers need an initial mental model before editing code.", "related_code": important_files[0].get("path") if important_files else "", "related_concepts": []}],
+            "faq": [],
+            "gotchas": [f"AI blueprint generation failed: {error}"],
+            "onboarding_checklist": [],
+            "key_concepts": [],
         }

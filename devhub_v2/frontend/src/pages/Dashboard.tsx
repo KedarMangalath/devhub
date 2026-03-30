@@ -13,6 +13,8 @@ import {
   X,
 } from 'lucide-react';
 
+import ToastStack from '../components/ToastStack';
+
 const API = 'http://localhost:8000/api';
 
 type SourceType = 'starter' | 'github' | 'folder';
@@ -110,27 +112,27 @@ const STACK_PRESETS = [
 ];
 
 const DEFAULT_AI_CONFIG = {
-  provider: 'openai',
-  model: 'gpt-4o-mini',
+  provider: 'gemini',
+  model: 'gemini-3.1-pro-preview',
   api_key: '',
   base_url: '',
-  gemini_mode: 'api_key',
+  gemini_mode: 'vertexai',
   gemini_cli_command: 'gemini',
-  vertex_project: '',
-  vertex_location: 'us-central1',
+  vertex_project: 'noted-computing-459609-n2',
+  vertex_location: 'global',
   vertex_access_token: '',
 };
 
 const PROVIDER_MODEL_PRESETS: Record<string, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-5', 'gpt-5-mini'],
   claude: ['claude-3-5-sonnet-latest', 'claude-3-5-haiku-latest'],
-  gemini: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-  openrouter: ['openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'google/gemini-2.5-pro'],
+  gemini: ['gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash'],
+  openrouter: ['google/gemini-3.1-pro-preview', 'openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'google/gemini-2.5-pro'],
 };
 
 function defaultModelFor(provider: string, geminiMode: string) {
   if (provider === 'claude') return 'claude-3-5-sonnet-latest';
-  if (provider === 'gemini') return geminiMode === 'vertexai' ? 'gemini-2.5-pro' : 'gemini-2.5-pro';
+  if (provider === 'gemini') return geminiMode === 'vertexai' ? 'gemini-3.1-pro-preview' : 'gemini-3.1-pro-preview';
   if (provider === 'openrouter') return 'openai/gpt-4o-mini';
   return 'gpt-4o-mini';
 }
@@ -330,6 +332,18 @@ export default function Dashboard() {
   useEffect(() => {
     fetchAiSettings();
   }, []);
+
+  useEffect(() => {
+    if (!error) return undefined;
+    const timeout = window.setTimeout(() => setError(''), 2600);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
+
+  useEffect(() => {
+    if (!success) return undefined;
+    const timeout = window.setTimeout(() => setSuccess(''), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [success]);
 
   const openCreateModal = (nextSource: SourceType = 'starter') => {
     setSourceType(nextSource);
@@ -957,8 +971,18 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.98),rgba(245,247,251,0.96)_55%,rgba(236,241,247,0.9))] text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-[1440px] flex-col px-6 py-8 lg:px-10">
+    <div className="min-h-[var(--app-vh)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.98),rgba(245,247,251,0.96)_55%,rgba(236,241,247,0.9))] text-slate-900">
+      <ToastStack
+        items={[
+          ...(error ? [{ id: 'dashboard-error', type: 'error' as const, text: error }] : []),
+          ...(success ? [{ id: 'dashboard-success', type: 'success' as const, text: success }] : []),
+        ]}
+        onDismiss={(toastId) => {
+          if (toastId === 'dashboard-error') setError('');
+          if (toastId === 'dashboard-success') setSuccess('');
+        }}
+      />
+      <div className="mx-auto flex min-h-[var(--app-vh)] max-w-[1440px] flex-col px-6 py-8 lg:px-10">
         <header className="rounded-[32px] border border-white/70 bg-white/78 px-7 py-6 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
@@ -1022,13 +1046,6 @@ export default function Dashboard() {
                 </button>
               </div>
             </div>
-
-            {error ? (
-              <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700">{error}</div>
-            ) : null}
-            {success ? (
-              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-700">{success}</div>
-            ) : null}
 
             {loading ? (
               <div className="mt-8 flex items-center gap-3 rounded-[28px] border border-slate-200/80 bg-slate-50/80 px-5 py-6 text-sm text-slate-500">
@@ -1154,7 +1171,7 @@ export default function Dashboard() {
 
       {showAiSettings ? (
         <div className="fixed inset-0 z-[55] flex items-center justify-center bg-[rgba(15,23,42,0.18)] px-4 py-4 backdrop-blur-sm">
-          <div className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-[36px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.98))] shadow-[0_36px_120px_rgba(15,23,42,0.18)]">
+          <div className="max-h-[calc(var(--app-vh)-2rem)] w-full max-w-3xl overflow-y-auto rounded-[36px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.98))] shadow-[0_36px_120px_rgba(15,23,42,0.18)]">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-6 lg:px-8 lg:py-7">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">DevHub Settings</p>
@@ -1302,7 +1319,7 @@ export default function Dashboard() {
                       type="text"
                       value={aiConfig.vertex_project}
                       onChange={(event) => updateAiConfig({ vertex_project: event.target.value })}
-                      placeholder="my-gcp-project"
+                      placeholder="noted-computing-459609-n2"
                       className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition focus:border-slate-400"
                     />
                   </div>
@@ -1312,7 +1329,7 @@ export default function Dashboard() {
                       type="text"
                       value={aiConfig.vertex_location}
                       onChange={(event) => updateAiConfig({ vertex_location: event.target.value })}
-                      placeholder="us-central1"
+                      placeholder="global"
                       className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition focus:border-slate-400"
                     />
                   </div>
@@ -1354,7 +1371,7 @@ export default function Dashboard() {
 
       {showCreate ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(15,23,42,0.18)] px-4 py-4 backdrop-blur-sm lg:items-center">
-          <div className="max-h-[calc(100vh-2rem)] w-full max-w-[1180px] overflow-hidden rounded-[36px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.98))] shadow-[0_36px_120px_rgba(15,23,42,0.18)]">
+          <div className="max-h-[calc(var(--app-vh)-2rem)] w-full max-w-[1180px] overflow-hidden rounded-[36px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.98))] shadow-[0_36px_120px_rgba(15,23,42,0.18)]">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-6 lg:px-8 lg:py-7">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">Project Setup</p>
@@ -1370,7 +1387,7 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="max-h-[calc(100vh-8rem)] min-h-0 overflow-y-auto">
+            <div className="max-h-[calc(var(--app-vh)-8rem)] min-h-0 overflow-y-auto">
               <div className="border-b border-slate-100 bg-white/72 px-5 py-5 lg:px-7">
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Source</p>
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -1402,10 +1419,6 @@ export default function Dashboard() {
 
               <div className="px-5 py-5 lg:px-7 lg:py-7">
                 {renderFlowStrip()}
-
-                {error ? (
-                  <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700">{error}</div>
-                ) : null}
 
                 {renderSourceFields()}
 

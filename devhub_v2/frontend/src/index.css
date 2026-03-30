@@ -7,6 +7,10 @@
 
 @layer base {
   :root {
+    --app-scale: 0.8;
+    --app-inverse-scale: 1.25;
+    --app-vw: calc(100vw * var(--app-inverse-scale));
+    --app-vh: calc(100vh * var(--app-inverse-scale));
     --background: 0 0% 100%;
     --foreground: 0 0% 9%;
     --card: 0 0% 100%;
@@ -74,6 +78,12 @@
   }
 }
 
+.app-scale-shell {
+  width: var(--app-vw);
+  min-height: var(--app-vh);
+  zoom: var(--app-scale);
+}
+
 .project-scroll-shell {
   scrollbar-gutter: stable;
   scrollbar-width: thin;
@@ -98,6 +108,17 @@
 .project-scroll-shell::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.95);
   background-clip: padding-box;
+}
+
+.diagram-pan-shell {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.diagram-pan-shell::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 /* Glassmorphism utilities */

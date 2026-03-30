@@ -8,6 +8,7 @@ from typing import Optional
 SKIP_DIRS = {
     "node_modules", ".git", "__pycache__", ".venv", "venv", "env",
     "dist", "build", ".next", ".nuxt", "target", "vendor", ".idea", ".vscode", ".devhub",
+    "data", "out",
 }
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
