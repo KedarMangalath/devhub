@@ -1,0 +1,9 @@
+/.devhub/
+/data/
+/docs/
+
+/venv/
+diff.txt
+
+__pycache__/
+*.py[cod]
