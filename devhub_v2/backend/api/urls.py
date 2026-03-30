@@ -1,13 +1,21 @@
 from django.urls import path
 from . import views
+from integrations import views as integration_views
 
 urlpatterns = [
+    path('integrations/github/', integration_views.github_connection_status, name='github_connection_status'),
+    path('integrations/github/connect/', integration_views.github_connect, name='github_connect'),
+    path('integrations/github/callback/', integration_views.github_callback, name='github_callback'),
+    path('integrations/github/disconnect/', integration_views.github_disconnect, name='github_disconnect'),
+    path('integrations/github/repositories/', integration_views.github_repositories, name='github_repositories'),
+
     # Projects
     path('projects/', views.list_projects, name='list_projects'),
     path('projects/create/', views.create_project, name='create_project'),
     path('projects/suggest/', views.suggest_project_details, name='suggest_project_details'),
     path('settings/ai/', views.devhub_ai_settings, name='devhub_ai_settings'),
     path('projects/import/github/inspect/', views.inspect_github_import, name='inspect_github_import'),
+    path('projects/import/github-connect/inspect/', integration_views.inspect_github_connected_import, name='inspect_github_connected_import'),
     path('projects/import/folder/pick/', views.pick_local_folder, name='pick_local_folder'),
     path('projects/import/folder/inspect/', views.inspect_folder_import, name='inspect_folder_import'),
     path('projects/<str:project_id>/', views.get_project, name='get_project'),
@@ -24,6 +32,9 @@ urlpatterns = [
 
     # Chat
     path('projects/<str:project_id>/chat/', views.project_chat, name='project_chat'),
+    path('projects/<str:project_id>/github/', integration_views.project_github_status, name='project_github_status'),
+    path('projects/<str:project_id>/github/issues/', integration_views.project_github_issues, name='project_github_issues'),
+    path('projects/<str:project_id>/github/pulls/', integration_views.project_github_pulls, name='project_github_pulls'),
 
     # Agent
     path('projects/<str:project_id>/agent/start/', views.start_agent, name='start_agent'),

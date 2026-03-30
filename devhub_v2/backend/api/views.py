@@ -29,6 +29,8 @@ from agents.documentation import generate_codebase_reference_sync
 from agents.memory import _file_summary, _query_requests_broad_listing, _query_requests_system_explanation, build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, read_query_relevant_file_content, record_episode, retrieve_relevant_files, upsert_working_memory
 from agents.workspace import PROJECTS_DIR, SKIP_DIRS, workspace_manager
 from core.models import AgentRun, Changeset, ChatMessage, DocumentationRun, EpisodicMemory, Feature, FeatureApproval, FeatureHistory, FileDiff, Project, SemanticMemory, TestResult, WorkingMemory
+from integrations.github import GitHubIntegrationError, clone_repository_with_token, get_user_repository, github_oauth_config
+from integrations.models import GitHubConnection, GitHubRepositoryLink
 
 PIPELINE_STAGES = ['backlog', 'development', 'testing', 'code_review', 'staging']
 logger = logging.getLogger(__name__)
@@ -122,6 +124,48 @@ def _global_ai_config() -> dict:
 
 def _project_ai_config(project: Project | None = None) -> dict:
     return _global_ai_config()
+
+
+def _upsert_project_github_link(project: Project, repository: dict, connection: GitHubConnection | None = None) -> None:
+    owner = repository.get("owner") or {}
+    GitHubRepositoryLink.objects.update_or_create(
+        project=project,
+        defaults={
+            "connection": connection,
+            "repository_id": repository.get("id"),
+            "owner_login": str(owner.get("login") or ""),
+            "repository_name": str(repository.get("name") or ""),
+            "full_name": str(repository.get("full_name") or ""),
+            "default_branch": str(repository.get("default_branch") or ""),
+            "html_url": str(repository.get("html_url") or ""),
+            "clone_url": str(repository.get("clone_url") or ""),
+            "issues_url": str(repository.get("issues_url") or "").replace("{/number}", ""),
+            "pulls_url": str(repository.get("pulls_url") or "").replace("{/number}", ""),
+            "is_private": bool(repository.get("private")),
+            "permissions": repository.get("permissions") or {},
+            "raw_payload": repository,
+        },
+    )
+
+
+def _github_integration_payload(project: Project) -> dict | None:
+    try:
+        link = GitHubRepositoryLink.objects.select_related("connection").filter(project=project).first()
+    except MEMORY_DB_ERRORS:
+        return None
+    if not link:
+        return None
+    return {
+        "connection_id": link.connection_id,
+        "connection_login": link.connection.login if link.connection else "",
+        "full_name": link.full_name,
+        "owner_login": link.owner_login,
+        "repository_name": link.repository_name,
+        "default_branch": link.default_branch,
+        "html_url": link.html_url,
+        "private": link.is_private,
+        "permissions": link.permissions or {},
+    }
 
 
 def _display_description(project: Project) -> str:
@@ -9109,6 +9153,7 @@ def list_projects(request):
             'registered_at': project.registered_at,
             'local_path': project.local_path,
             'github_url': project.github_url,
+            'github_integration': _github_integration_payload(project),
             'source_type': _project_source_type(project),
         }
         for project in Project.objects.all().order_by('-registered_at')
@@ -9128,8 +9173,10 @@ def create_project(request):
         description = body.get('description', '').strip() or starter_brief
         local_path = body.get('local_path', '').strip()
         github_url = body.get('github_url', '').strip()
+        github_connection_id = int(body.get('github_connection_id') or 0)
+        github_repository_full_name = str(body.get('github_repository_full_name') or '').strip()
         tech_stack = _normalize_tech_stack(body.get('tech_stack', []))
-        if not tech_stack and starter_brief and not github_url and not local_path:
+        if not tech_stack and starter_brief and not github_url and not local_path and not github_repository_full_name:
             tech_stack = _suggested_stack_from_text(starter_brief)
 
         if not name:
@@ -9143,7 +9190,38 @@ def create_project(request):
             tech_stack=tech_stack,
         )
 
-        if github_url:
+        if github_connection_id and github_repository_full_name:
+            repo_folder = _managed_project_root(project)
+            repo_folder.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                connection = GitHubConnection.objects.filter(id=github_connection_id, is_active=True).first()
+                if not connection or not connection.access_token:
+                    raise GitHubIntegrationError('Connect GitHub before importing a connected repository.')
+                config = github_oauth_config()
+                repository = get_user_repository(config, connection.access_token, github_repository_full_name)
+                clone_repository_with_token(connection.access_token, github_repository_full_name, repo_folder)
+            except GitHubIntegrationError as exc:
+                if repo_folder.exists():
+                    shutil.rmtree(repo_folder, ignore_errors=True)
+                project.delete()
+                return JsonResponse({'error': str(exc)}, status=400)
+            except subprocess.TimeoutExpired:
+                if repo_folder.exists():
+                    shutil.rmtree(repo_folder, ignore_errors=True)
+                project.delete()
+                return JsonResponse({'error': 'GitHub clone timed out'}, status=408)
+            except Exception as exc:
+                if repo_folder.exists():
+                    shutil.rmtree(repo_folder, ignore_errors=True)
+                project.delete()
+                return JsonResponse({'error': f'GitHub clone error: {str(exc)}'}, status=500)
+
+            project.github_url = str(repository.get('html_url') or f'https://github.com/{github_repository_full_name}')
+            project.local_path = str(repo_folder)
+            project.workspace_id = workspace_manager.create_workspace(str(repo_folder), managed=True)
+            project.save()
+            _upsert_project_github_link(project, repository, connection)
+        elif github_url:
             repo_folder = _managed_project_root(project)
             repo_folder.parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -9192,7 +9270,7 @@ def create_project(request):
 
         _schedule_project_context_generation(
             project,
-            include_documentation=bool(github_url or local_path),
+            include_documentation=bool(github_url or local_path or github_repository_full_name),
         )
 
         return JsonResponse({
@@ -9202,6 +9280,7 @@ def create_project(request):
             'workspace_id': project.workspace_id,
             'status': 'ready',
             'context_initializing': True,
+            'github_integration': _github_integration_payload(project),
             'runtime': detect_runtime(Path(project.local_path)),
         }, status=201)
     except Exception as exc:
@@ -9294,6 +9373,7 @@ def get_project(request, project_id):
             'name': project.name,
             'description': project.description,
             'github_url': project.github_url,
+            'github_integration': _github_integration_payload(project),
             'local_path': project.local_path,
             'source_type': source_type,
             'workspace_id': project.workspace_id,

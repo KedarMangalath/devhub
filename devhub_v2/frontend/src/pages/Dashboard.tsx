@@ -13,11 +13,12 @@ import {
   X,
 } from 'lucide-react';
 
+import GitHubConnectPanel from '../components/GitHubConnectPanel';
 import ToastStack from '../components/ToastStack';
 
 const API = 'http://localhost:8000/api';
 
-type SourceType = 'starter' | 'github' | 'folder';
+type SourceType = 'starter' | 'github' | 'github_connect' | 'folder';
 
 type Project = {
   id: string;
@@ -54,6 +55,12 @@ type ProjectInspection = {
     run_command?: string;
     preview_url?: string | null;
   };
+  github_connection_id?: number;
+  github_repository_full_name?: string;
+  github_repository?: {
+    full_name?: string;
+    html_url?: string;
+  };
 };
 
 type FlowStep = {
@@ -86,6 +93,15 @@ const SOURCE_OPTIONS: Array<{
       'Bring in a GitHub repo, detect the stack, and let DevHub build blueprint, memory, and implementation context.',
     detail:
       'Best when the code already exists and you want planning, pipeline, and workspace on top of it.',
+  },
+  {
+    id: 'github_connect',
+    title: 'Connect GitHub',
+    eyebrow: 'Sign in and import accessible repos',
+    summary:
+      'Sign in with GitHub, browse repositories you can access, and keep issues and pull requests connected after import.',
+    detail:
+      'Best for private repositories, personal repos, and org repos where the signed-in account already has access.',
   },
   {
     id: 'folder',
@@ -176,6 +192,26 @@ function isValidGitHubRepoUrl(value: string) {
 }
 
 function getFlowSteps(sourceType: SourceType, form: ProjectForm, inspection: ProjectInspection | null): FlowStep[] {
+  if (sourceType === 'github_connect') {
+    return [
+      {
+        title: 'Connect your GitHub account',
+        detail: 'Open the browser auth flow and let DevHub read the repositories available to your signed-in account.',
+        complete: Boolean(inspection?.github_connection_id),
+      },
+      {
+        title: 'Select a repository',
+        detail: 'Choose one repository from the connected account and let DevHub inspect it before import.',
+        complete: Boolean(inspection?.github_repository_full_name),
+      },
+      {
+        title: 'Import with GitHub metadata attached',
+        detail: 'DevHub imports the repo and keeps issues, pull requests, and repo metadata connected to the project.',
+        complete: Boolean(inspection),
+      },
+    ];
+  }
+
   if (sourceType === 'github') {
     return [
       {
@@ -236,6 +272,12 @@ function getFlowSteps(sourceType: SourceType, form: ProjectForm, inspection: Pro
 }
 
 function getFlowSummary(sourceType: SourceType, inspection: ProjectInspection | null) {
+  if (sourceType === 'github_connect') {
+    return inspection
+      ? 'Connected GitHub repository detected. DevHub is ready to import it with repo metadata attached.'
+      : 'Connect GitHub in the browser, then choose the repository you want DevHub to inspect.';
+  }
+
   if (sourceType === 'github') {
     return inspection
       ? 'Repository detected. DevHub is ready to import it into a managed workspace.'
@@ -263,6 +305,15 @@ export default function Dashboard() {
   const [inspecting, setInspecting] = useState(false);
   const [pickingFolder, setPickingFolder] = useState(false);
   const [inspection, setInspection] = useState<ProjectInspection | null>(null);
+  const [githubAppSelection, setGitHubAppSelection] = useState<{
+    github_connection_id: number | null;
+    github_repository_full_name: string;
+    github_url?: string;
+  }>({
+    github_connection_id: null,
+    github_repository_full_name: '',
+    github_url: '',
+  });
   const [deletingId, setDeletingId] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -334,6 +385,39 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shouldOpenCreate = params.get('create') === '1';
+    const requestedSource = params.get('source');
+    const githubState = params.get('github');
+    const githubLogin = params.get('github_login');
+    const githubReason = params.get('reason');
+
+    if (githubState === 'connected') {
+      setSuccess(githubLogin ? `GitHub connected as @${githubLogin}.` : 'GitHub connected.');
+    } else if (githubState === 'error') {
+      setError(githubReason ? `GitHub connection failed: ${githubReason}` : 'GitHub connection failed.');
+    }
+
+    if (shouldOpenCreate) {
+      const nextSource: SourceType =
+        requestedSource === 'github' || requestedSource === 'github_connect' || requestedSource === 'folder'
+          ? requestedSource
+          : 'starter';
+      openCreateModal(nextSource);
+    }
+
+    if (shouldOpenCreate || githubState) {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete('create');
+      nextUrl.searchParams.delete('source');
+      nextUrl.searchParams.delete('github');
+      nextUrl.searchParams.delete('github_login');
+      nextUrl.searchParams.delete('reason');
+      window.history.replaceState({}, '', nextUrl.toString());
+    }
+  }, []);
+
+  useEffect(() => {
     if (!error) return undefined;
     const timeout = window.setTimeout(() => setError(''), 2600);
     return () => window.clearTimeout(timeout);
@@ -349,6 +433,7 @@ export default function Dashboard() {
     setSourceType(nextSource);
     setForm(DEFAULT_FORM);
     setInspection(null);
+    setGitHubAppSelection({ github_connection_id: null, github_repository_full_name: '', github_url: '' });
     setError('');
     setSuccess('');
     setShowCreate(true);
@@ -413,6 +498,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     setInspection(null);
+    setGitHubAppSelection({ github_connection_id: null, github_repository_full_name: '', github_url: '' });
     setError('');
     lastGithubInspectionKey.current = '';
     lastFolderInspectionKey.current = '';
@@ -591,6 +677,11 @@ export default function Dashboard() {
       return;
     }
 
+    if (sourceType === 'github_connect' && !githubAppSelection.github_repository_full_name) {
+      setError('Connect GitHub and choose a repository before importing.');
+      return;
+    }
+
     if (sourceType === 'folder' && !form.local_path.trim()) {
       setError('Open Folder needs a local project path.');
       return;
@@ -605,6 +696,11 @@ export default function Dashboard() {
     if (sourceType === 'folder' && !resolvedInspection) {
       resolvedInspection = await inspectFolder();
       if (!resolvedInspection) return;
+    }
+
+    if (sourceType === 'github_connect' && !resolvedInspection) {
+      setError('Inspect the selected GitHub repository before creating the project.');
+      return;
     }
 
     let starterSuggestion: Pick<ProjectInspection, 'name' | 'description' | 'tech_stack'> | null = null;
@@ -646,15 +742,18 @@ export default function Dashboard() {
       const response = await fetch(`${API}/projects/create/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: resolvedName,
-          description: resolvedDescription,
-          idea: form.idea.trim(),
-          github_url: sourceType === 'github' ? form.github_url.trim() : '',
-          local_path: sourceType === 'folder' ? form.local_path.trim() : '',
-          tech_stack: resolvedTechStack,
-        }),
-      });
+          body: JSON.stringify({
+            name: resolvedName,
+            description: resolvedDescription,
+            idea: form.idea.trim(),
+            github_url: sourceType === 'github' ? form.github_url.trim() : '',
+            github_connection_id: sourceType === 'github_connect' ? githubAppSelection.github_connection_id : null,
+            github_repository_full_name:
+              sourceType === 'github_connect' ? githubAppSelection.github_repository_full_name : '',
+            local_path: sourceType === 'folder' ? form.local_path.trim() : '',
+            tech_stack: resolvedTechStack,
+          }),
+        });
       const data = await response.json();
       if (!response.ok) {
         setError(data.error || 'Could not create project.');
@@ -856,6 +955,39 @@ export default function Dashboard() {
               'Auto-detected Repository Details',
               'Paste a GitHub URL to start detection',
               'DevHub will clone the repo into a temporary space, detect the stack, and show the imported project details automatically.'
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (sourceType === 'github_connect') {
+      return (
+        <div className="space-y-5">
+          <GitHubConnectPanel
+            apiBase={API}
+            idea={form.idea}
+            inspecting={inspecting}
+            onInspection={(data) => {
+              applyInspection(data);
+              setGitHubAppSelection({
+                github_connection_id: data.github_connection_id || null,
+                github_repository_full_name: data.github_repository_full_name || '',
+                github_url: data.github_url || '',
+              });
+            }}
+            onSelectionChange={(selection) => {
+              setInspection(null);
+              setGitHubAppSelection(selection);
+            }}
+            onError={(message) => setError(message)}
+          />
+
+          <div className="grid gap-5">
+            {renderInspectionCard(
+              'Auto-detected Connected Repository Details',
+              'Connect GitHub and select a repository',
+              'DevHub will inspect the selected repository, detect the stack and runtime, and import it with connected GitHub access.'
             )}
           </div>
         </div>
@@ -1162,7 +1294,7 @@ export default function Dashboard() {
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Recommended first step</p>
               <h3 className="mt-3 text-xl font-semibold text-slate-950">Use the right setup path.</h3>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                New product? Use <span className="font-semibold text-slate-900">Start Fresh</span>. Existing online repo? Use <span className="font-semibold text-slate-900">Import GitHub</span>. Existing local codebase? Use <span className="font-semibold text-slate-900">Open Folder</span>.
+                New product? Use <span className="font-semibold text-slate-900">Start Fresh</span>. Public repo URL? Use <span className="font-semibold text-slate-900">Import GitHub</span>. Private or account-backed repo? Use <span className="font-semibold text-slate-900">Connect GitHub</span>. Existing local codebase? Use <span className="font-semibold text-slate-900">Open Folder</span>.
               </p>
             </div>
           </aside>
@@ -1430,6 +1562,10 @@ export default function Dashboard() {
                         ? inspection
                           ? 'Repository detected. Import will clone it into a managed DevHub workspace.'
                           : 'Paste a valid repository URL and DevHub will detect the project details automatically.'
+                        : sourceType === 'github_connect'
+                          ? inspection
+                            ? 'Connected repository detected. Import will clone it with linked GitHub access and keep repo metadata connected.'
+                            : 'Connect GitHub and select a repository to detect the project details automatically.'
                         : inspection
                           ? 'Folder detected. DevHub is ready to connect it as a local workspace.'
                           : 'Choose or paste a local folder path and DevHub will detect the project details automatically.'}
@@ -1449,12 +1585,14 @@ export default function Dashboard() {
                       className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_32px_rgba(15,23,42,0.18)] disabled:opacity-60"
                     >
                       {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                      {sourceType === 'starter'
-                        ? 'Create Working Starter'
-                        : sourceType === 'github'
-                          ? 'Import GitHub Project'
-                          : 'Connect Folder Project'}
-                    </button>
+                        {sourceType === 'starter'
+                          ? 'Create Working Starter'
+                          : sourceType === 'github'
+                            ? 'Import GitHub Project'
+                            : sourceType === 'github_connect'
+                              ? 'Import Connected GitHub Project'
+                            : 'Connect Folder Project'}
+                      </button>
                   </div>
                 </div>
               </div>

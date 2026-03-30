@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronRight, Code2, FileCode, Loader2, PencilLine,
 
 import BlueprintPanel from '../components/BlueprintPanel';
 import CodeWorkspace from '../components/CodeWorkspace';
+import GitHubPanel from '../components/GitHubPanel';
 import MermaidDiagram from '../components/MermaidDiagram';
 import OnboardingPanel from '../components/OnboardingPanel';
 import ProjectChatPanel from '../components/ProjectChatPanel';
@@ -57,6 +58,7 @@ export default function ProjectView() {
     { id: 'onboarding', label: 'Onboarding', icon: 'ON', helper: 'Understand this codebase first' },
     { id: 'blueprint', label: 'Blueprint', icon: 'BP', helper: 'Deep architecture wiki' },
     { id: 'work_items', label: 'Work Items', icon: 'WI', helper: 'List and board for the same work' },
+    { id: 'github', label: 'GitHub', icon: 'GH', helper: 'Issues, PRs, and repo sync' },
     { id: 'chat', label: 'Chat', icon: 'CH', helper: 'Project-level AI assistant' },
     { id: 'code', label: 'Workspace', icon: 'WS', helper: 'Code, preview, and AI edits' },
   ];
@@ -663,6 +665,13 @@ export default function ProjectView() {
             )}
 
             {/* ═════════════════════ OVERVIEW (Rich Dashboard) ═════════════════════ */}
+            {activeTab === 'github' && (
+              <GitHubPanel
+                projectId={id ?? ''}
+                integration={project?.github_integration}
+              />
+            )}
+
             {activeTab === 'overview' && (
               <div className="space-y-5">
                 <div className="overflow-hidden rounded-[28px] border border-black/5 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-6 py-6 shadow-[0_22px_60px_rgba(15,23,42,0.1)]">
