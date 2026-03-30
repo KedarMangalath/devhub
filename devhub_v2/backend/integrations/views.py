@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from django.core import signing
+from django.db import OperationalError, ProgrammingError
 from django.http import HttpResponseRedirect, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
@@ -32,6 +33,7 @@ from .models import GitHubConnection, GitHubRepositoryLink
 
 GITHUB_STATE_SALT = "devhub.github.oauth"
 DEFAULT_FRONTEND_URL = "http://localhost:5173/"
+INTEGRATION_DB_ERRORS = (OperationalError, ProgrammingError)
 
 
 def _oauth_callback_url(request) -> str:
@@ -93,7 +95,10 @@ def _repository_payload(repo: dict, connection: GitHubConnection | None = None) 
 
 
 def _active_connection() -> GitHubConnection | None:
-    return GitHubConnection.objects.filter(is_active=True).order_by("-updated_at").first()
+    try:
+        return GitHubConnection.objects.filter(is_active=True).order_by("-updated_at").first()
+    except INTEGRATION_DB_ERRORS:
+        return None
 
 
 def _linked_repository_or_404(project_id: str):
@@ -102,7 +107,13 @@ def _linked_repository_or_404(project_id: str):
     except Project.DoesNotExist:
         return None, None, JsonResponse({"error": "Project not found"}, status=404)
 
-    link = GitHubRepositoryLink.objects.select_related("connection").filter(project=project).first()
+    try:
+        link = GitHubRepositoryLink.objects.select_related("connection").filter(project=project).first()
+    except INTEGRATION_DB_ERRORS:
+        return project, None, JsonResponse(
+            {"error": "GitHub integration tables are not ready yet. Run backend migrations first."},
+            status=503,
+        )
     if not link or not link.connection_id or not link.connection or not link.connection.access_token:
         return project, None, JsonResponse({"error": "Project is not linked to a connected GitHub repository"}, status=404)
     return project, link, None
@@ -111,11 +122,15 @@ def _linked_repository_or_404(project_id: str):
 @csrf_exempt
 def github_connection_status(request):
     if request.method == "GET":
-        connection = _active_connection()
+        try:
+            connection = _active_connection()
+        except INTEGRATION_DB_ERRORS:
+            connection = None
         return JsonResponse(
             {
                 "github": github_oauth_public_settings(),
                 "connection": _connection_payload(connection),
+                "setup_required": connection is None and not _integration_tables_ready(),
             }
         )
 
@@ -128,6 +143,14 @@ def github_connection_status(request):
             return JsonResponse({"error": str(exc)}, status=500)
 
     return JsonResponse({"error": "Method not allowed"}, status=405)
+
+
+def _integration_tables_ready() -> bool:
+    try:
+        GitHubConnection.objects.exists()
+        return True
+    except INTEGRATION_DB_ERRORS:
+        return False
 
 
 def github_connect(request):
