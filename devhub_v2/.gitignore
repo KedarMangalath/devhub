@@ -4,6 +4,7 @@
 
 /venv/
 diff.txt
+backend/db.sqlite3
 
 __pycache__/
 *.py[cod]
