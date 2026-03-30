@@ -52,6 +52,7 @@ export default function GitHubConnectPanel({
   const [resettingSetup, setResettingSetup] = useState(false);
   const [copiedCallback, setCopiedCallback] = useState(false);
   const [selectedRepository, setSelectedRepository] = useState('');
+  const [inspectedRepository, setInspectedRepository] = useState('');
   const [setupForm, setSetupForm] = useState({
     client_id: '',
     client_secret: '',
@@ -120,6 +121,7 @@ export default function GitHubConnectPanel({
       setConnection(null);
       setRepositories([]);
       setSelectedRepository('');
+      setInspectedRepository('');
       onSelectionChange({ github_connection_id: null, github_repository_full_name: '', github_url: '' });
     } catch {
       onError('Could not disconnect GitHub.');
@@ -170,6 +172,7 @@ export default function GitHubConnectPanel({
       setConnection(null);
       setRepositories([]);
       setSelectedRepository('');
+      setInspectedRepository('');
       setSetupForm({
         client_id: '',
         client_secret: '',
@@ -213,11 +216,7 @@ export default function GitHubConnectPanel({
         return;
       }
       onInspection(data);
-      onSelectionChange({
-        github_connection_id: connection.id,
-        github_repository_full_name: fullName,
-        github_url: data.github_url,
-      });
+      setInspectedRepository(fullName);
     } catch {
       onError('Could not inspect the selected GitHub repository.');
     }
@@ -234,6 +233,7 @@ export default function GitHubConnectPanel({
 
   useEffect(() => {
     if (!selectedRepository) return;
+    setInspectedRepository('');
     onSelectionChange({
       github_connection_id: connection?.id ?? null,
       github_repository_full_name: selectedRepository,
@@ -545,7 +545,11 @@ export default function GitHubConnectPanel({
           {selectedRepository ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">
               <Loader2 className={`h-3.5 w-3.5 ${inspecting ? 'animate-spin' : ''}`} />
-              {inspecting ? 'Inspecting selected repo...' : 'Repo selected and ready'}
+              {inspecting
+                ? 'Inspecting selected repo...'
+                : inspectedRepository === selectedRepository
+                  ? 'Inspection complete'
+                  : 'Repo selected'}
             </span>
           ) : null}
         </div>
