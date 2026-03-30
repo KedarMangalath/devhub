@@ -128,7 +128,10 @@ def github_connection_status(request):
             connection = None
         return JsonResponse(
             {
-                "github": github_oauth_public_settings(),
+                "github": {
+                    **github_oauth_public_settings(),
+                    "callback_url": _oauth_callback_url(request),
+                },
                 "connection": _connection_payload(connection),
                 "setup_required": connection is None and not _integration_tables_ready(),
             }
@@ -138,7 +141,14 @@ def github_connection_status(request):
         try:
             body = _parse_json_body(request)
             config = save_github_oauth_config(body.get("github") or body)
-            return JsonResponse({"github": github_oauth_public_settings(config)})
+            return JsonResponse(
+                {
+                    "github": {
+                        **github_oauth_public_settings(config),
+                        "callback_url": _oauth_callback_url(request),
+                    }
+                }
+            )
         except Exception as exc:
             return JsonResponse({"error": str(exc)}, status=500)
 

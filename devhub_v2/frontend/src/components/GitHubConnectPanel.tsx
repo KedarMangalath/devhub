@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, Github, Loader2, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
+import { CheckCircle2, Copy, ExternalLink, Github, Loader2, RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
 
 type GitHubConnectSelection = {
   github_connection_id: number | null;
@@ -20,6 +20,7 @@ type GitHubSettings = {
   configured: boolean;
   app_name?: string;
   scopes?: string;
+  callback_url?: string;
 };
 
 type GitHubConnection = {
@@ -45,7 +46,15 @@ export default function GitHubConnectPanel({
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [loadingRepositories, setLoadingRepositories] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [savingSetup, setSavingSetup] = useState(false);
+  const [copiedCallback, setCopiedCallback] = useState(false);
   const [selectedRepository, setSelectedRepository] = useState('');
+  const [setupForm, setSetupForm] = useState({
+    client_id: '',
+    client_secret: '',
+    app_name: 'DevHub',
+    scopes: 'repo read:org',
+  });
 
   const loadStatus = async () => {
     setLoadingStatus(true);
@@ -56,8 +65,15 @@ export default function GitHubConnectPanel({
         onError(data.error || 'Could not load GitHub connection status.');
         return;
       }
-      setSettings(data.github || null);
+      const nextSettings = data.github || null;
+      setSettings(nextSettings);
       setConnection(data.connection || null);
+      setSetupForm((current) => ({
+        client_id: current.client_id,
+        client_secret: current.client_secret,
+        app_name: nextSettings?.app_name || current.app_name,
+        scopes: nextSettings?.scopes || current.scopes,
+      }));
     } catch {
       onError('Could not load GitHub connection status.');
     } finally {
@@ -106,6 +122,46 @@ export default function GitHubConnectPanel({
       onError('Could not disconnect GitHub.');
     } finally {
       setDisconnecting(false);
+    }
+  };
+
+  const saveSetup = async () => {
+    setSavingSetup(true);
+    try {
+      const response = await fetch(`${apiBase}/integrations/github/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          github: {
+            client_id: setupForm.client_id.trim(),
+            client_secret: setupForm.client_secret.trim(),
+            app_name: setupForm.app_name.trim(),
+            scopes: setupForm.scopes.trim(),
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        onError(data.error || 'Could not save GitHub OAuth setup.');
+        return;
+      }
+      setSettings(data.github || null);
+      setSetupForm((current) => ({ ...current, client_secret: '' }));
+    } catch {
+      onError('Could not save GitHub OAuth setup.');
+    } finally {
+      setSavingSetup(false);
+    }
+  };
+
+  const copyCallbackUrl = async () => {
+    if (!settings?.callback_url) return;
+    try {
+      await navigator.clipboard.writeText(settings.callback_url);
+      setCopiedCallback(true);
+      window.setTimeout(() => setCopiedCallback(false), 1800);
+    } catch {
+      onError('Could not copy the callback URL.');
     }
   };
 
@@ -208,7 +264,7 @@ export default function GitHubConnectPanel({
             </span>
           ) : (
             <span className="rounded-full bg-amber-50 px-3 py-1.5 font-medium text-amber-700">
-              Server setup still needed: add GitHub client id and client secret, then reconnect this screen.
+              One-time local setup still needed: add the GitHub OAuth client id and client secret below.
             </span>
           )}
           {settings?.scopes ? (
@@ -217,6 +273,99 @@ export default function GitHubConnectPanel({
             </span>
           ) : null}
         </div>
+
+        {!settings?.configured ? (
+          <div className="mt-6 rounded-[26px] border border-amber-200/70 bg-[linear-gradient(180deg,rgba(255,251,235,0.92),rgba(255,255,255,0.96))] p-5">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700/70">One-Time OAuth Setup</p>
+                <h4 className="mt-2 text-lg font-semibold text-slate-900">Register one GitHub OAuth app, then every repo import can use browser auth</h4>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
+                  This is a one-time local server setup, not something each project or repo owner has to repeat. You only need the GitHub OAuth client id and client secret.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">GitHub Client ID</span>
+                <input
+                  value={setupForm.client_id}
+                  onChange={(event) => setSetupForm((current) => ({ ...current, client_id: event.target.value }))}
+                  placeholder="Ov23li..."
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">GitHub Client Secret</span>
+                <input
+                  type="password"
+                  value={setupForm.client_secret}
+                  onChange={(event) => setSetupForm((current) => ({ ...current, client_secret: event.target.value }))}
+                  placeholder="Paste the OAuth app secret"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Display Name</span>
+                <input
+                  value={setupForm.app_name}
+                  onChange={(event) => setSetupForm((current) => ({ ...current, app_name: event.target.value }))}
+                  placeholder="DevHub"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-medium text-slate-700">Scopes</span>
+                <input
+                  value={setupForm.scopes}
+                  onChange={(event) => setSetupForm((current) => ({ ...current, scopes: event.target.value }))}
+                  placeholder="repo read:org"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                />
+              </label>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+              <p className="text-sm font-medium text-slate-800">GitHub OAuth callback URL</p>
+              <p className="mt-2 break-all text-sm text-slate-600">{settings?.callback_url || `${apiBase}/integrations/github/callback/`}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={copyCallbackUrl}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  {copiedCallback ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copiedCallback ? 'Copied' : 'Copy Callback URL'}
+                </button>
+                <a
+                  href="https://github.com/settings/developers"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open GitHub Developer Settings
+                </a>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={saveSetup}
+                disabled={savingSetup || !setupForm.client_id.trim() || !setupForm.client_secret.trim()}
+                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)] disabled:opacity-60"
+              >
+                {savingSetup ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                {savingSetup ? 'Saving...' : 'Save OAuth Setup'}
+              </button>
+              <p className="text-sm text-slate-500">
+                After saving, click <span className="font-medium text-slate-800">Connect GitHub</span> to start browser auth.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         {connection ? (
           <div className="mt-6 rounded-[26px] border border-slate-200/80 bg-[#fbfcfe] p-5">
