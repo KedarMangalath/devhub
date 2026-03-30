@@ -62,6 +62,13 @@ def save_github_oauth_config(config: dict) -> dict:
     return normalized
 
 
+def clear_github_oauth_config() -> dict:
+    settings = _load_devhub_settings()
+    settings.pop("github_oauth", None)
+    _save_devhub_settings(settings)
+    return normalize_github_oauth_config({})
+
+
 def github_oauth_is_configured(config: dict | None = None) -> bool:
     cfg = normalize_github_oauth_config(config or github_oauth_config())
     return bool(cfg.get("client_id") and cfg.get("client_secret"))
@@ -76,6 +83,8 @@ def github_oauth_public_settings(config: dict | None = None) -> dict:
         "has_client_credentials": bool(cfg.get("client_id") and cfg.get("client_secret")),
         "api_base_url": cfg.get("api_base_url"),
         "app_base_url": cfg.get("app_base_url"),
+        "create_oauth_app_url": f"{cfg.get('app_base_url') or 'https://github.com'}/settings/applications/new",
+        "developer_settings_url": f"{cfg.get('app_base_url') or 'https://github.com'}/settings/developers",
     }
 
 

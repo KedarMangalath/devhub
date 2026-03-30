@@ -21,6 +21,8 @@ type GitHubSettings = {
   app_name?: string;
   scopes?: string;
   callback_url?: string;
+  create_oauth_app_url?: string;
+  developer_settings_url?: string;
 };
 
 type GitHubConnection = {
@@ -47,6 +49,7 @@ export default function GitHubConnectPanel({
   const [loadingRepositories, setLoadingRepositories] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [savingSetup, setSavingSetup] = useState(false);
+  const [resettingSetup, setResettingSetup] = useState(false);
   const [copiedCallback, setCopiedCallback] = useState(false);
   const [selectedRepository, setSelectedRepository] = useState('');
   const [setupForm, setSetupForm] = useState({
@@ -151,6 +154,33 @@ export default function GitHubConnectPanel({
       onError('Could not save GitHub OAuth setup.');
     } finally {
       setSavingSetup(false);
+    }
+  };
+
+  const resetSetup = async () => {
+    setResettingSetup(true);
+    try {
+      const response = await fetch(`${apiBase}/integrations/github/`, { method: 'DELETE' });
+      const data = await response.json();
+      if (!response.ok) {
+        onError(data.error || 'Could not reset GitHub OAuth setup.');
+        return;
+      }
+      setSettings(data.github || null);
+      setConnection(null);
+      setRepositories([]);
+      setSelectedRepository('');
+      setSetupForm({
+        client_id: '',
+        client_secret: '',
+        app_name: 'DevHub',
+        scopes: 'repo read:org',
+      });
+      onSelectionChange({ github_connection_id: null, github_repository_full_name: '', github_url: '' });
+    } catch {
+      onError('Could not reset GitHub OAuth setup.');
+    } finally {
+      setResettingSetup(false);
     }
   };
 
@@ -260,7 +290,7 @@ export default function GitHubConnectPanel({
           {settings?.configured ? (
             <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-medium text-emerald-700">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Server OAuth is configured
+              OAuth credentials are saved locally
             </span>
           ) : (
             <span className="rounded-full bg-amber-50 px-3 py-1.5 font-medium text-amber-700">
@@ -270,6 +300,11 @@ export default function GitHubConnectPanel({
           {settings?.scopes ? (
             <span className="rounded-full bg-slate-50 px-3 py-1.5 font-medium text-slate-600">
               Scopes: {settings.scopes}
+            </span>
+          ) : null}
+          {settings?.configured && !connection ? (
+            <span className="rounded-full bg-amber-50 px-3 py-1.5 font-medium text-amber-700">
+              If you deleted the GitHub OAuth app, reset this setup and create a new one before connecting again.
             </span>
           ) : null}
         </div>
@@ -339,7 +374,16 @@ export default function GitHubConnectPanel({
                   {copiedCallback ? 'Copied' : 'Copy Callback URL'}
                 </button>
                 <a
-                  href="https://github.com/settings/developers"
+                  href={settings?.create_oauth_app_url || 'https://github.com/settings/applications/new'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Create OAuth App
+                </a>
+                <a
+                  href={settings?.developer_settings_url || 'https://github.com/settings/developers'}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
@@ -363,6 +407,36 @@ export default function GitHubConnectPanel({
               <p className="text-sm text-slate-500">
                 After saving, click <span className="font-medium text-slate-800">Connect GitHub</span> to start browser auth.
               </p>
+            </div>
+          </div>
+        ) : null}
+
+        {settings?.configured && !connection ? (
+          <div className="mt-6 rounded-[26px] border border-amber-200/70 bg-[linear-gradient(180deg,rgba(255,248,240,0.92),rgba(255,255,255,0.96))] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700/70">Recovery</p>
+            <h4 className="mt-2 text-lg font-semibold text-slate-900">Reconnect or recreate the OAuth app</h4>
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">
+              Connect GitHub should open GitHub's authorization screen for an existing OAuth app. If it opens a 404 page, the saved client id usually points to a deleted or invalid app.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={resetSetup}
+                disabled={resettingSetup}
+                className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-60"
+              >
+                {resettingSetup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
+                {resettingSetup ? 'Resetting...' : 'Reset GitHub Setup'}
+              </button>
+              <a
+                href={settings?.create_oauth_app_url || 'https://github.com/settings/applications/new'}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Create OAuth App
+              </a>
             </div>
           </div>
         ) : null}
@@ -407,45 +481,66 @@ export default function GitHubConnectPanel({
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Repository Access</p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-900">Choose a connected repository</h3>
+            <h3 className="mt-2 text-xl font-semibold text-slate-900">
+              {connection ? 'Choose a connected repository' : 'Finish GitHub sign-in first'}
+            </h3>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-500">
-              DevHub lists repositories available to the connected GitHub account and inspects the selected repo before import.
+              {connection
+                ? 'DevHub lists repositories available to the connected GitHub account and inspects the selected repo before import.'
+                : 'OAuth app setup is done, but no GitHub user has completed browser sign-in yet. Click Connect GitHub above, approve access, and then return here to load repos.'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadRepositories()}
-            disabled={!connection || loadingRepositories}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:opacity-60"
-          >
-            {loadingRepositories ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Refresh Repos
-          </button>
+          {connection ? (
+            <button
+              type="button"
+              onClick={() => void loadRepositories()}
+              disabled={!connection || loadingRepositories}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:opacity-60"
+            >
+              {loadingRepositories ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Refresh Repos
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={connectGitHub}
+              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.16)]"
+            >
+              <Github className="h-4 w-4" />
+              Connect GitHub
+            </button>
+          )}
         </div>
 
-        <div className="mt-6 grid gap-4">
-          <label className="grid gap-2">
-            <span className="text-sm font-medium text-slate-700">Repository</span>
-            <select
-              value={selectedRepository}
-              onChange={(event) => setSelectedRepository(event.target.value)}
-              disabled={!connection || loadingRepositories}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 disabled:opacity-60"
-            >
-              <option value="">{loadingRepositories ? 'Loading repositories...' : 'Select a repository'}</option>
-              {repositories.map((repository) => (
-                <option key={repository.full_name} value={repository.full_name}>
-                  {repository.full_name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        {connection ? (
+          <div className="mt-6 grid gap-4">
+            <label className="grid gap-2">
+              <span className="text-sm font-medium text-slate-700">Repository</span>
+              <select
+                value={selectedRepository}
+                onChange={(event) => setSelectedRepository(event.target.value)}
+                disabled={!connection || loadingRepositories}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 disabled:opacity-60"
+              >
+                <option value="">{loadingRepositories ? 'Loading repositories...' : 'Select a repository'}</option>
+                {repositories.map((repository) => (
+                  <option key={repository.full_name} value={repository.full_name}>
+                    {repository.full_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : (
+          <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-[#fafbfc] px-4 py-6 text-sm leading-7 text-slate-500">
+            No GitHub account token is connected yet, so DevHub has nothing to list here. After you complete browser sign-in, this section will populate automatically.
+          </div>
+        )}
 
         <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-slate-500">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-3 py-1.5">
             <Github className="h-3.5 w-3.5" />
-            {repositories.length} repos available to this connection
+            {connection ? `${repositories.length} repos available to this connection` : 'No connected GitHub account yet'}
           </span>
           {selectedRepository ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700">

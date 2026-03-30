@@ -25,6 +25,7 @@ from .github import (
     list_user_repositories,
     normalize_github_oauth_config,
     save_github_oauth_config,
+    clear_github_oauth_config,
     create_repository_issue,
     create_repository_pull,
 )
@@ -147,6 +148,22 @@ def github_connection_status(request):
                         **github_oauth_public_settings(config),
                         "callback_url": _oauth_callback_url(request),
                     }
+                }
+            )
+        except Exception as exc:
+            return JsonResponse({"error": str(exc)}, status=500)
+
+    if request.method == "DELETE":
+        try:
+            config = clear_github_oauth_config()
+            GitHubConnection.objects.update(is_active=False, access_token="")
+            return JsonResponse(
+                {
+                    "github": {
+                        **github_oauth_public_settings(config),
+                        "callback_url": _oauth_callback_url(request),
+                    },
+                    "success": True,
                 }
             )
         except Exception as exc:
