@@ -50,7 +50,7 @@ INDEXABLE_EXTENSIONS = {
     # Misc
     '.xml', '.gradle',
 }
-BLUEPRINT_CACHE_VERSION = 11  # bumped: universal language support + adaptive exploration
+BLUEPRINT_CACHE_VERSION = 15  # bumped: shared finalization + root dir visibility
 BLUEPRINT_CONFIG_FILES = {
     # JavaScript / Node
     'package.json', 'tsconfig.json',
@@ -96,6 +96,14 @@ BLUEPRINT_SKIP_FILE_NAMES = {
     'cargo.lock', 'poetry.lock', 'composer.lock', 'gemfile.lock',
     'packages.lock.json', 'pubspec.lock',
 }
+BLUEPRINT_JUNK_PATTERNS = {
+    'tsc_out.txt',
+    '.tsbuildinfo',
+}
+BLUEPRINT_JUNK_PREFIXES = (
+    '2026-',
+    '2025-',
+)
 BLUEPRINT_SKIP_DIRS = {
     # JS build artifacts
     'dist', 'build', '.next', 'out',
@@ -569,6 +577,18 @@ def _call_name(node: ast.AST | None) -> str:
     return ''
 
 
+def _literal_str(node: ast.AST | None) -> str:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                parts.append(value.value)
+        return "".join(parts)
+    return ''
+
+
 def _meta_value_to_strings(source: str, node: ast.AST | None) -> list[str]:
     if node is None:
         return []
@@ -920,6 +940,371 @@ def _extract_django_model_schema(workspace_path: Path, manifest_entries: list[di
     }
 
 
+def _empty_schema_payload() -> dict:
+    return {
+        'database_schema': [],
+        'database_mermaid_erd': '',
+        'database_source_files': [],
+        'database_model_names': [],
+    }
+
+
+def _extract_universal_schema(
+    workspace_path: Path,
+    manifest_entries: list[dict] | None = None,
+    graph_data: dict | None = None,
+) -> dict:
+    django_schema = _extract_django_model_schema(workspace_path, manifest_entries)
+    if django_schema.get('database_schema'):
+        return django_schema
+
+    sqlalchemy_schema = _extract_sqlalchemy_model_schema(workspace_path, manifest_entries)
+    if sqlalchemy_schema.get('database_schema'):
+        return sqlalchemy_schema
+
+    prisma_schema = _extract_prisma_model_schema(workspace_path)
+    if prisma_schema.get('database_schema'):
+        return prisma_schema
+
+    raw_sql_schema = _extract_raw_sql_schema(workspace_path)
+    if raw_sql_schema.get('database_schema'):
+        return raw_sql_schema
+
+    graph_schema = _extract_graph_schema_fallback(workspace_path, graph_data or {})
+    if graph_schema.get('database_schema'):
+        return graph_schema
+
+    return _empty_schema_payload()
+
+
+def _candidate_python_paths(workspace_path: Path, manifest_entries: list[dict] | None = None) -> list[str]:
+    manifest_entries = manifest_entries or []
+    python_paths = [
+        str(item.get('path') or '')
+        for item in manifest_entries
+        if str(item.get('path') or '').endswith('.py') and not str(item.get('path') or '').startswith('.devhub/')
+    ]
+    if python_paths:
+        return python_paths
+    return [
+        str(path.relative_to(workspace_path)).replace('\\', '/')
+        for path in _iter_blueprint_files(workspace_path)
+        if path.suffix.lower() == '.py'
+    ]
+
+
+def _extract_sqlalchemy_model_schema(workspace_path: Path, manifest_entries: list[dict] | None = None) -> dict:
+    parsed_models: list[dict] = []
+    source_files: set[str] = set()
+
+    for rel_path in _candidate_python_paths(workspace_path, manifest_entries):
+        file_path = workspace_path / rel_path
+        try:
+            source = file_path.read_text(encoding='utf-8', errors='ignore')
+            tree = ast.parse(source)
+        except Exception:
+            continue
+
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef):
+                continue
+            base_names = {_safe_source_text(source, base) for base in node.bases}
+            looks_like_sqlalchemy = any(
+                base.endswith('Base') or base.endswith('db.Model') or 'DeclarativeBase' in base
+                for base in base_names
+            )
+            if not looks_like_sqlalchemy:
+                continue
+
+            table_name = node.name
+            fields: list[dict] = []
+            relationships: list[dict] = []
+            indexes: list[str] = []
+
+            for child in node.body:
+                if isinstance(child, ast.Assign) and len(child.targets) == 1 and isinstance(child.targets[0], ast.Name):
+                    target_name = child.targets[0].id
+                    if target_name == '__tablename__':
+                        table_name = _literal_str(child.value) or table_name
+                        continue
+                    if isinstance(child.value, ast.Call):
+                        call_name = _call_name(child.value.func)
+                        if call_name in {'Column', 'mapped_column'}:
+                            field_type = _safe_source_text(source, child.value.args[0]) if child.value.args else 'Column'
+                            fields.append(
+                                {
+                                    'name': target_name,
+                                    'type': str(field_type or 'Column'),
+                                    'constraints': _safe_source_text(source, child.value),
+                                    'description': f"SQLAlchemy column on `{table_name}`.",
+                                }
+                            )
+                        elif call_name == 'relationship':
+                            target_model = _literal_str(child.value.args[0]) if child.value.args else ''
+                            relationships.append(
+                                {
+                                    'field_name': target_name,
+                                    'target_model': target_model,
+                                    'cardinality': 'many-to-one',
+                                }
+                            )
+                elif isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name) and isinstance(child.value, ast.Call):
+                    call_name = _call_name(child.value.func)
+                    if call_name in {'Column', 'mapped_column'}:
+                        fields.append(
+                            {
+                                'name': child.target.id,
+                                'type': _safe_source_text(source, child.annotation) or 'Column',
+                                'constraints': _safe_source_text(source, child.value),
+                                'description': f"SQLAlchemy column on `{table_name}`.",
+                            }
+                        )
+
+            if not fields and not relationships:
+                continue
+
+            parsed_models.append(
+                {
+                    'name': table_name,
+                    'fields': fields,
+                    'relationships': relationships,
+                    'indexes': indexes,
+                    'source_path': rel_path,
+                }
+            )
+            source_files.add(rel_path)
+
+    return _schema_payload_from_models(parsed_models, source_files, description_prefix='SQLAlchemy model')
+
+
+def _extract_prisma_model_schema(workspace_path: Path) -> dict:
+    parsed_models: list[dict] = []
+    source_files: set[str] = set()
+    for file_path in workspace_path.rglob('*.prisma'):
+        if '.devhub' in file_path.parts or 'node_modules' in file_path.parts:
+            continue
+        try:
+            source = file_path.read_text(encoding='utf-8', errors='ignore')
+        except Exception:
+            continue
+        for match in re.finditer(r"model\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{(.*?)\}", source, re.DOTALL):
+            model_name = match.group(1)
+            body = match.group(2)
+            fields: list[dict] = []
+            relationships: list[dict] = []
+            indexes: list[str] = []
+            for raw_line in body.splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith('//'):
+                    continue
+                if line.startswith('@@'):
+                    indexes.append(line)
+                    continue
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                field_name = parts[0]
+                field_type = parts[1]
+                constraints = " ".join(parts[2:]).strip()
+                if '@relation' in constraints:
+                    relationships.append(
+                        {
+                            'field_name': field_name,
+                            'target_model': field_type.rstrip('?[]'),
+                            'cardinality': 'relation',
+                        }
+                    )
+                fields.append(
+                    {
+                        'name': field_name,
+                        'type': field_type,
+                        'constraints': constraints,
+                        'description': f"Prisma field on `{model_name}`.",
+                    }
+                )
+            if not fields:
+                continue
+            rel_path = str(file_path.relative_to(workspace_path)).replace('\\', '/')
+            parsed_models.append(
+                {
+                    'name': model_name,
+                    'fields': fields,
+                    'relationships': relationships,
+                    'indexes': indexes,
+                    'source_path': rel_path,
+                }
+            )
+            source_files.add(rel_path)
+    return _schema_payload_from_models(parsed_models, source_files, description_prefix='Prisma model')
+
+
+def _extract_raw_sql_schema(workspace_path: Path) -> dict:
+    parsed_models: list[dict] = []
+    source_files: set[str] = set()
+    for file_path in workspace_path.rglob('*.sql'):
+        if '.devhub' in file_path.parts or 'node_modules' in file_path.parts:
+            continue
+        try:
+            source = file_path.read_text(encoding='utf-8', errors='ignore')
+        except Exception:
+            continue
+        for match in re.finditer(r"CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+([A-Za-z0-9_`\"\.]+)\s*\((.*?)\);", source, re.IGNORECASE | re.DOTALL):
+            table_name = str(match.group(1) or '').strip('`"')
+            body = match.group(2)
+            fields: list[dict] = []
+            relationships: list[dict] = []
+            indexes: list[str] = []
+            for raw_line in re.split(r",\s*(?![^()]*\))", body):
+                line = raw_line.strip().strip(',')
+                if not line:
+                    continue
+                upper_line = line.upper()
+                if upper_line.startswith(('PRIMARY KEY', 'UNIQUE', 'CONSTRAINT', 'INDEX')):
+                    indexes.append(line)
+                    continue
+                column_match = re.match(r"([A-Za-z0-9_`\"]+)\s+([A-Za-z0-9_()]+)(.*)", line)
+                if not column_match:
+                    continue
+                field_name = column_match.group(1).strip('`"')
+                field_type = column_match.group(2)
+                constraints = column_match.group(3).strip()
+                reference_match = re.search(r"REFERENCES\s+([A-Za-z0-9_`\"\.]+)", line, re.IGNORECASE)
+                if reference_match:
+                    relationships.append(
+                        {
+                            'field_name': field_name,
+                            'target_model': str(reference_match.group(1) or '').strip('`"'),
+                            'cardinality': 'foreign-key',
+                        }
+                    )
+                fields.append(
+                    {
+                        'name': field_name,
+                        'type': field_type,
+                        'constraints': constraints,
+                        'description': f"SQL column on `{table_name}`.",
+                    }
+                )
+            if not fields:
+                continue
+            rel_path = str(file_path.relative_to(workspace_path)).replace('\\', '/')
+            parsed_models.append(
+                {
+                    'name': table_name,
+                    'fields': fields,
+                    'relationships': relationships,
+                    'indexes': indexes,
+                    'source_path': rel_path,
+                }
+            )
+            source_files.add(rel_path)
+    return _schema_payload_from_models(parsed_models, source_files, description_prefix='SQL table')
+
+
+def _extract_graph_schema_fallback(workspace_path: Path, graph_data: dict) -> dict:
+    graph_components = graph_data.get('key_components') if isinstance(graph_data, dict) else []
+    parsed_models: list[dict] = []
+    source_files: set[str] = set()
+
+    for item in graph_components or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get('name') or '').strip()
+        file_path = str(item.get('file_path') or '').strip()
+        exports = str(item.get('exports') or '').strip().lower()
+        if not name or 'class' not in exports and 'type' not in exports:
+            continue
+        parsed_models.append(
+            {
+                'name': name,
+                'fields': [],
+                'relationships': [],
+                'indexes': [],
+                'source_path': file_path,
+            }
+        )
+        if file_path:
+            source_files.add(file_path)
+
+    if not parsed_models:
+        try:
+            from code_review_graph.tools.query import semantic_search_nodes
+        except ImportError:
+            return _empty_schema_payload()
+        try:
+            class_results = semantic_search_nodes(query='model schema entity table', kind='Class', limit=20, repo_root=str(workspace_path))
+            type_results = semantic_search_nodes(query='schema type entity', kind='Type', limit=20, repo_root=str(workspace_path))
+        except Exception:
+            return _empty_schema_payload()
+        for item in list(class_results.get('results') or []) + list(type_results.get('results') or []):
+            name = str(item.get('name') or '').strip()
+            file_path = str(item.get('file_path') or '').strip()
+            if not name:
+                continue
+            parsed_models.append(
+                {
+                    'name': name,
+                    'fields': [],
+                    'relationships': [],
+                    'indexes': [],
+                    'source_path': file_path,
+                }
+            )
+            if file_path:
+                source_files.add(file_path)
+
+    if not parsed_models:
+        return _empty_schema_payload()
+    return _schema_payload_from_models(parsed_models, source_files, description_prefix='Graph-derived type')
+
+
+def _schema_payload_from_models(parsed_models: list[dict], source_files: set[str], description_prefix: str) -> dict:
+    if not parsed_models:
+        return _empty_schema_payload()
+
+    schema_rows: list[dict] = []
+    mermaid_lines = ['erDiagram']
+    for model in parsed_models:
+        model_name = str(model.get('name') or '').strip()
+        if not model_name:
+            continue
+        fields = list(model.get('fields') or [])
+        mermaid_lines.append(f"  {model_name} {{")
+        for field in fields:
+            mermaid_lines.append(f"    {_mermaid_scalar_type(str(field.get('type') or 'string'))} {field.get('name')}")
+        mermaid_lines.append("  }")
+        relationships = list(model.get('relationships') or [])
+        relationship_text = " ".join(
+            f"`{item.get('field_name')}` -> `{item.get('target_model')}` ({item.get('cardinality')})"
+            for item in relationships
+            if item.get('field_name') and item.get('target_model')
+        ) or "No explicit relationships detected."
+        schema_rows.append(
+            {
+                'table': model_name,
+                'description': f"{description_prefix} defined in `{model.get('source_path')}`.",
+                'key_fields': fields,
+                'relationships': relationship_text,
+                'indexes': list(model.get('indexes') or []),
+            }
+        )
+
+    for model in parsed_models:
+        source_name = str(model.get('name') or '').strip()
+        for relationship in model.get('relationships') or []:
+            target_name = str(relationship.get('target_model') or '').strip()
+            field_name = str(relationship.get('field_name') or 'relation').strip()
+            if source_name and target_name:
+                mermaid_lines.append(f"  {source_name} }}o--|| {target_name} : {field_name}")
+
+    return {
+        'database_schema': schema_rows,
+        'database_mermaid_erd': "\n".join(mermaid_lines),
+        'database_source_files': sorted(source_files),
+        'database_model_names': [item['table'] for item in schema_rows],
+    }
+
+
 def _extract_markdown_headings(content: str, limit: int = 8) -> list[str]:
     headings = []
     for line in (content or "").splitlines():
@@ -1203,8 +1588,6 @@ def _file_summary(file_path: Path, workspace_path: Path, *, include_excerpt: boo
         f"Top headings: {', '.join(headings[:5])}." if headings else "",
         f"Top-level keys: {', '.join(json_keys[:6])}." if json_keys else "",
         f"Key imports: {', '.join(imports[:5])}." if imports else "",
-        f"Routes/endpoints: {', '.join(routes[:6])}." if routes else "",
-        f"Data models/types: {', '.join(data_models[:6])}." if data_models else "",
         f"Representative commands: {', '.join(commands[:4])}." if commands else "",
     ]
     summary = " ".join(part for part in summary_parts if part).strip()
@@ -1421,6 +1804,10 @@ def _build_blueprint_manifest(workspace_path: Path) -> dict:
             if rel_path.startswith('.devhub/'):
                 continue
             if is_ignored(rel_path):
+                continue
+            if filename.lower() in BLUEPRINT_JUNK_PATTERNS:
+                continue
+            if any(filename.startswith(prefix) for prefix in BLUEPRINT_JUNK_PREFIXES):
                 continue
             try:
                 stat = path.stat()
@@ -2198,7 +2585,55 @@ def _render_repo_tree(file_summaries: list[dict], project_name: str) -> str:
     return "\n".join(lines)[:24000]
 
 
-def _build_repo_tree_nodes(indexed_paths: list[str], project_name: str, max_nodes: int = 1600, max_children_per_dir: int = 60) -> list[dict]:
+def _workspace_root_directories(workspace_path: Path) -> list[str]:
+    always_skip = {'.git', 'node_modules', '__pycache__', '.venv', 'venv'}
+    root_dirs: list[str] = []
+    try:
+        entries = sorted(workspace_path.iterdir(), key=lambda item: item.name.lower())
+    except Exception:
+        return root_dirs
+    for entry in entries:
+        if not entry.is_dir() or entry.name in always_skip:
+            continue
+        root_dirs.append(entry.name)
+    return root_dirs
+
+
+def _ensure_root_dirs_in_tree(
+    repo_tree: str,
+    indexed_paths: list[str],
+    project_name: str,
+    root_directories: list[str] | None = None,
+) -> str:
+    """Ensure root directories from the manifest appear in repo tree."""
+    _ = project_name
+    always_skip = {'.git', 'node_modules', '__pycache__', '.venv', 'venv'}
+    manifest_root_dirs: set[str] = set()
+    for raw_path in indexed_paths:
+        parts = str(raw_path or "").replace('\\', '/').split('/')
+        if len(parts) > 1 and parts[0] not in always_skip:
+            manifest_root_dirs.add(parts[0])
+    for directory in root_directories or []:
+        normalized = str(directory or "").strip()
+        if normalized and normalized not in always_skip:
+            manifest_root_dirs.add(normalized)
+
+    tree_lines = repo_tree.splitlines()
+    mentioned = {line.strip().lstrip('|- ').rstrip('/') for line in tree_lines}
+    missing = sorted(manifest_root_dirs - mentioned)
+    if missing and tree_lines:
+        insert_lines = [f"|- {directory}/" for directory in missing]
+        tree_lines = tree_lines[:1] + insert_lines + tree_lines[1:]
+    return '\n'.join(tree_lines)
+
+
+def _build_repo_tree_nodes(
+    indexed_paths: list[str],
+    project_name: str,
+    max_nodes: int = 1600,
+    max_children_per_dir: int = 60,
+    root_directories: list[str] | None = None,
+) -> list[dict]:
     tree: dict[str, dict] = {}
     node_budget = 0
 
@@ -2229,6 +2664,17 @@ def _build_repo_tree_nodes(indexed_paths: list[str], project_name: str, max_node
                 break
         if node_budget >= max_nodes:
             break
+
+    for directory in root_directories or []:
+        normalized = str(directory or "").strip()
+        if not normalized or normalized in tree:
+            continue
+        tree[normalized] = {
+            "name": normalized,
+            "path": normalized,
+            "type": "directory",
+            "children": {},
+        }
 
     def finalize(children: dict[str, dict]) -> list[dict]:
         entries = sorted(
@@ -2264,6 +2710,48 @@ def _build_repo_tree_nodes(indexed_paths: list[str], project_name: str, max_node
     return finalize(tree)
 
 
+def _scan_env_var_names(workspace_path: Path) -> list[str]:
+    """Scan project files for environment variable references."""
+    patterns = [
+        re.compile(r"""os\.(?:environ\.get|getenv)\(\s*['"]([A-Z][A-Z0-9_]*)['"]"""),
+        re.compile(r"""os\.environ\[\s*['"]([A-Z][A-Z0-9_]*)['"]\s*\]"""),
+        re.compile(r"""process\.env\.([A-Z][A-Z0-9_]*)"""),
+        re.compile(r"""import\.meta\.env\.([A-Z][A-Z0-9_]*)"""),
+    ]
+    skip_dirs = {'.git', 'node_modules', 'venv', '.venv', '__pycache__', 'dist', 'build', '.devhub', 'data'}
+    names: set[str] = set()
+    scanned_files = 0
+
+    for root, dirs, files in os.walk(workspace_path):
+        dirs[:] = [directory for directory in dirs if directory not in skip_dirs]
+        for filename in files:
+            lowered = filename.lower()
+            is_code_file = filename.endswith(('.py', '.js', '.ts', '.tsx', '.jsx'))
+            is_env_file = lowered == '.env' or lowered.startswith('.env.')
+            if not (is_code_file or is_env_file):
+                continue
+            scanned_files += 1
+            if scanned_files > 500:
+                return sorted(names)[:60]
+            file_path = Path(root) / filename
+            try:
+                content = file_path.read_text(encoding='utf-8', errors='ignore')[:50_000]
+            except Exception:
+                continue
+            for pattern in patterns:
+                for match in pattern.finditer(content):
+                    names.add(match.group(1))
+            if is_env_file:
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith('#') or '=' not in stripped:
+                        continue
+                    var_name = stripped.split('=', 1)[0].strip()
+                    if re.match(r'^[A-Z][A-Z0-9_]*$', var_name):
+                        names.add(var_name)
+    return sorted(names)[:60]
+
+
 def build_blueprint_context(project: Project, workspace_path: Path, force: bool = False) -> dict:
     cache_path = _blueprint_cache_path(workspace_path)
     manifest = _build_blueprint_manifest(workspace_path)
@@ -2287,12 +2775,13 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
 
     file_summaries = []
     directory_counts: dict[str, int] = {}
+    root_directories = _workspace_root_directories(workspace_path)
     for entry in manifest_entries:
         rel_path = str(entry.get('path') or '')
         tier = int(entry.get('tier') or 3)
         if not rel_path or rel_path.startswith('.devhub/'):
             continue
-        directory = rel_path.split('/')[0] if '/' in rel_path else 'project root'
+        directory = rel_path.split('/')[0] if '/' in rel_path else '.'
         directory_counts[directory] = directory_counts.get(directory, 0) + 1
         if tier == 3:
             continue
@@ -2300,22 +2789,43 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
         if summary:
             file_summaries.append(summary)
 
-    indexed_paths = [item.get('path') for item in file_summaries if item.get('path')]
+    indexed_paths = [
+        str(entry.get('path') or '').replace('\\', '/')
+        for entry in manifest_entries
+        if str(entry.get('path') or '').replace('\\', '/')
+        and not str(entry.get('path') or '').replace('\\', '/').startswith('.devhub/')
+    ]
 
-    ranked_files = sorted(file_summaries, key=_score_blueprint_file, reverse=True)
+    graph_data = {}
+    try:
+        from agents.graph_bridge import build_graph_context
+        graph_data = build_graph_context(workspace_path)
+    except ImportError:
+        graph_data = {}
+    except Exception:
+        graph_data = {}
+    if graph_data and len(file_summaries) > 2000:
+        hub_files = {
+            str(item.get('file_path') or '').replace('\\', '/')
+            for item in (graph_data.get('key_components') or [])
+            if isinstance(item, dict) and str(item.get('file_path') or '').strip()
+        }
+        for item in file_summaries:
+            if str(item.get('path') or '').replace('\\', '/') in hub_files:
+                item['tier'] = 1
+
+    ranked_files = sorted(
+        file_summaries,
+        key=lambda item: (
+            int(item.get('tier') or 3),
+            -_score_blueprint_file(item),
+            str(item.get('path') or ''),
+        ),
+    )
     important_files = ranked_files[:60]
     all_file_summaries = ranked_files[:500]
     dependency_graph = _build_dependency_graph_payload(all_file_summaries)
-    routes = []
-    data_models = []
-    for item in all_file_summaries:
-        for route in item.get('routes') or []:
-            if route not in routes:
-                routes.append(route)
-        for model in item.get('data_models') or []:
-            if model not in data_models:
-                data_models.append(model)
-    database_analysis = _extract_django_model_schema(workspace_path, manifest_entries)
+    database_analysis = _extract_universal_schema(workspace_path, manifest_entries, graph_data=graph_data)
     api_reference = build_api_reference_catalog(workspace_path)
 
     readme_excerpt = ''
@@ -2337,27 +2847,33 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
     compact_lines.append("Important files:")
     for item in important_files[:60]:
         compact_lines.append(f"- {item['path']}: {item['summary']}")
-    if routes:
-        compact_lines.append("Detected routes/endpoints:")
-        for route in routes[:20]:
-            compact_lines.append(f"- {route}")
-    if api_reference:
-        compact_lines.append(f"API reference entries: {len(api_reference)}")
-    if data_models:
-        compact_lines.append("Detected data models/types:")
-        for model in data_models[:20]:
-            compact_lines.append(f"- {model}")
     if database_analysis.get('database_model_names'):
         compact_lines.append("Persisted backend models:")
         for model in (database_analysis.get('database_model_names') or [])[:20]:
             compact_lines.append(f"- {model}")
+    graph_summary = str(graph_data.get('graph_summary') or '')
+    if graph_summary:
+        compact_lines.append("Structural graph analysis:")
+        for line in graph_summary.splitlines()[:12]:
+            if line.strip():
+                compact_lines.append(f"- {line.strip()}")
+    env_var_names = _scan_env_var_names(workspace_path)
+    if env_var_names:
+        compact_lines.append(f"Environment variables referenced in code ({len(env_var_names)} found):")
+        for name in env_var_names[:60]:
+            compact_lines.append(f"  - {name}")
     if instruction_files:
         compact_lines.append("Project instructions:")
         for item in instruction_files:
             compact_lines.append(f"- {item['path']}: {item['content'][:220].replace(chr(10), ' ')}")
+    if readme_excerpt:
+        compact_lines.append("README content (use for setup_steps):")
+        for line in readme_excerpt.splitlines()[:40]:
+            compact_lines.append(f"  {line}")
 
     repo_tree = _render_repo_tree(file_summaries, project.name)
-    repo_tree_nodes = _build_repo_tree_nodes(indexed_paths, project.name)
+    repo_tree = _ensure_root_dirs_in_tree(repo_tree, indexed_paths, project.name, root_directories=root_directories)
+    repo_tree_nodes = _build_repo_tree_nodes(indexed_paths, project.name, root_directories=root_directories)
 
     compact_summary = "\n".join(compact_lines)[:12000]
     cache = {
@@ -2366,18 +2882,25 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
         'manifest_file_count': len(manifest_entries),
         'file_count': len(file_summaries),
         'directory_counts': directory_counts,
+        'root_directories': root_directories,
         'manifest': manifest_entries[:6000],
         'indexed_paths': indexed_paths[:4000],
         'important_files': important_files,
         'all_file_summaries': all_file_summaries,
         'dependency_graph': dependency_graph,
-        'routes': routes[:24],
         'api_reference': api_reference[:200],
-        'data_models': data_models[:24],
         'database_schema': database_analysis.get('database_schema') or [],
         'database_mermaid_erd': database_analysis.get('database_mermaid_erd') or '',
         'database_source_files': database_analysis.get('database_source_files') or [],
         'database_model_names': database_analysis.get('database_model_names') or [],
+        'graph_summary': graph_summary,
+        'graph_architecture_overview': graph_data.get('architecture_overview') or {},
+        'graph_repository_map': graph_data.get('repository_map') or [],
+        'graph_key_components': graph_data.get('key_components') or [],
+        'graph_sequence_flows': graph_data.get('sequence_flows') or [],
+        'graph_knowledge_gaps': graph_data.get('knowledge_gaps') or [],
+        'graph_stats': graph_data.get('graph_stats') or {},
+        'env_var_names': env_var_names,
         'readme_excerpt': readme_excerpt[:4000],
         'instruction_files': instruction_files,
         'repo_tree': repo_tree,
@@ -2411,6 +2934,8 @@ def slim_context_for_llm(context: dict, important_files_limit: int = 60) -> dict
     important = context.get('important_files') or []
     return {
         'compact_summary': context.get('compact_summary') or '',
+        'graph_summary': context.get('graph_summary') or '',
+        'graph_stats': context.get('graph_stats') or {},
         'file_count': context.get('file_count') or 0,
         'manifest_file_count': context.get('manifest_file_count') or 0,
         'important_files': important[:important_files_limit],

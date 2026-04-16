@@ -187,6 +187,9 @@ class QueryEngine:
             # ── EXECUTE TOOL CALLS ────────────────────────────────────
             # Append the model's response (with tool calls) to conversation
             model_msg: dict = {"role": "model", "content": text, "tool_calls": tool_calls}
+            model_parts = llm_response.get("model_parts")
+            if isinstance(model_parts, list) and model_parts:
+                model_msg["gemini_parts"] = model_parts
             messages.append(model_msg)
 
             # Execute each tool and collect results

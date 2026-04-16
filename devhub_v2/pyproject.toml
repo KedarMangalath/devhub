@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devhub-v2"
+version = "0.0.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+# Optional blueprint graph enrichment dependency.
+# `tree-sitter`, `networkx`, and `watchdog` come in transitively from `code-review-graph`.
+blueprint-graph = [
+    "code-review-graph",
+]

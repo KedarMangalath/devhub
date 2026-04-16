@@ -3223,46 +3223,86 @@ def _wait_for_preview_ready(preview_url: str, sandbox, process_id: str, timeout_
     return False, last_error or "Preview did not become reachable in time."
 
 
+def _detect_node_runtime_at_path(project_root: Path, runtime_root: Path) -> dict | None:
+    package_json_path = runtime_root / "package.json"
+    if not package_json_path.exists():
+        return None
+    try:
+        package_json = json.loads(package_json_path.read_text(encoding='utf-8'))
+    except Exception:
+        package_json = {}
+
+    scripts = package_json.get("scripts", {})
+    run_command = None
+    if scripts.get("dev"):
+        run_command = "npm run dev"
+    elif scripts.get("start"):
+        run_command = "npm start"
+    elif scripts.get("preview"):
+        run_command = "npm run preview"
+
+    rel_runtime_root = runtime_root.relative_to(project_root) if runtime_root != project_root else Path(".")
+    entrypoint = "package.json" if rel_runtime_root == Path(".") else f"{rel_runtime_root.as_posix()}/package.json"
+    return {
+        "label": package_json.get("name") or runtime_root.name or project_root.name,
+        "runtime_type": "node",
+        "entrypoint": entrypoint,
+        "run_command": run_command,
+        "setup_command": _node_setup_command(runtime_root),
+        "install_required": _node_install_required(runtime_root),
+        "preview_url": _node_preview_url(runtime_root, scripts, run_command),
+        "runtime_root": runtime_root.as_posix(),
+    }
+
+
+def _detect_django_runtime_at_path(project_root: Path, runtime_root: Path) -> dict | None:
+    manage_py = runtime_root / "manage.py"
+    if not manage_py.exists():
+        return None
+    requirements_file = runtime_root / "requirements.txt"
+    python_cmd = _python_executable_command()
+    port = _stable_runtime_port(runtime_root, start=8100)
+    rel_runtime_root = runtime_root.relative_to(project_root) if runtime_root != project_root else Path(".")
+    entrypoint = "manage.py" if rel_runtime_root == Path(".") else f"{rel_runtime_root.as_posix()}/manage.py"
+    run_prefix = "" if rel_runtime_root == Path(".") else f"cd {rel_runtime_root.as_posix()} && "
+    setup_prefix = "" if rel_runtime_root == Path(".") else f"cd {rel_runtime_root.as_posix()} && "
+    return {
+        "label": runtime_root.name or project_root.name,
+        "runtime_type": "django",
+        "entrypoint": entrypoint,
+        "run_command": f"{run_prefix}{python_cmd} manage.py runserver 127.0.0.1:{port}",
+        "setup_command": f"{setup_prefix}{python_cmd} -m pip install -r requirements.txt" if requirements_file.exists() else None,
+        "install_required": _python_install_required(runtime_root),
+        "preview_url": f"http://127.0.0.1:{port}",
+        "runtime_root": runtime_root.as_posix(),
+    }
+
+
+def _combine_detected_runtime(project_root: Path, frontend_runtime: dict | None, backend_runtime: dict | None) -> dict:
+    if frontend_runtime and backend_runtime:
+        combined = dict(backend_runtime)
+        combined.update({
+            "label": f"{project_root.name} ({backend_runtime.get('runtime_type')} + {frontend_runtime.get('runtime_type')})",
+            "runtime_type": backend_runtime.get("runtime_type") or frontend_runtime.get("runtime_type") or "unknown",
+            "entrypoint": backend_runtime.get("entrypoint") or frontend_runtime.get("entrypoint"),
+            "run_command": backend_runtime.get("run_command") or frontend_runtime.get("run_command"),
+            "setup_command": backend_runtime.get("setup_command") or frontend_runtime.get("setup_command"),
+            "install_required": bool(backend_runtime.get("install_required")) or bool(frontend_runtime.get("install_required")),
+            "preview_url": frontend_runtime.get("preview_url") or backend_runtime.get("preview_url"),
+            "secondary_runtime": frontend_runtime,
+        })
+        return combined
+    return frontend_runtime or backend_runtime or {}
+
+
 def detect_runtime(project_root: Path) -> dict:
-    package_json_path = project_root / "package.json"
-    if package_json_path.exists():
-        try:
-            package_json = json.loads(package_json_path.read_text(encoding='utf-8'))
-        except Exception:
-            package_json = {}
+    direct_node_runtime = _detect_node_runtime_at_path(project_root, project_root)
+    if direct_node_runtime:
+        return direct_node_runtime
 
-        scripts = package_json.get("scripts", {})
-        run_command = None
-        if scripts.get("dev"):
-            run_command = "npm run dev"
-        elif scripts.get("start"):
-            run_command = "npm start"
-        elif scripts.get("preview"):
-            run_command = "npm run preview"
-
-        return {
-            "label": package_json.get("name") or project_root.name,
-            "runtime_type": "node",
-            "entrypoint": "package.json",
-            "run_command": run_command,
-            "setup_command": _node_setup_command(project_root),
-            "install_required": _node_install_required(project_root),
-            "preview_url": _node_preview_url(project_root, scripts, run_command),
-        }
-
-    if (project_root / "manage.py").exists():
-        requirements_file = project_root / "requirements.txt"
-        python_cmd = _python_executable_command()
-        port = _stable_runtime_port(project_root, start=8100)
-        return {
-            "label": project_root.name,
-            "runtime_type": "django",
-            "entrypoint": "manage.py",
-            "run_command": f"{python_cmd} manage.py runserver 127.0.0.1:{port}",
-            "setup_command": f"{python_cmd} -m pip install -r requirements.txt" if requirements_file.exists() else None,
-            "install_required": _python_install_required(project_root),
-            "preview_url": f"http://127.0.0.1:{port}",
-        }
+    direct_django_runtime = _detect_django_runtime_at_path(project_root, project_root)
+    if direct_django_runtime:
+        return direct_django_runtime
 
     if (project_root / "main.py").exists() or (project_root / "app.py").exists():
         entrypoint = "main.py" if (project_root / "main.py").exists() else "app.py"
@@ -3291,6 +3331,24 @@ def detect_runtime(project_root: Path) -> dict:
             "install_required": False,
             "preview_url": f"http://127.0.0.1:{port}",
         }
+
+    frontend_runtime = None
+    for subdir in ("frontend", "client", "web", "app", "ui"):
+        candidate_root = project_root / subdir
+        frontend_runtime = _detect_node_runtime_at_path(project_root, candidate_root)
+        if frontend_runtime:
+            break
+
+    backend_runtime = None
+    for subdir in ("backend", "server", "api", "src"):
+        candidate_root = project_root / subdir
+        backend_runtime = _detect_django_runtime_at_path(project_root, candidate_root)
+        if backend_runtime:
+            break
+
+    combined_runtime = _combine_detected_runtime(project_root, frontend_runtime, backend_runtime)
+    if combined_runtime:
+        return combined_runtime
 
     return {
         "label": project_root.name,
@@ -4680,8 +4738,20 @@ def _build_repository_map_from_context(codebase_context: dict) -> list[dict]:
     indexed_paths = [str(path) for path in (codebase_context.get('indexed_paths') or []) if path]
     important_files = codebase_context.get('important_files') or []
     grouped: dict[str, dict] = {}
+    raw_directory_counts = codebase_context.get('directory_counts') or {}
+    root_directories = [str(item) for item in (codebase_context.get('root_directories') or []) if str(item or '').strip()]
+    normalized_counts: dict[str, int] = {}
+    for area, count in raw_directory_counts.items():
+        normalized_area = '.' if str(area or '').strip() in {'.', './'} else str(area or '').strip()
+        if not normalized_area:
+            continue
+        normalized_counts[normalized_area] = normalized_counts.get(normalized_area, 0) + int(count or 0)
+    for directory in root_directories:
+        normalized_directory = '.' if str(directory or '').strip() in {'.', './'} else str(directory or '').strip().strip('/')
+        if normalized_directory:
+            normalized_counts.setdefault(normalized_directory, 0)
 
-    for area, count in sorted((codebase_context.get('directory_counts') or {}).items(), key=lambda item: (-item[1], item[0]))[:20]:
+    for area, count in sorted(normalized_counts.items(), key=lambda item: (-item[1], item[0]))[:20]:
         samples = [path for path in indexed_paths if path == area or path.startswith(f'{area}/')][:6]
         hints = sorted({
             hint
@@ -4691,7 +4761,11 @@ def _build_repository_map_from_context(codebase_context: dict) -> list[dict]:
         })
         grouped[area] = {
             'area': f'{area}/' if area != '.' else 'Project Root',
-            'description': f"Contains about {count} indexed files in the {'project root' if area == '.' else area} area of the project.",
+            'description': (
+                f"Contains about {count} indexed files in the {'project root' if area == '.' else area} area of the project."
+                if count
+                else f"Detected top-level repository area for {'project root' if area == '.' else area}."
+            ),
             'important_files': samples,
             'relationships': [f"Owns {hint} concerns" for hint in hints] or ['Contains mixed project responsibilities'],
         }
@@ -4701,7 +4775,7 @@ def _build_repository_map_from_context(codebase_context: dict) -> list[dict]:
 
 def _describe_directory_area(area: str, role_hints: list[str]) -> str:
     lowered = area.lower()
-    if area == '.':
+    if area in {'.', './'}:
         return 'Project root containing entrypoints, config, and workspace-level files.'
     if lowered in {'src', 'app', 'frontend', 'client'}:
         return 'Primary application source area where most user-facing and core logic files live.'
@@ -4727,13 +4801,13 @@ def _describe_directory_area(area: str, role_hints: list[str]) -> str:
 
 
 def _sample_paths_for_area(indexed_paths: list[str], area: str, limit: int = 8) -> list[str]:
-    if area == '.':
+    if area in {'.', './'}:
         return [path for path in indexed_paths if '/' not in path][:limit]
     return [path for path in indexed_paths if path.startswith(f'{area}/')][:limit]
 
 
 def _important_files_for_area(important_files: list[dict], area: str) -> list[dict]:
-    if area == '.':
+    if area in {'.', './'}:
         return [item for item in important_files if '/' not in str(item.get('path') or '')]
     return [item for item in important_files if str(item.get('path') or '').startswith(f'{area}/')]
 
@@ -4742,8 +4816,20 @@ def _build_directory_guide_from_context(codebase_context: dict) -> list[dict]:
     guide = []
     indexed_paths = [str(path) for path in (codebase_context.get('indexed_paths') or []) if path]
     important_files = codebase_context.get('important_files') or []
+    raw_directory_counts = codebase_context.get('directory_counts') or {}
+    root_directories = [str(item) for item in (codebase_context.get('root_directories') or []) if str(item or '').strip()]
+    normalized_counts: dict[str, int] = {}
+    for area, count in raw_directory_counts.items():
+        normalized_area = '.' if str(area or '').strip() in {'.', './'} else str(area or '').strip()
+        if not normalized_area:
+            continue
+        normalized_counts[normalized_area] = normalized_counts.get(normalized_area, 0) + int(count or 0)
+    for directory in root_directories:
+        normalized_directory = '.' if str(directory or '').strip() in {'.', './'} else str(directory or '').strip().strip('/')
+        if normalized_directory:
+            normalized_counts.setdefault(normalized_directory, 0)
 
-    for area, count in sorted((codebase_context.get('directory_counts') or {}).items(), key=lambda item: (-item[1], item[0]))[:20]:
+    for area, count in sorted(normalized_counts.items(), key=lambda item: (-item[1], item[0]))[:20]:
         area_files = _important_files_for_area(important_files, area)
         example_paths = _sample_paths_for_area(indexed_paths, area, limit=6)
         role_hints = sorted({hint for item in area_files for hint in (item.get('role_hints') or [])})
@@ -4755,7 +4841,11 @@ def _build_directory_guide_from_context(codebase_context: dict) -> list[dict]:
 
         guide.append({
             'path': f'{area}/' if area != '.' else './',
-            'purpose': f"{_describe_directory_area(area, role_hints)} It currently contains about {count} indexed files.",
+            'purpose': (
+                f"{_describe_directory_area(area, role_hints)} It currently contains about {count} indexed files."
+                if count
+                else f"{_describe_directory_area(area, role_hints)} This top-level area exists in the repository but was not deeply indexed."
+            ),
             'key_files': key_files,
             'pattern': ", ".join(role_hints) if role_hints else 'mixed responsibilities',
         })
@@ -6414,7 +6504,7 @@ def _derive_environment_variables(workspace_path: Path, codebase_context: dict) 
             r"process\.env\.([A-Z][A-Z0-9_]*)",
             r"import\.meta\.env\.([A-Z][A-Z0-9_]*)",
         ]
-        for rel_path in _manifest_paths(codebase_context)[:120]:
+        for rel_path in _manifest_paths(codebase_context)[:500]:
             text = _read_workspace_excerpt(workspace_path, rel_path, limit=16000)
             if not text:
                 continue
@@ -6473,7 +6563,7 @@ def _derive_environment_variables(workspace_path: Path, codebase_context: dict) 
         item["_score"] = score
         scored_items.append((score, item))
 
-    collapse_ai_settings = not parsed_from_template and len(ai_related_names) >= 4
+    collapse_ai_settings = not parsed_from_template and len(ai_related_names) >= 8
     if collapse_ai_settings:
         env_vars.append(_summarize_ai_env_entry(sorted(ai_related_names)))
 
@@ -6481,12 +6571,12 @@ def _derive_environment_variables(workspace_path: Path, codebase_context: dict) 
         name = str(item.get("name") or "")
         if collapse_ai_settings and _is_ai_family_env(name, ai_prefixes):
             continue
-        if score < (3 if parsed_from_template else 5) and env_vars:
+        if score < (3 if parsed_from_template else 0) and env_vars:
             continue
         cleaned = {key: value for key, value in item.items() if key != "_score"}
         env_vars.append(cleaned)
 
-    return _dedupe_json_items(env_vars)[:10]
+    return _dedupe_json_items(env_vars)[:30]
 
 
 def _detect_coverage_target(workspace_path: Path, codebase_context: dict) -> str:
@@ -7298,10 +7388,44 @@ def _derive_repo_guidance(project: Project, codebase_context: dict) -> dict:
 
     return {
         "setup_steps": _dedupe_json_items(setup_steps)[:8],
-        "environment_variables": _dedupe_json_items(environment_variables)[:10],
+        "environment_variables": _dedupe_json_items(environment_variables)[:30],
         "onboarding_checklist": _dedupe_json_items(onboarding_checklist)[:6],
         "gotchas": _filter_design_doc_strings(_dedupe_similar_strings(_dedupe_json_items(gotchas)[:8])[:6]),
     }
+
+
+def _merge_by_key(llm_items, pipeline_items, key_fn, prefer='llm'):
+    """Union two lists of dicts, deduplicating by key_fn.
+
+    On same-key conflict: merge subfields so the secondary source only fills
+    gaps in the preferred entry.
+    """
+    primary_items = llm_items if prefer == 'llm' else pipeline_items
+    secondary_items = pipeline_items if prefer == 'llm' else llm_items
+    by_key: dict[Any, dict] = {}
+
+    for item in (primary_items or []):
+        if not isinstance(item, dict):
+            continue
+        key = key_fn(item)
+        if key:
+            by_key[key] = dict(item)
+
+    for item in (secondary_items or []):
+        if not isinstance(item, dict):
+            continue
+        key = key_fn(item)
+        if not key:
+            continue
+        if key not in by_key:
+            by_key[key] = dict(item)
+            continue
+        existing = by_key[key]
+        for sub_key, sub_val in item.items():
+            if sub_key not in existing or not existing[sub_key]:
+                existing[sub_key] = sub_val
+
+    return list(by_key.values())
 
 
 def _merge_repo_guidance_into_blueprint(project: Project, blueprint: dict, codebase_context: dict) -> dict:
@@ -7310,18 +7434,368 @@ def _merge_repo_guidance_into_blueprint(project: Project, blueprint: dict, codeb
     quality_guidance = _derive_quality_guidance(project, codebase_context)
     knowledge_guidance = _derive_knowledge_guidance(project, codebase_context, setup_guidance, quality_guidance)
 
-    for field in ("setup_steps", "environment_variables", "onboarding_checklist"):
-        if setup_guidance.get(field):
-            blueprint[field] = setup_guidance[field]
+    blueprint['environment_variables'] = _merge_by_key(
+        blueprint.get('environment_variables') or [],
+        setup_guidance.get('environment_variables') or [],
+        key_fn=lambda x: x.get('name', '').upper() if isinstance(x, dict) else '',
+        prefer='llm',
+    )
 
-    for field in ("security_considerations", "performance_notes", "testing_strategy", "code_quality_standards"):
-        if quality_guidance.get(field):
-            blueprint[field] = quality_guidance[field]
+    blueprint['setup_steps'] = _merge_by_key(
+        blueprint.get('setup_steps') or [],
+        setup_guidance.get('setup_steps') or [],
+        key_fn=lambda x: (x.get('kind', '') + ':' + x.get('command', '')[:60]).lower() if isinstance(x, dict) else '',
+        prefer='llm',
+    )
+
+    for field in ("onboarding_checklist",):
+        llm_val = blueprint.get(field)
+        pipeline_val = setup_guidance.get(field)
+        if llm_val:
+            pass
+        elif pipeline_val:
+            blueprint[field] = pipeline_val
+
+    for field in ("security_considerations", "performance_notes", "code_quality_standards"):
+        llm_val = blueprint.get(field)
+        pipeline_val = quality_guidance.get(field)
+        if llm_val:
+            pass
+        elif pipeline_val:
+            blueprint[field] = pipeline_val
+
+    llm_testing = blueprint.get('testing_strategy')
+    pipeline_testing = quality_guidance.get('testing_strategy')
+    if isinstance(llm_testing, dict) and isinstance(pipeline_testing, dict):
+        for sub_key in ('unit', 'integration', 'e2e', 'coverage_target', 'run_command'):
+            if not llm_testing.get(sub_key) and pipeline_testing.get(sub_key):
+                llm_testing[sub_key] = pipeline_testing[sub_key]
+    elif not llm_testing and pipeline_testing:
+        blueprint['testing_strategy'] = pipeline_testing
 
     for field in ("key_concepts", "faq", "gotchas"):
-        if knowledge_guidance.get(field):
-            blueprint[field] = knowledge_guidance[field]
+        llm_val = blueprint.get(field)
+        pipeline_val = knowledge_guidance.get(field)
+        if llm_val:
+            pass
+        elif pipeline_val:
+            blueprint[field] = pipeline_val
     return blueprint
+
+
+def _resolve_blueprint_path(workspace_path: Path | None, raw_path: str, expect_dir: bool = False) -> Path | None:
+    if not workspace_path:
+        return None
+
+    raw = str(raw_path or "").strip()
+    if raw in {".", "./", ".//"}:
+        return workspace_path.resolve() if (workspace_path.is_dir() or expect_dir) else None
+    if not raw:
+        return None
+
+    candidates: list[Path] = []
+    path_obj = Path(raw)
+    if path_obj.is_absolute():
+        candidates.append(path_obj)
+
+    normalized = raw.replace("\\", "/").strip()
+    variants = [normalized]
+    if normalized.startswith("./"):
+        variants.append(normalized[2:])
+    for variant in variants:
+        if not variant:
+            continue
+        candidates.append(workspace_path / variant)
+        if variant.startswith(f"{workspace_path.name}/"):
+            candidates.append(workspace_path / variant[len(workspace_path.name) + 1 :])
+
+    workspace_root = workspace_path.resolve()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+            resolved.relative_to(workspace_root)
+        except Exception:
+            continue
+        if expect_dir and resolved.is_dir():
+            return resolved
+        if not expect_dir and resolved.exists():
+            return resolved
+    return None
+
+
+def _is_valid_env_var_name(name: str) -> bool:
+    return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", str(name or "").strip()))
+
+
+def _placeholder_environment_variable(name: str) -> dict[str, Any]:
+    category = _infer_env_category(name)
+    description_prefix = {
+        "frontend": "Frontend-facing environment variable referenced by the client bundle or browser runtime.",
+        "ai": "AI or model-provider configuration referenced in the codebase.",
+        "secret": "Credential or secret referenced in the codebase.",
+        "database": "Database or persistence configuration referenced in the codebase.",
+        "auth": "Authentication or trust-boundary setting referenced in the codebase.",
+        "storage": "Storage or upload configuration referenced in the codebase.",
+        "runtime": "Runtime or network setting referenced in the codebase.",
+        "config": "Environment-driven configuration referenced in the codebase.",
+    }.get(category, "Environment-driven configuration referenced in the codebase.")
+    return {
+        "name": name,
+        "description": f"{description_prefix} Detailed usage was not fully resolved from the scanned evidence.",
+        "required": False,
+        "default": "No default detected",
+        "example": "",
+        "category": category,
+    }
+
+
+def _finalize_blueprint_environment_variables(workspace_path: Path | None, blueprint: dict, codebase_context: dict) -> list[dict]:
+    llm_items: list[dict] = []
+    for item in _blueprint_list(blueprint.get("environment_variables")):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip().upper()
+        if not _is_valid_env_var_name(name):
+            continue
+        cleaned = dict(item)
+        cleaned["name"] = name
+        cleaned["category"] = str(cleaned.get("category") or _infer_env_category(name))
+        llm_items.append(cleaned)
+
+    pipeline_items: list[dict] = []
+    if workspace_path:
+        for item in _derive_environment_variables(workspace_path, codebase_context):
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip().upper()
+            if not _is_valid_env_var_name(name):
+                continue
+            cleaned = dict(item)
+            cleaned["name"] = name
+            cleaned["category"] = str(cleaned.get("category") or _infer_env_category(name))
+            pipeline_items.append(cleaned)
+
+    merged = _merge_by_key(
+        llm_items,
+        pipeline_items,
+        key_fn=lambda item: str(item.get("name") or "").strip().upper() if isinstance(item, dict) else "",
+        prefer="llm",
+    )
+
+    seen = {
+        str(item.get("name") or "").strip().upper()
+        for item in merged
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    }
+    for raw_name in codebase_context.get("env_var_names") or []:
+        name = str(raw_name or "").strip().upper()
+        if not _is_valid_env_var_name(name) or name in seen:
+            continue
+        seen.add(name)
+        merged.append(_placeholder_environment_variable(name))
+
+    return _dedupe_json_items(merged)[:60]
+
+
+def _setup_step_semantic_key(item: dict) -> str:
+    command = re.sub(r"\s+", " ", str(item.get("command") or "").strip().lower())
+    step = re.sub(r"\s+", " ", str(item.get("step") or "").strip().lower())
+    kind = str(item.get("kind") or "").strip().lower()
+
+    if "python -m venv" in command or "uv venv" in command:
+        return "create-venv"
+    if "activate" in command and ("venv" in command or ".venv" in command):
+        return "activate-venv"
+    if re.search(r"\b(python\s+-m\s+pip|pip|poetry|uv\s+pip)\s+install\b", command):
+        return "python-install"
+    if re.search(r"\b(npm|pnpm|yarn)\s+install\b", command):
+        return "node-install"
+    if "manage.py migrate" in command:
+        return "django-migrate"
+    if "manage.py runserver" in command:
+        return "django-runserver"
+    if re.search(r"\b(npm|pnpm|yarn)\s+(run\s+)?dev\b", command):
+        return "node-dev"
+    if re.search(r"\b(npm|pnpm|yarn)\s+(run\s+)?test\b", command) or "manage.py test" in command or "pytest" in command:
+        return "validate"
+    if kind and command:
+        return f"{kind}:{command[:80]}"
+    if command:
+        return command[:80]
+    if step:
+        return f"step:{step[:80]}"
+    return ""
+
+
+def _setup_step_score(item: dict, readme_excerpt: str) -> int:
+    score = 0
+    command = re.sub(r"\s+", " ", str(item.get("command") or "").strip().lower())
+    readme_lower = str(readme_excerpt or "").lower()
+
+    if not str(item.get("kind") or "").strip():
+        score += 3
+    if command and command in readme_lower:
+        score += 3
+    if str(item.get("explanation") or "").strip():
+        score += 1
+    if str(item.get("step") or "").strip():
+        score += 1
+    if command == "python -m pip install -e ." and "python -m pip install -e ." not in readme_lower:
+        score -= 3
+    return score
+
+
+def _normalize_setup_steps_for_blueprint(setup_steps: list[dict], readme_excerpt: str) -> list[dict]:
+    winners: dict[str, tuple[int, dict]] = {}
+    order: list[str] = []
+
+    for raw_item in setup_steps or []:
+        if not isinstance(raw_item, dict):
+            continue
+        item = dict(raw_item)
+        if not str(item.get("command") or "").strip() and not str(item.get("step") or "").strip():
+            continue
+        key = _setup_step_semantic_key(item)
+        if not key:
+            continue
+        score = _setup_step_score(item, readme_excerpt)
+        existing = winners.get(key)
+        if existing is None:
+            winners[key] = (score, item)
+            order.append(key)
+            continue
+        existing_score, existing_item = existing
+        if score > existing_score:
+            winners[key] = (score, item)
+            continue
+        if score == existing_score and len(json.dumps(item, sort_keys=True)) > len(json.dumps(existing_item, sort_keys=True)):
+            winners[key] = (score, item)
+
+    normalized: list[dict] = []
+    seen_entries: set[tuple[str, str]] = set()
+    for key in order:
+        item = winners[key][1]
+        dedupe_key = (
+            re.sub(r"\s+", " ", str(item.get("command") or "").strip().lower()),
+            re.sub(r"\s+", " ", str(item.get("step") or "").strip().lower()),
+        )
+        if dedupe_key in seen_entries:
+            continue
+        seen_entries.add(dedupe_key)
+        normalized.append(item)
+    return normalized[:12]
+
+
+def _normalize_repository_map_entries(items: list[dict]) -> list[dict]:
+    normalized: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        cleaned = dict(item)
+        area = str(cleaned.get("area") or "").replace("\\", "/").strip()
+        if area in {".", "./", ".//", "Project Root/", "Project Root"}:
+            cleaned["area"] = "Project Root"
+        elif area:
+            cleaned["area"] = f"{area.rstrip('/')}/"
+        normalized.append(cleaned)
+    return normalized
+
+
+def _finalize_blueprint_document(project: Project, blueprint: dict, codebase_context: dict) -> dict:
+    finalized = dict(blueprint or {})
+    workspace_path = _project_workspace_path(project)
+
+    key_components: list[dict] = []
+    for item in _blueprint_list(finalized.get("key_components")):
+        if not isinstance(item, dict):
+            continue
+        if workspace_path and not _resolve_blueprint_path(workspace_path, str(item.get("file_path") or "")):
+            continue
+        key_components.append(item)
+    finalized["key_components"] = key_components
+
+    services: list[dict] = []
+    for item in _blueprint_list(finalized.get("services")):
+        if not isinstance(item, dict):
+            continue
+        cleaned = dict(item)
+        key_files: list[str] = []
+        for raw_path in item.get("key_files") or []:
+            if not isinstance(raw_path, str):
+                continue
+            for separator in (" - ", " – ", " — ", " : "):
+                if separator in raw_path:
+                    raw_path = raw_path.split(separator)[0].strip()
+                    break
+            path_part = raw_path.strip()
+            basename = path_part.replace("\\", "/").split("/")[-1] if path_part else ""
+            looks_like_path = bool(path_part) and ("/" in path_part or "\\" in path_part or "." in basename)
+            if not looks_like_path:
+                continue
+            if workspace_path and not _resolve_blueprint_path(workspace_path, path_part):
+                continue
+            key_files.append(path_part.replace("\\", "/"))
+        cleaned["key_files"] = key_files
+        services.append(cleaned)
+    finalized["services"] = services
+
+    directory_guide: list[dict] = []
+    for item in _blueprint_list(finalized.get("directory_guide")):
+        if not isinstance(item, dict):
+            continue
+        cleaned = dict(item)
+        raw_path = str(cleaned.get("path") or "").replace("\\", "/").strip()
+        if raw_path in {".", "./", ".//", ""}:
+            normalized_path = "./"
+        else:
+            normalized_path = f"{raw_path.rstrip('/')}/"
+        if workspace_path and not _resolve_blueprint_path(workspace_path, normalized_path, expect_dir=True):
+            continue
+        cleaned["path"] = normalized_path
+        directory_guide.append(cleaned)
+    finalized["directory_guide"] = directory_guide
+
+    finalized["repository_map"] = _normalize_repository_map_entries(_blueprint_list(finalized.get("repository_map")))
+    finalized["environment_variables"] = _finalize_blueprint_environment_variables(workspace_path, finalized, codebase_context)
+    finalized["setup_steps"] = _normalize_setup_steps_for_blueprint(
+        _blueprint_list(finalized.get("setup_steps")),
+        str(finalized.get("readme_excerpt") or codebase_context.get("readme_excerpt") or ""),
+    )
+
+    api_endpoints: list[dict] = []
+    seen_endpoints: set[tuple[str, str]] = set()
+    for item in _blueprint_list(finalized.get("api_endpoints")):
+        if not isinstance(item, dict):
+            continue
+        cleaned = dict(item)
+        params = cleaned.get("path_params")
+        if isinstance(params, list):
+            seen_params: set[str] = set()
+            deduped_params: list[Any] = []
+            for param in params:
+                if isinstance(param, dict):
+                    param_key = str(param.get("name") or "").strip().lower()
+                else:
+                    param_key = str(param or "").strip().lower()
+                if not param_key or param_key in seen_params:
+                    continue
+                seen_params.add(param_key)
+                deduped_params.append(param)
+            cleaned["path_params"] = deduped_params
+        path = str(cleaned.get("path") or "").strip()
+        norm_path = path.rstrip("/") if len(path) > 1 else path
+        endpoint_key = (str(cleaned.get("method") or "GET").upper(), norm_path)
+        if endpoint_key in seen_endpoints:
+            continue
+        seen_endpoints.add(endpoint_key)
+        api_endpoints.append(cleaned)
+    finalized["api_endpoints"] = api_endpoints
+
+    repo_tree = str(finalized.get("repo_tree") or "")
+    if repo_tree:
+        finalized["repo_tree"] = repo_tree.replace("project root/", "./").replace(".//", "./")
+
+    return finalized
 
 
 def _render_blueprint_design_document(project: Project, blueprint: dict, codebase_context: dict, feature_summary: str) -> tuple[str, list[dict]]:
@@ -7672,12 +8146,19 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
 def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_context: dict, feature_summary: str) -> dict:
     blueprint = dict(blueprint or {})
     workspace_path = Path(project.local_path) if project.local_path else None
-    if codebase_context.get('api_reference'):
-        blueprint['api_endpoints'] = _blueprint_list(codebase_context.get('api_reference'))
-    if codebase_context.get('database_schema'):
-        blueprint['database_schema'] = _blueprint_list(codebase_context.get('database_schema'))
-    if codebase_context.get('database_mermaid_erd'):
-        blueprint['mermaid_erd'] = str(codebase_context.get('database_mermaid_erd') or '')
+    llm_endpoints = blueprint.get('api_endpoints') or []
+    if llm_endpoints:
+        blueprint['api_endpoints'] = llm_endpoints
+    else:
+        indexed_endpoints = _blueprint_list(codebase_context.get('api_reference'))
+        if indexed_endpoints:
+            blueprint['api_endpoints'] = indexed_endpoints
+    indexed_schema = _blueprint_list(codebase_context.get('database_schema'))
+    if indexed_schema and len(indexed_schema) >= len(blueprint.get('database_schema') or []):
+        blueprint['database_schema'] = indexed_schema
+    indexed_erd = str(codebase_context.get('database_mermaid_erd') or '')
+    if indexed_erd and len(indexed_erd) > len(blueprint.get('mermaid_erd') or ''):
+        blueprint['mermaid_erd'] = indexed_erd
     evidence_sequence_flows, evidence_common_workflows = _build_evidence_backed_workflows(workspace_path)
     if evidence_sequence_flows:
         blueprint['sequence_flows'] = evidence_sequence_flows
@@ -7713,6 +8194,7 @@ def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_conte
     }]
     blueprint['sdlc_pipeline'] = _live_pipeline_document(project, live_features)
     blueprint = _merge_repo_guidance_into_blueprint(project, blueprint, codebase_context)
+    blueprint = _finalize_blueprint_document(project, blueprint, codebase_context)
     blueprint.update(_build_blueprint_overview_insights(project, blueprint, codebase_context, live_features))
     design_document_markdown, design_document_sections = _render_blueprint_design_document(project, blueprint, codebase_context, feature_summary)
     blueprint['design_document_markdown'] = design_document_markdown
@@ -8318,6 +8800,7 @@ def generate_blueprint_sync(project: Project):
         if usable_ai and workspace_path:
             compact_summary = str((codebase_context or {}).get('compact_summary') or '')
             repo_tree = str((codebase_context or {}).get('repo_tree') or repo_map_text or '')
+            graph_summary = str((codebase_context or {}).get('graph_summary') or '')
             dir_count = len((codebase_context or {}).get('directory_counts') or {})
 
             agent = BlueprintQueryAgent(
@@ -8332,6 +8815,7 @@ def generate_blueprint_sync(project: Project):
                     tech_stack=project.tech_stack or [],
                     compact_summary=compact_summary,
                     repo_tree=repo_tree,
+                    graph_summary=graph_summary,
                     feature_summary=feature_summary,
                     file_count=total_file_count,
                 )
@@ -8342,6 +8826,7 @@ def generate_blueprint_sync(project: Project):
                     tech_stack=project.tech_stack or [],
                     compact_summary=compact_summary,
                     repo_tree=repo_tree,
+                    graph_summary=graph_summary,
                     feature_summary=feature_summary,
                     file_count=total_file_count,
                     dir_count=dir_count,
@@ -10956,6 +11441,37 @@ def _build_overview_current_risks(blueprint: dict) -> list[dict]:
     return items[:5]
 
 
+def _setup_command_entry_path(workspace_path: Path, codebase_context: dict, runtime: dict) -> str:
+    setup_command = str(runtime.get('setup_command') or '').strip()
+    if not setup_command:
+        return str(runtime.get('entrypoint') or '')
+
+    lowered = setup_command.lower()
+    if any(token in lowered for token in ('npm', 'pnpm', 'yarn')):
+        manifests = _workspace_package_manifests(workspace_path, codebase_context)
+        preferred = next(
+            (
+                manifest
+                for manifest in manifests
+                if str(manifest.get('rel_dir') or '').strip()
+                and any((manifest.get('scripts') or {}).get(name) for name in ('dev', 'start', 'serve', 'preview'))
+            ),
+            None,
+        )
+        if preferred:
+            return str(preferred.get('path') or '')
+        if manifests:
+            return str(manifests[0].get('path') or '')
+
+    if any(token in lowered for token in ('pip', 'poetry', 'uv ', 'manage.py', 'pytest', 'tox')):
+        for root in _workspace_python_roots(workspace_path, codebase_context):
+            for candidate in (root.get('requirements'), root.get('pyproject'), root.get('manage_py')):
+                if str(candidate or '').strip():
+                    return str(candidate)
+
+    return str(runtime.get('entrypoint') or '')
+
+
 def _build_overview_runtime_entrypoints(project: Project, codebase_context: dict, runtime: dict) -> list[dict]:
     workspace_path = _project_workspace_path(project)
     if not workspace_path:
@@ -10995,7 +11511,7 @@ def _build_overview_runtime_entrypoints(project: Project, codebase_context: dict
     if runtime.get('setup_command'):
         add(
             'Setup command',
-            str(runtime.get('entrypoint') or ''),
+            _setup_command_entry_path(workspace_path, codebase_context, runtime),
             str(runtime.get('setup_command') or ''),
             'Detected setup or install command for the active runtime.',
         )

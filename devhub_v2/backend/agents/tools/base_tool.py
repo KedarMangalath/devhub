@@ -36,6 +36,16 @@ class ToolBudget:
     reads_used: int = 0
     searches_used: int = 0
 
+    @classmethod
+    def for_repo(cls, file_count: int) -> "ToolBudget":
+        if file_count < 200:
+            return cls(max_reads=20, max_searches=10)
+        if file_count < 2000:
+            return cls(max_reads=40, max_searches=20)
+        if file_count < 5000:
+            return cls(max_reads=55, max_searches=28)
+        return cls(max_reads=70, max_searches=35)
+
     def consume_read(self) -> str | None:
         """Increment read counter. Returns over-budget error string or None."""
         if self.reads_used >= self.max_reads:

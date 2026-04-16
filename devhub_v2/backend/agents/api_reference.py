@@ -23,6 +23,22 @@ GROUP_ORDER = {
 
 
 REFERENCE_OVERRIDES: dict[str, dict[str, Any]] = {}
+_CATALOG_SKIP_DIRS = frozenset({
+    ".devhub",
+    "venv",
+    ".venv",
+    "node_modules",
+    "data",
+    "dist",
+    "build",
+    "__pycache__",
+    ".git",
+    "test_fixtures",
+    "fixtures",
+    "samples",
+    "examples",
+    "templates",
+})
 
 
 FIELD_EXAMPLES: dict[str, Any] = {
@@ -67,10 +83,30 @@ FIELD_EXAMPLES: dict[str, Any] = {
 
 
 def build_api_reference_catalog(workspace_path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
     root_urls_path = _find_root_urls_path(workspace_path)
-    if not root_urls_path:
-        return []
+    if root_urls_path:
+        entries.extend(_build_django_api_reference_catalog(workspace_path, root_urls_path))
 
+    entries.extend(_extract_openapi_reference_catalog(workspace_path))
+
+    node_manifests = _iter_route_files(workspace_path, ("package.json",))
+    if node_manifests:
+        entries.extend(_extract_node_routes(workspace_path))
+
+    python_sources = _iter_route_files(workspace_path, ("*.py",))
+    if python_sources:
+        entries.extend(_extract_fastapi_routes(workspace_path))
+
+    go_manifests = _iter_route_files(workspace_path, ("go.mod",))
+    go_sources = _iter_route_files(workspace_path, ("*.go",))
+    if go_manifests or go_sources:
+        entries.extend(_extract_go_routes(workspace_path))
+
+    return _sort_reference_entries(entries)
+
+
+def _build_django_api_reference_catalog(workspace_path: Path, root_urls_path: Path) -> list[dict[str, Any]]:
     routes = _collect_django_routes(root_urls_path, workspace_path)
     entries: list[dict[str, Any]] = []
     for route_index, route in enumerate(routes):
@@ -86,16 +122,7 @@ def build_api_reference_catalog(workspace_path: Path) -> list[dict[str, Any]]:
 
         for method in methods:
             entries.append(_build_reference_entry(route, view_info, method, route_index, metadata))
-
-    return sorted(
-        entries,
-        key=lambda item: (
-            GROUP_ORDER.get(str(item.get("group") or "Other"), GROUP_ORDER["Other"]),
-            int(item.get("route_order") or 0),
-            HTTP_METHOD_ORDER.index(str(item.get("method") or "GET")) if str(item.get("method") or "GET") in HTTP_METHOD_ORDER else len(HTTP_METHOD_ORDER),
-            str(item.get("path") or ""),
-        ),
-    )
+    return entries
 
 
 def _find_root_urls_path(workspace_path: Path) -> Path | None:
@@ -325,28 +352,67 @@ def _extract_allowed_methods(source: str) -> list[str]:
     methods: list[str] = []
     seen: set[str] = set()
 
-    for match in re.finditer(r"request\.method\s*==\s*['\"]([A-Z]+)['\"]", source):
-        method = match.group(1)
-        if method not in seen:
+    def add_method(method_name: str) -> None:
+        method = str(method_name or "").upper()
+        if method in HTTP_METHOD_ORDER and method not in seen:
             seen.add(method)
             methods.append(method)
 
-    for match in re.finditer(r"request\.method\s*in\s*\{([^}]+)\}", source):
-        for token in re.findall(r"['\"]([A-Z]+)['\"]", match.group(1)):
-            if token not in seen:
-                seen.add(token)
-                methods.append(token)
+    for decorator_match in re.finditer(r"@(?:require_http_methods|api_view)\(\s*\[([^\]]+)\]\s*\)", source):
+        for token in re.findall(r"['\"]([A-Z]+)['\"]", decorator_match.group(1)):
+            add_method(token)
+
+    equality_patterns = [
+        r"request\.method(?:\.upper\(\))?\s*==\s*['\"]([A-Z]+)['\"]",
+        r"['\"]([A-Z]+)['\"]\s*==\s*request\.method(?:\.upper\(\))?",
+    ]
+    for pattern in equality_patterns:
+        for match in re.finditer(pattern, source):
+            add_method(match.group(1))
+
+    inequality_patterns = [
+        r"request\.method(?:\.upper\(\))?\s*!=\s*['\"]([A-Z]+)['\"]",
+        r"['\"]([A-Z]+)['\"]\s*!=\s*request\.method(?:\.upper\(\))?",
+    ]
+    for pattern in inequality_patterns:
+        for match in re.finditer(pattern, source):
+            add_method(match.group(1))
+
+    membership_patterns = [
+        (r"request\.method(?:\.upper\(\))?\s*in\s*\{([^}]+)\}", "in"),
+        (r"request\.method(?:\.upper\(\))?\s*in\s*\[([^\]]+)\]", "in"),
+        (r"request\.method(?:\.upper\(\))?\s*in\s*\(([^)]+)\)", "in"),
+        (r"request\.method(?:\.upper\(\))?\s*not\s+in\s*\{([^}]+)\}", "not_in"),
+        (r"request\.method(?:\.upper\(\))?\s*not\s+in\s*\[([^\]]+)\]", "not_in"),
+        (r"request\.method(?:\.upper\(\))?\s*not\s+in\s*\(([^)]+)\)", "not_in"),
+    ]
+    for pattern, membership_kind in membership_patterns:
+        for match in re.finditer(pattern, source):
+            tokens = re.findall(r"['\"]([A-Z]+)['\"]", match.group(1))
+            if membership_kind == "in":
+                for token in tokens:
+                    add_method(token)
+                continue
+            if "method not allowed" in source.lower() or "405" in source:
+                for token in HTTP_METHOD_ORDER:
+                    if token not in tokens:
+                        add_method(token)
+            else:
+                for token in tokens:
+                    add_method(token)
+
+    # Detect @require_POST, @require_GET style single-method decorators
+    for single_match in re.finditer(r"@require_(GET|POST|PUT|DELETE|PATCH)\b", source):
+        add_method(single_match.group(1))
+
+    # Detect DRF ViewSet/APIView action methods
+    for action_match in re.finditer(r"def\s+(get|post|put|patch|delete|list|create|retrieve|update|destroy)\s*\(self", source):
+        action = action_match.group(1)
+        action_map = {'list': 'GET', 'create': 'POST', 'retrieve': 'GET', 'update': 'PUT', 'destroy': 'DELETE'}
+        add_method(action_map.get(action, action.upper()))
 
     if methods:
         return methods
-
-    match = re.search(r"request\.method\s*not in\s*\{([^}]+)\}", source)
-    if match:
-        return [token for token in re.findall(r"['\"]([A-Z]+)['\"]", match.group(1)) if token in HTTP_METHOD_ORDER]
-
-    match = re.search(r"request\.method\s*!=\s*['\"]([A-Z]+)['\"]", source)
-    if match:
-        return [match.group(1)]
 
     return ["GET"]
 
@@ -448,18 +514,31 @@ def _literal_str(node: ast.AST | None) -> str:
 
 def _path_params(path: str) -> list[dict[str, Any]]:
     params = []
+    seen: set[str] = set()
+
+    def add_param(name: str, description: str) -> None:
+        normalized = str(name or "").strip()
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        params.append(
+            {
+                "name": normalized,
+                "required": True,
+                "description": description,
+            }
+        )
+
     for raw in re.findall(r"<([^>]+)>", str(path or "")):
         converter, _, name = raw.partition(":")
         if not name:
             name = converter
             converter = "str"
-        params.append(
-            {
-                "name": name,
-                "required": True,
-                "description": f"Path parameter captured by Django as `{converter}`.",
-            }
-        )
+        add_param(name, f"Path parameter captured by Django as `{converter}`.")
+    for name in re.findall(r":([A-Za-z_][A-Za-z0-9_]*)", str(path or "")):
+        add_param(name, "Path parameter captured by the framework router.")
+    for name in re.findall(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", str(path or "")):
+        add_param(name, "Path parameter captured by the framework router.")
     return params
 
 
@@ -869,4 +948,266 @@ def _curl_example(entry: dict[str, Any]) -> str:
 
     body_json = json.dumps(body, ensure_ascii=True)
     return f"curl -X {method} {url} -H \"Content-Type: application/json\" -d '{body_json}'"
+
+
+def _sort_reference_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for entry in entries:
+        method = str(entry.get("method") or "GET").upper()
+        path = str(entry.get("path") or "")
+        handler = str(entry.get("handler") or entry.get("route_name") or "")
+        source = entry.get("source") if isinstance(entry.get("source"), dict) else {}
+        view_file = str(source.get("view_file") or source.get("url_file") or "")
+        key = (method, path, handler, view_file)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+    return sorted(
+        deduped,
+        key=lambda item: (
+            GROUP_ORDER.get(str(item.get("group") or "Other"), GROUP_ORDER["Other"]),
+            int(item.get("route_order") or 0),
+            HTTP_METHOD_ORDER.index(str(item.get("method") or "GET")) if str(item.get("method") or "GET") in HTTP_METHOD_ORDER else len(HTTP_METHOD_ORDER),
+            str(item.get("path") or ""),
+        ),
+    )
+
+
+def _build_generic_reference_entry(
+    *,
+    method: str,
+    path: str,
+    handler: str,
+    source_path: str,
+    route_order: int = 0,
+    summary: str = "",
+    description: str = "",
+    auth_required: bool = False,
+    status_codes: list[int] | None = None,
+) -> dict[str, Any]:
+    normalized_path = _normalize_url_path(path)
+    summary_text = summary or _generic_summary(handler, normalized_path, method)
+    when_to_use = _generic_when_to_use(normalized_path, method)
+    description_text = description or f"{summary_text} {when_to_use}".strip()
+    entry = {
+        "group": _group_for_path(normalized_path),
+        "method": str(method or "GET").upper(),
+        "path": normalized_path,
+        "route_name": handler,
+        "handler": handler,
+        "description": description_text,
+        "summary": summary_text,
+        "when_to_use": when_to_use,
+        "behavior_notes": [],
+        "auth_required": auth_required,
+        "access": "No explicit auth metadata detected in the static route extractor.",
+        "path_params": _path_params(normalized_path),
+        "query_params": [],
+        "request_fields": [],
+        "request_body": None if str(method or "").upper() == "GET" else {},
+        "response": None,
+        "response_keys": [],
+        "common_errors": [],
+        "status_codes": status_codes or ([200] if str(method or "").upper() == "GET" else []),
+        "source": {
+            "url_file": source_path,
+            "view_file": source_path,
+            "line": None,
+        },
+        "route_order": route_order,
+    }
+    entry["curl_example"] = _curl_example(entry)
+    return entry
+
+
+def _safe_relative_path(workspace_path: Path, file_path: Path) -> str:
+    try:
+        return str(file_path.relative_to(workspace_path)).replace("\\", "/")
+    except Exception:
+        return str(file_path).replace("\\", "/")
+
+
+def _iter_route_files(workspace_path: Path, patterns: tuple[str, ...]) -> list[Path]:
+    files: list[Path] = []
+    for pattern in patterns:
+        files.extend(workspace_path.rglob(pattern))
+    return [
+        path
+        for path in files
+        if path.is_file() and not (_CATALOG_SKIP_DIRS & set(path.parts))
+    ]
+
+
+def _extract_node_routes(workspace_path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    route_pattern = re.compile(
+        r"\b(?:app|router|server|fastify)\.(get|post|put|patch|delete)\(\s*['\"`]([^'\"`]+)['\"`]\s*(?:,\s*([A-Za-z_][A-Za-z0-9_]*))?",
+        re.IGNORECASE,
+    )
+    files = _iter_route_files(workspace_path, ("*.js", "*.jsx", "*.ts", "*.tsx", "*.mjs", "*.cjs"))
+    for file_path in files:
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        for index, match in enumerate(route_pattern.finditer(source)):
+            method, path, handler = match.groups()
+            entries.append(
+                _build_generic_reference_entry(
+                    method=method.upper(),
+                    path=path,
+                    handler=handler or file_path.stem,
+                    source_path=_safe_relative_path(workspace_path, file_path),
+                    route_order=index,
+                )
+            )
+    return entries
+
+
+def _extract_fastapi_routes(workspace_path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    files = _iter_route_files(workspace_path, ("*.py",))
+    for file_path in files:
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="ignore")
+            tree = ast.parse(source)
+        except Exception:
+            continue
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+                    continue
+                method = str(decorator.func.attr or "").upper()
+                if method not in HTTP_METHOD_ORDER:
+                    continue
+                path_value = _literal_str(decorator.args[0]) if decorator.args else ""
+                if not path_value:
+                    for keyword in decorator.keywords:
+                        if keyword.arg in {"path", "url"}:
+                            path_value = _literal_str(keyword.value)
+                            break
+                if not path_value:
+                    continue
+                entries.append(
+                    _build_generic_reference_entry(
+                        method=method,
+                        path=path_value,
+                        handler=node.name,
+                        source_path=_safe_relative_path(workspace_path, file_path),
+                        route_order=getattr(node, "lineno", 0) or 0,
+                    )
+                )
+    return entries
+
+
+def _extract_go_routes(workspace_path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    route_pattern = re.compile(
+        r"\b[A-Za-z_][A-Za-z0-9_]*\.(GET|POST|PUT|PATCH|DELETE)\(\s*\"([^\"]+)\"\s*,\s*([A-Za-z_][A-Za-z0-9_]*)",
+        re.IGNORECASE,
+    )
+    files = _iter_route_files(workspace_path, ("*.go",))
+    for file_path in files:
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        for index, match in enumerate(route_pattern.finditer(source)):
+            method, path, handler = match.groups()
+            entries.append(
+                _build_generic_reference_entry(
+                    method=method.upper(),
+                    path=path,
+                    handler=handler,
+                    source_path=_safe_relative_path(workspace_path, file_path),
+                    route_order=index,
+                )
+            )
+    return entries
+
+
+def _extract_openapi_reference_catalog(workspace_path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for file_path in _iter_route_files(workspace_path, ("openapi.json", "swagger.json")):
+        entries.extend(_extract_openapi_json_routes(workspace_path, file_path))
+    for file_path in _iter_route_files(workspace_path, ("openapi.yaml", "openapi.yml", "swagger.yaml", "swagger.yml")):
+        entries.extend(_extract_openapi_yaml_routes(workspace_path, file_path))
+    return entries
+
+
+def _extract_openapi_json_routes(workspace_path: Path, file_path: Path) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(file_path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        return []
+    entries: list[dict[str, Any]] = []
+    for route_order, (path, methods) in enumerate((payload.get("paths") or {}).items()):
+        if not isinstance(methods, dict):
+            continue
+        for method, details in methods.items():
+            normalized_method = str(method or "").upper()
+            if normalized_method not in HTTP_METHOD_ORDER:
+                continue
+            if not isinstance(details, dict):
+                details = {}
+            responses = details.get("responses") or {}
+            status_codes = []
+            for code in responses.keys():
+                if str(code).isdigit():
+                    status_codes.append(int(code))
+            entries.append(
+                _build_generic_reference_entry(
+                    method=normalized_method,
+                    path=path,
+                    handler=str(details.get("operationId") or f"{normalized_method.lower()}_{path.strip('/').replace('/', '_')}").strip("_"),
+                    source_path=_safe_relative_path(workspace_path, file_path),
+                    route_order=route_order,
+                    summary=str(details.get("summary") or ""),
+                    description=str(details.get("description") or ""),
+                    auth_required=bool(details.get("security")),
+                    status_codes=status_codes,
+                )
+            )
+    return entries
+
+
+def _extract_openapi_yaml_routes(workspace_path: Path, file_path: Path) -> list[dict[str, Any]]:
+    try:
+        lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except Exception:
+        return []
+    entries: list[dict[str, Any]] = []
+    in_paths = False
+    current_path = ""
+    route_order = 0
+    for line in lines:
+        if re.match(r"^\s*paths:\s*$", line):
+            in_paths = True
+            continue
+        if not in_paths:
+            continue
+        if re.match(r"^[A-Za-z0-9_]+\s*:\s*$", line):
+            break
+        path_match = re.match(r"^\s{2,}(/[^:]+):\s*$", line)
+        if path_match:
+            current_path = path_match.group(1).strip()
+            continue
+        method_match = re.match(r"^\s{4,}(get|post|put|patch|delete):\s*$", line, re.IGNORECASE)
+        if method_match and current_path:
+            method = method_match.group(1).upper()
+            entries.append(
+                _build_generic_reference_entry(
+                    method=method,
+                    path=current_path,
+                    handler=f"{method.lower()}_{current_path.strip('/').replace('/', '_')}".strip("_"),
+                    source_path=_safe_relative_path(workspace_path, file_path),
+                    route_order=route_order,
+                )
+            )
+            route_order += 1
+    return entries
 

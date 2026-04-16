@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import shlex
@@ -692,16 +693,30 @@ class BaseAgent:
                 continue
 
             gemini_role = "model" if role in ("assistant", "model") else "user"
+            raw_parts = msg.get("gemini_parts")
+            if gemini_role == "model" and isinstance(raw_parts, list) and raw_parts:
+                contents.append({"role": gemini_role, "parts": copy.deepcopy(raw_parts)})
+                continue
+
             parts: list[dict] = list(self._gemini_parts(msg.get("content")))
 
             # Tool calls (model asking to call functions)
             for tc in msg.get("tool_calls", []):
-                parts.append({
+                raw_part = tc.get("raw_part")
+                if isinstance(raw_part, dict) and raw_part.get("functionCall"):
+                    parts.append(copy.deepcopy(raw_part))
+                    continue
+
+                function_part = {
                     "functionCall": {
                         "name": tc.get("name", ""),
                         "args": tc.get("args", {}),
                     }
-                })
+                }
+                thought_signature = tc.get("thought_signature")
+                if thought_signature:
+                    function_part["thoughtSignature"] = thought_signature
+                parts.append(function_part)
 
             # Tool results (user feeding back function results)
             for tr in msg.get("tool_results", []):
@@ -781,22 +796,32 @@ class BaseAgent:
         """
         texts: list[str] = []
         tool_calls: list[dict] = []
+        model_parts: list[dict] = []
 
         for candidate in response.get("candidates", []):
             content = candidate.get("content") or {}
-            for part in content.get("parts", []):
+            parts = content.get("parts") or []
+            if not model_parts and isinstance(parts, list) and parts:
+                model_parts = copy.deepcopy(parts)
+            for part in parts:
                 if "text" in part:
                     texts.append(part["text"])
                 if "functionCall" in part:
                     fc = part["functionCall"]
-                    tool_calls.append({
+                    tool_call = {
                         "name": fc.get("name", ""),
                         "args": fc.get("args", {}),
-                    })
+                        "raw_part": copy.deepcopy(part),
+                    }
+                    thought_signature = part.get("thoughtSignature") or part.get("thought_signature")
+                    if thought_signature:
+                        tool_call["thought_signature"] = thought_signature
+                    tool_calls.append(tool_call)
 
         return {
             "text": "\n".join(texts).strip(),
             "tool_calls": tool_calls,
+            "model_parts": model_parts,
             "raw": response,
         }
 

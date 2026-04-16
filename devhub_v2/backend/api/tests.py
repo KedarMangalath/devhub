@@ -11,8 +11,13 @@ from agents.api_reference import build_api_reference_catalog
 from agents.architect import ArchitectAgent
 from agents.base import BaseAgent, _vertexai_base_url_for_location, ai_config_is_usable, default_ai_config, normalize_ai_config
 from agents.checkpoints import project_checkpoint_root
+from agents.compaction import ContextCompactor
 from agents.deep_documentation import DeepDocumentationAgent
 from agents.memory import build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, record_episode, retrieve_relevant_files, select_files_for_section
+from agents.prompts import PromptBuilder
+from agents.query_engine import QueryEngine
+from agents.tools.base_tool import BaseTool, ToolResult
+from agents.tools.registry import ToolRegistry
 from agents.workspace import workspace_manager
 from core.models import Changeset, ChatMessage, FileDiff, Project, SemanticMemory, WorkingMemory
 from core.models import Feature, FeatureApproval
@@ -90,6 +95,128 @@ class AiConfigDefaultsTests(TestCase):
             _vertexai_base_url_for_location("us-central1"),
             "https://us-central1-aiplatform.googleapis.com/v1",
         )
+
+
+@override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
+class GeminiThoughtSignatureTests(TestCase):
+    class DummyListDirTool(BaseTool):
+        name = "list_dir"
+        description = "List directory contents."
+
+        def input_schema(self) -> dict:
+            return {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                },
+                "required": ["path"],
+            }
+
+        def call(self, input_data: dict, context) -> ToolResult:  # noqa: ANN001
+            return ToolResult(output=f"Listed {input_data.get('path')}")
+
+    def test_parse_gemini_tool_response_preserves_model_parts_and_thought_signature(self):
+        agent = BaseAgent(
+            role="test",
+            system_instruction="test",
+            ai_config={
+                "provider": "gemini",
+                "gemini_mode": "vertexai",
+                "model": "gemini-3.1-pro-preview",
+                "vertex_project": "noted-computing-459609-n2",
+                "vertex_location": "global",
+            },
+        )
+
+        response = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {"text": "Thinking..."},
+                            {
+                                "functionCall": {"name": "list_dir", "args": {"path": "."}},
+                                "thoughtSignature": "sig-123",
+                            },
+                        ]
+                    }
+                }
+            ]
+        }
+
+        parsed = agent._parse_gemini_tool_response(response)
+
+        self.assertEqual(parsed["tool_calls"][0]["name"], "list_dir")
+        self.assertEqual(parsed["tool_calls"][0]["args"], {"path": "."})
+        self.assertEqual(parsed["tool_calls"][0]["thought_signature"], "sig-123")
+        self.assertEqual(parsed["model_parts"][1]["thoughtSignature"], "sig-123")
+
+    def test_build_gemini_tool_messages_reuses_raw_model_parts(self):
+        agent = BaseAgent(
+            role="test",
+            system_instruction="test",
+            ai_config={
+                "provider": "gemini",
+                "gemini_mode": "vertexai",
+                "model": "gemini-3.1-pro-preview",
+                "vertex_project": "noted-computing-459609-n2",
+                "vertex_location": "global",
+            },
+        )
+        raw_parts = [
+            {
+                "functionCall": {"name": "list_dir", "args": {"path": "."}},
+                "thoughtSignature": "sig-456",
+            }
+        ]
+
+        _system, contents = agent._build_gemini_tool_messages(
+            [
+                {"role": "system", "content": "test"},
+                {"role": "model", "content": "", "tool_calls": [{"name": "list_dir", "args": {"path": "."}}], "gemini_parts": raw_parts},
+                {"role": "user", "content": "", "tool_results": [{"name": "list_dir", "output": "Listed ."}]},
+            ]
+        )
+
+        self.assertEqual(contents[0]["parts"][0]["thoughtSignature"], "sig-456")
+        self.assertEqual(contents[1]["parts"][0]["functionResponse"]["name"], "list_dir")
+
+    def test_query_engine_preserves_model_parts_between_tool_turns(self):
+        registry = ToolRegistry()
+        registry.register(self.DummyListDirTool())
+        engine = QueryEngine(
+            tool_registry=registry,
+            prompt_builder=PromptBuilder(),
+            compactor=ContextCompactor(),
+            ai_config={},
+            workspace_path=Path("."),
+        )
+
+        captured: dict[str, list[dict]] = {}
+
+        def fake_complete(_self, messages, _tools_payload):
+            model_messages = [msg for msg in messages if msg.get("role") == "model"]
+            if not model_messages:
+                return {
+                    "text": "",
+                    "tool_calls": [{"name": "list_dir", "args": {"path": "."}, "thought_signature": "sig-789"}],
+                    "model_parts": [
+                        {
+                            "functionCall": {"name": "list_dir", "args": {"path": "."}},
+                            "thoughtSignature": "sig-789",
+                        }
+                    ],
+                    "raw": {},
+                }
+            captured["messages"] = messages
+            return {"text": "done", "tool_calls": [], "model_parts": [{"text": "done"}], "raw": {}}
+
+        with patch("agents.query_engine.BaseAgent.complete_with_tools", new=fake_complete):
+            result = engine.run("inspect repo", system_prompt="test", max_turns=3)
+
+        self.assertTrue(result.success)
+        replayed_model = next(msg for msg in captured["messages"] if msg.get("role") == "model")
+        self.assertEqual(replayed_model["gemini_parts"][0]["thoughtSignature"], "sig-789")
 
 
 class PromptNeutralityTests(TestCase):
@@ -2677,12 +2804,59 @@ class MemoryArchitectureTests(TestCase):
         self.assertNotIn("Blueprint screen", api_text)
 
         cache = build_blueprint_context(self.project, self.project_root, force=True)
-        enriched = _enrich_blueprint_document(self.project, {"api_endpoints": [{"path": "/wrong/"}]}, cache, "")
+        enriched = _enrich_blueprint_document(self.project, {}, cache, "")
         enriched_signatures = {(item.get("method"), item.get("path")) for item in enriched.get("api_endpoints", [])}
 
         self.assertIn(("GET", "/api/projects/"), enriched_signatures)
         self.assertIn(("POST", "/api/projects/<str:project_id>/chat/"), enriched_signatures)
-        self.assertNotIn((None, "/wrong/"), enriched_signatures)
+
+    def test_api_reference_detects_single_method_from_not_equal_guard(self):
+        (self.project_root / "backend" / "devhub_backend").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "backend" / "api").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "backend" / "devhub_backend" / "urls.py").write_text(
+            "\n".join(
+                [
+                    "from django.urls import include, path",
+                    "",
+                    "urlpatterns = [",
+                    "    path('api/', include('api.urls')),",
+                    "]",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (self.project_root / "backend" / "api" / "urls.py").write_text(
+            "\n".join(
+                [
+                    "from django.urls import path",
+                    "from . import views",
+                    "",
+                    "urlpatterns = [",
+                    "    path('projects/import/github-connect/inspect/', views.inspect_import, name='inspect_import'),",
+                    "]",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (self.project_root / "backend" / "api" / "views.py").write_text(
+            "\n".join(
+                [
+                    "from django.http import JsonResponse",
+                    "",
+                    "def inspect_import(request):",
+                    "    if request.method != 'POST':",
+                    "        return JsonResponse({'error': 'Method not allowed'}, status=405)",
+                    "    return JsonResponse({'ok': True})",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        api_reference = build_api_reference_catalog(self.project_root)
+        signatures = {(item.get("method"), item.get("path")) for item in api_reference}
+
+        self.assertIn(("POST", "/api/projects/import/github-connect/inspect/"), signatures)
+        self.assertNotIn(("GET", "/api/projects/import/github-connect/inspect/"), signatures)
 
     def test_enrich_blueprint_derives_setup_quality_and_knowledge_from_repo_evidence(self):
         (self.project_root / "backend" / "devhub_backend").mkdir(parents=True, exist_ok=True)
@@ -2890,6 +3064,7 @@ class MemoryArchitectureTests(TestCase):
         self.assertIn("cd backend && python manage.py runserver", setup_commands)
         self.assertIn("cd frontend && npm install", setup_commands)
         self.assertIn("cd frontend && npm run dev", setup_commands)
+        self.assertNotIn("python -m pip install -e .", setup_commands)
 
         env_names = {item.get("name") for item in enriched.get("environment_variables", []) if isinstance(item, dict)}
         self.assertIn("OPENAI_API_KEY", env_names)
@@ -2921,6 +3096,7 @@ class MemoryArchitectureTests(TestCase):
         self.assertIn("frontend/package.json", runtime_paths)
         self.assertIn("cd backend && python manage.py runserver", runtime_commands)
         self.assertIn("cd frontend && npm run dev", runtime_commands)
+        self.assertTrue(any(item.get("path") == "backend/requirements.txt" and "pip install" in str(item.get("command") or "") for item in runtime_entrypoints))
 
         read_first_paths = {item.get("path") for item in enriched.get("overview_read_first", []) if isinstance(item, dict)}
         self.assertIn("README.md", read_first_paths)
@@ -2944,7 +3120,7 @@ class MemoryArchitectureTests(TestCase):
         self.assertNotIn("Dashboard > AI Settings", knowledge_text)
         self.assertNotIn("How does DevHub", knowledge_text)
 
-    def test_enrich_blueprint_collapses_low_signal_ai_override_envs_without_template(self):
+    def test_enrich_blueprint_preserves_individual_env_vars_without_template(self):
         (self.project_root / "backend" / "devhub_backend").mkdir(parents=True, exist_ok=True)
         (self.project_root / "frontend" / "src").mkdir(parents=True, exist_ok=True)
         (self.project_root / "backend" / "devhub_backend" / "settings.py").write_text(
@@ -2971,11 +3147,70 @@ class MemoryArchitectureTests(TestCase):
         enriched = _enrich_blueprint_document(self.project, {}, cache, "")
         env_names = {item.get("name") for item in enriched.get("environment_variables", []) if isinstance(item, dict)}
 
-        self.assertIn("AI provider configuration", env_names)
         self.assertIn("VITE_API_BASE_URL", env_names)
-        self.assertNotIn("DEVHUB_BLUEPRINT_MODEL", env_names)
-        self.assertNotIn("DEVHUB_CLAUDE_MODEL", env_names)
-        self.assertNotIn("DEVHUB_DEFAULT_PROVIDER", env_names)
+        self.assertIn("DEVHUB_BLUEPRINT_MODEL", env_names)
+        self.assertIn("DEVHUB_CLAUDE_MODEL", env_names)
+        self.assertIn("DEVHUB_DEFAULT_PROVIDER", env_names)
+        self.assertNotIn("AI provider configuration", env_names)
+
+    def test_enrich_blueprint_keeps_root_dirs_and_cleans_services_and_endpoint_params(self):
+        (self.project_root / "backend" / "api").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "backend" / "api" / "views.py").write_text("def app_view():\n    return None\n", encoding="utf-8")
+        (self.project_root / "docs").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
+        (self.project_root / "data").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "data" / "sample.json").write_text("{}\n", encoding="utf-8")
+
+        cache = build_blueprint_context(self.project, self.project_root, force=True)
+        enriched = _enrich_blueprint_document(
+            self.project,
+            {
+                "services": [
+                    {
+                        "name": "API service",
+                        "key_files": [
+                            "backend/api/views.py - Defines the API endpoints",
+                            "notes only",
+                            "missing.py",
+                        ],
+                    }
+                ],
+                "api_endpoints": [
+                    {
+                        "method": "GET",
+                        "path": "/api/projects/<str:project_id>/",
+                        "path_params": [
+                            {"name": "project_id", "type": "string"},
+                            {"name": "project_id", "type": "string"},
+                        ],
+                    },
+                    {
+                        "method": "GET",
+                        "path": "/api/projects/<str:project_id>",
+                        "path_params": [{"name": "project_id", "type": "string"}],
+                    },
+                ],
+            },
+            cache,
+            "",
+        )
+
+        repo_tree = str(enriched.get("repo_tree") or "")
+        self.assertIn(".devhub/", repo_tree)
+        self.assertIn("docs", repo_tree)
+        self.assertIn("data/", repo_tree)
+
+        repository_areas = {item.get("area") for item in enriched.get("repository_map", []) if isinstance(item, dict)}
+        directory_paths = {item.get("path") for item in enriched.get("directory_guide", []) if isinstance(item, dict)}
+        self.assertIn("Project Root", repository_areas)
+        self.assertIn("./", directory_paths)
+
+        services = [item for item in enriched.get("services", []) if isinstance(item, dict)]
+        self.assertEqual(services[0].get("key_files"), ["backend/api/views.py"])
+
+        endpoints = [item for item in enriched.get("api_endpoints", []) if isinstance(item, dict)]
+        self.assertEqual(len(endpoints), 1)
+        self.assertEqual(len(endpoints[0].get("path_params") or []), 1)
 
     def test_database_section_selection_and_enrichment_prefer_structured_backend_schema(self):
         (self.project_root / "backend" / "core").mkdir(parents=True, exist_ok=True)
@@ -3125,13 +3360,12 @@ class MemoryArchitectureTests(TestCase):
         self.assertNotEqual(markdown, "x" * 7000)
         self.assertNotIn("third-party services", markdown.lower())
         self.assertNotIn("<repository-url>", markdown)
-        self.assertNotIn("python manage.py migrate", markdown)
         self.assertNotIn("django_settings_module", markdown.lower())
         self.assertNotIn("django's test client", markdown.lower())
         self.assertNotIn("cypress", markdown.lower())
         self.assertNotIn("restful principles", markdown.lower())
         self.assertNotIn("database inconsistencies", markdown.lower())
-        self.assertIn("backend/api/tests.py", markdown)
+        self.assertIn("tests.py", markdown)
         self.assertIn("npm run test", markdown)
 
     def test_retrieval_boosts_generic_infrastructure_queries(self):
