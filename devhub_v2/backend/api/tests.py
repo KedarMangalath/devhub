@@ -6,10 +6,11 @@ from unittest.mock import patch
 
 from django.test import Client, TestCase, override_settings
 
-from api.views import _build_evidence_backed_workflows, _enrich_blueprint_document, _normalize_mermaid_chart, _stable_runtime_port, _write_deep_docs_progress, detect_runtime
+from api.views import _build_evidence_backed_workflows, _enrich_blueprint_document, _normalize_mermaid_chart, _stable_runtime_port, _write_deep_docs_progress, build_scaffold_files, detect_runtime
 from agents.api_reference import build_api_reference_catalog
 from agents.architect import ArchitectAgent
 from agents.base import BaseAgent, _vertexai_base_url_for_location, ai_config_is_usable, default_ai_config, normalize_ai_config
+from agents.checkpoints import project_checkpoint_root
 from agents.deep_documentation import DeepDocumentationAgent
 from agents.memory import build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, record_episode, retrieve_relevant_files, select_files_for_section
 from agents.workspace import workspace_manager
@@ -490,7 +491,85 @@ class ProjectCreationTests(TestCase):
         self.assertTrue((project_root / "package.json").exists())
         self.assertEqual(payload["runtime"]["runtime_type"], "node")
 
-    def test_create_project_uses_idea_to_build_working_planner_starter(self):
+    @patch("api.views.ai_config_is_usable", return_value=False)
+    def test_create_project_infers_connected_fullstack_scaffold_for_snake_game_with_backend_needs(self, _mock_ai_usable):
+        response = self.client.post(
+            "/api/projects/create/",
+            data=json.dumps(
+                {
+                    "name": "Snake Arena",
+                    "idea": "Build a snake game with a real backend, leaderboard, and database-backed score saving",
+                    "description": "",
+                    "tech_stack": [],
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        project = Project.objects.get(id=payload["id"])
+        project_root = Path(project.local_path)
+
+        self.assertEqual(project.tech_stack, ["React", "FastAPI"])
+        self.assertTrue((project_root / "frontend" / "package.json").exists())
+        self.assertTrue((project_root / "backend" / "main.py").exists())
+        self.assertEqual(payload["runtime"]["runtime_type"], "node")
+        self.assertIn("concurrently", (project_root / "package.json").read_text(encoding="utf-8"))
+
+    @patch("api.views.ai_config_is_usable", return_value=False)
+    def test_create_project_builds_connected_fullstack_scaffold_for_calculator_idea(self, _mock_ai_usable):
+        project = Project(
+            name="Calc",
+            description="Build a clean calculator app with a proper keypad and display",
+            tech_stack=["React", "FastAPI"],
+        )
+
+        files = build_scaffold_files(project, starter_brief=project.description)
+
+        self.assertIn("package.json", files)
+        self.assertIn("frontend/package.json", files)
+        self.assertIn("frontend/src/App.jsx", files)
+        self.assertIn("backend/main.py", files)
+        frontend_source = files["frontend/src/App.jsx"]
+        backend_source = files["backend/main.py"]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            for rel_path, content in files.items():
+                target = project_root / rel_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+            runtime = detect_runtime(project_root)
+
+        self.assertEqual(runtime["runtime_type"], "node")
+        self.assertIn("fetch('/api/health')", frontend_source)
+        self.assertIn('@app.get("/api/health")', backend_source)
+        self.assertIn("python -m pip install -r requirements.txt", runtime["setup_command"])
+
+    @patch("api.views.ai_config_is_usable", return_value=False)
+    def test_create_project_keeps_fastapi_when_calculator_api_is_explicit(self, _mock_ai_usable):
+        project = Project(
+            name="Calc API",
+            description="Build a FastAPI calculator API with add and divide endpoints",
+            tech_stack=["FastAPI"],
+        )
+
+        files = build_scaffold_files(project, starter_brief=project.description)
+
+        self.assertIn("main.py", files)
+        self.assertNotIn("frontend/package.json", files)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            for rel_path, content in files.items():
+                target = project_root / rel_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+            runtime = detect_runtime(project_root)
+
+        self.assertEqual(runtime["runtime_type"], "python")
+
+    @patch("api.views.ai_config_is_usable", return_value=False)
+    def test_create_project_uses_neutral_react_shell_when_ai_scaffold_is_unavailable(self, _mock_ai_usable):
         response = self.client.post(
             "/api/projects/create/",
             data=json.dumps(
@@ -498,7 +577,7 @@ class ProjectCreationTests(TestCase):
                     "name": "Sprint Planner",
                     "idea": "A kanban style task manager for a small product team",
                     "description": "",
-                    "tech_stack": [],
+                    "tech_stack": ["React"],
                 }
             ),
             content_type="application/json",
@@ -511,10 +590,12 @@ class ProjectCreationTests(TestCase):
         app_source = (project_root / "src" / "App.jsx").read_text(encoding="utf-8")
 
         self.assertEqual(payload["runtime"]["runtime_type"], "node")
-        self.assertIn("Add Work Item", app_source)
-        self.assertIn("Backlog", app_source)
+        self.assertIn("Prompt-driven starter", app_source)
+        self.assertNotIn("Add Work Item", app_source)
+        self.assertNotIn("Backlog", app_source)
 
-    def test_create_project_builds_expense_tracker_from_brief(self):
+    @patch("api.views.ai_config_is_usable", return_value=False)
+    def test_create_project_does_not_inject_canned_expense_template_into_react_fallback(self, _mock_ai_usable):
         response = self.client.post(
             "/api/projects/create/",
             data=json.dumps(
@@ -522,7 +603,7 @@ class ProjectCreationTests(TestCase):
                     "name": "Budget Pilot",
                     "idea": "An expense tracker for startup operating costs",
                     "description": "",
-                    "tech_stack": [],
+                    "tech_stack": ["React"],
                 }
             ),
             content_type="application/json",
@@ -535,8 +616,9 @@ class ProjectCreationTests(TestCase):
         app_source = (project_root / "src" / "App.jsx").read_text(encoding="utf-8")
 
         self.assertEqual(payload["runtime"]["runtime_type"], "node")
-        self.assertIn("Add Expense", app_source)
-        self.assertIn("Total Spend", app_source)
+        self.assertIn("Prompt-driven starter", app_source)
+        self.assertNotIn("Add Expense", app_source)
+        self.assertNotIn("Total Spend", app_source)
 
     @patch("api.views._schedule_project_context_generation")
     def test_create_project_auto_starts_context_generation_for_connected_folder(self, mock_schedule):
@@ -574,6 +656,14 @@ class ProjectChatEditTests(TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.project_root = Path(self.temp_dir.name)
         (self.project_root / "index.html").write_text("<h1>Old heading</h1>", encoding="utf-8")
+        self.sample_attachment = {
+            "name": "mockup.png",
+            "mime_type": "image/png",
+            "data_url": (
+                "data:image/png;base64,"
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z/C/HwAHAQL/odH0WQAAAABJRU5ErkJggg=="
+            ),
+        }
         workspace_id = workspace_manager.create_workspace(str(self.project_root), managed=False)
         self.project = Project.objects.create(
             name="Chat Editable App",
@@ -589,7 +679,17 @@ class ProjectChatEditTests(TestCase):
                 workspace_manager.delete_workspace(self.project.workspace_id)
             except Exception:
                 pass
-        self.temp_dir.cleanup()
+        try:
+            checkpoint_root = project_checkpoint_root(str(self.project.id))
+            if checkpoint_root.exists():
+                import shutil
+                shutil.rmtree(checkpoint_root, ignore_errors=True)
+        except Exception:
+            pass
+        try:
+            self.temp_dir.cleanup()
+        except OSError:
+            pass
 
     def test_chat_edit_request_writes_files_and_tracks_changes(self):
         def fake_implement_feature(self, workspace_id, feature_title, feature_desc, spec, files_context, **kwargs):
@@ -629,6 +729,612 @@ class ProjectChatEditTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertIn("edit failed", payload["assistant_message"])
+
+    def test_chat_ask_mode_never_applies_changes(self):
+        with patch("api.views.apply_chat_changes") as mock_apply_changes, patch("agents.base.BaseAgent.generate", return_value="Answer-only response"):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Update the heading and colors", "mode": "ask"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trace"]["chat_mode"], "ask")
+        self.assertFalse(payload["applied_changes"])
+        self.assertEqual((self.project_root / "index.html").read_text(encoding="utf-8"), "<h1>Old heading</h1>")
+        mock_apply_changes.assert_not_called()
+
+    def test_chat_ask_mode_forwards_image_attachments_and_persists_them(self):
+        captured: dict[str, object] = {}
+
+        def fake_generate_with_attachments(self, prompt, attachments=None, tools=None, response_schema=None):
+            captured["prompt"] = prompt
+            captured["attachments"] = attachments
+            return "I can see the attached mockup."
+
+        with patch("agents.base.BaseAgent.generate_with_attachments", new=fake_generate_with_attachments):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps(
+                    {
+                        "content": "What does this mockup show?",
+                        "mode": "ask",
+                        "attachments": [self.sample_attachment],
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["assistant_message"], "I can see the attached mockup.")
+        sent_attachments = captured["attachments"]
+        self.assertEqual(len(sent_attachments), 1)
+        self.assertEqual(sent_attachments[0]["name"], "mockup.png")
+        user_message = ChatMessage.objects.filter(project=self.project, role="user").order_by("-created_at", "-id").first()
+        self.assertEqual(user_message.metadata["attachments"][0]["name"], "mockup.png")
+
+    def test_chat_edit_mode_forces_code_application(self):
+        def fake_implement_feature(self, workspace_id, feature_title, feature_desc, spec, files_context, **kwargs):
+            workspace_manager.write_file(
+                workspace_id,
+                "index.html",
+                "<h1>Modern heading</h1><p>Changed in edit mode.</p>",
+            )
+            return {"status": "success", "files_modified": ["index.html"]}
+
+        with patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Can you make this more modern?", "mode": "edit"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trace"]["chat_mode"], "edit")
+        self.assertEqual(payload["trace"]["chat_state"], "edit_request")
+        self.assertEqual(payload["applied_changes"]["applied_files"], ["index.html"])
+        self.assertIn("Modern heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
+
+    def test_chat_edit_mode_forwards_image_attachments_to_planner_and_coder(self):
+        captured: dict[str, object] = {}
+
+        def fake_create_plan(self, project_name, request_title, request_text, project_memory, codebase_summary, file_inventory, blueprint_summary, supporting_context, customization_context="", request_attachments=None):
+            captured["planner_attachments"] = request_attachments
+            return {
+                "objective": "Apply the visual direction from the screenshot.",
+                "relevant_files": ["index.html"],
+                "new_files": [],
+                "implementation_steps": ["Update the landing page markup."],
+                "consistency_requirements": [],
+                "risks": [],
+                "validation_commands": [],
+                "acceptance_checks": [],
+                "memory_updates": [],
+            }
+
+        def fake_implement_feature(self, workspace_id, feature_title, feature_desc, spec, files_context, request_attachments=None, **kwargs):
+            captured["coder_attachments"] = request_attachments
+            workspace_manager.write_file(
+                workspace_id,
+                "index.html",
+                "<h1>Styled from screenshot</h1><p>Image-guided edit.</p>",
+            )
+            return {"status": "success", "files_modified": ["index.html"]}
+
+        with patch("agents.planner.PlannerAgent.create_plan", new=fake_create_plan), patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature), patch("api.views._run_validation_suite", return_value=[]), patch("api.views._review_attempt", return_value={"approved": True, "score": 100, "summary": "Looks good.", "issues": []}):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps(
+                    {
+                        "content": "Match this screenshot and modernize the page.",
+                        "mode": "edit",
+                        "attachments": [self.sample_attachment],
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["applied_changes"]["applied_files"], ["index.html"])
+        self.assertEqual(captured["planner_attachments"][0]["name"], "mockup.png")
+        self.assertEqual(captured["coder_attachments"][0]["name"], "mockup.png")
+
+    def test_chat_edit_mode_creates_checkpoint_backed_undo_metadata(self):
+        def fake_implement_feature(self, workspace_id, feature_title, feature_desc, spec, files_context, **kwargs):
+            workspace_manager.write_file(
+                workspace_id,
+                "index.html",
+                "<h1>Checkpoint heading</h1><p>Changed with undo support.</p>",
+            )
+            return {"status": "success", "files_modified": ["index.html"]}
+
+        with patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Give me a checkpointed edit flow", "mode": "edit"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["trace"]["undo"]["available"])
+        self.assertTrue(payload["trace"]["changeset_id"])
+        changeset = Changeset.objects.get(project=self.project, id=payload["trace"]["changeset_id"])
+        self.assertEqual(changeset.ai_review["source"], "chat")
+        self.assertTrue(changeset.ai_review["undo"]["available"])
+        self.assertTrue(changeset.ai_review["checkpoint"]["id"])
+        self.assertTrue(project_checkpoint_root(str(self.project.id)).exists())
+
+    def test_chat_undo_restores_edit_mode_changes_from_checkpoint(self):
+        def fake_implement_feature(self, workspace_id, feature_title, feature_desc, spec, files_context, **kwargs):
+            workspace_manager.write_file(
+                workspace_id,
+                "index.html",
+                "<h1>Edited heading</h1><p>This should be undoable.</p>",
+            )
+            return {"status": "success", "files_modified": ["index.html"]}
+
+        with patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Edit this with undo", "mode": "edit"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        original_changeset_id = payload["trace"]["changeset_id"]
+        self.assertIn("Edited heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
+
+        undo_response = self.client.post(
+            f"/api/projects/{self.project.id}/chat/undo/",
+            data=json.dumps({
+                "changeset_id": original_changeset_id,
+                "session_id": payload["session_id"],
+            }),
+            content_type="application/json",
+        )
+
+        self.assertEqual(undo_response.status_code, 200)
+        undo_payload = undo_response.json()
+        self.assertIn("Restored the workspace", undo_payload["assistant_message"])
+        self.assertIn("Old heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
+        self.assertEqual(Changeset.objects.filter(project=self.project).count(), 2)
+
+        original_changeset = Changeset.objects.get(project=self.project, id=original_changeset_id)
+        self.assertFalse(original_changeset.ai_review["undo"]["available"])
+        undo_changeset = Changeset.objects.exclude(id=original_changeset_id).get(project=self.project)
+        self.assertEqual(undo_changeset.ai_review["source"], "chat_undo")
+        self.assertTrue(undo_payload["trace"]["changeset_id"])
+        self.assertTrue(undo_payload["trace"]["undo"]["available"])
+
+    def test_chat_agent_mode_returns_workspace_actions(self):
+        with patch(
+            "api.views._handle_agent_chat_request",
+            return_value={
+                "handled": True,
+                "assistant_message": "Applied the change and restarted the preview.",
+                "assistant_trace": {
+                    "chat_mode": "agent",
+                    "chat_state": "agent_request",
+                    "workspace_actions": [
+                        {"type": "setup", "status": "completed"},
+                        {"type": "runtime_restart", "status": "completed"},
+                    ],
+                },
+                "applied_changes": {"applied_files": ["index.html"]},
+                "workspace_actions": [
+                    {"type": "setup", "status": "completed"},
+                    {"type": "runtime_restart", "status": "completed"},
+                ],
+            },
+        ):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Make the UI minimal and restart it", "mode": "agent"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trace"]["chat_mode"], "agent")
+        self.assertEqual(len(payload["workspace_actions"]), 2)
+        self.assertEqual(payload["workspace_actions"][1]["type"], "runtime_restart")
+
+    def test_chat_agent_mode_forwards_image_attachments_to_query_engine(self):
+        captured: dict[str, object] = {}
+
+        def fake_run(self, user_message, attachments=None, conversation_history=None, system_prompt="", max_turns=25):
+            captured["user_message"] = user_message
+            captured["attachments"] = attachments
+            return SimpleNamespace(
+                response="The screenshot shows a simple landing page.",
+                tool_calls_log=[],
+                files_modified=[],
+                files_read=[],
+                turns_used=1,
+                compacted=False,
+                total_duration_ms=6,
+            )
+
+        with patch("agents.query_engine.QueryEngine.run", new=fake_run), patch("api.views.apply_chat_changes"), patch("api.views.detect_runtime", return_value={}):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps(
+                    {
+                        "content": "Explain only what you can see in the attached screenshot. Do not make edits.",
+                        "mode": "agent",
+                        "attachments": [self.sample_attachment],
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["assistant_message"], "The screenshot shows a simple landing page.")
+        self.assertEqual(captured["attachments"][0]["name"], "mockup.png")
+
+    def test_chat_agent_mode_prompt_stays_generic_and_execution_focused(self):
+        WorkingMemory.objects.create(
+            project=self.project,
+            scope="implementation",
+            summary="\n".join(
+                [
+                    f"Project: {self.project.name}",
+                    "Recent Chat Themes:",
+                    "- user: could you make this project retro - 90 snake xneia like, add everything from the old nokia game",
+                ]
+            ),
+            context={"source": "test"},
+        )
+
+        captured: dict[str, str] = {}
+
+        def fake_run(self, user_message, conversation_history=None, system_prompt="", max_turns=25):
+            captured["system_prompt"] = system_prompt
+            return SimpleNamespace(
+                response="Updated the agent flow.",
+                tool_calls_log=[],
+                files_modified=[],
+                files_read=[],
+                turns_used=1,
+                compacted=False,
+                total_duration_ms=5,
+            )
+
+        with patch("agents.query_engine.QueryEngine.run", new=fake_run):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Fix the workspace chatbot so it actually implements changes", "mode": "agent"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        system_prompt = captured["system_prompt"]
+        self.assertIn("Workspace Agent Contract", system_prompt)
+        self.assertIn("Apply the requested change in the workspace before you respond", system_prompt)
+        self.assertNotIn("Recent Chat Themes", system_prompt)
+        self.assertNotIn("snake xneia", system_prompt.lower())
+
+    def test_chat_agent_mode_empty_model_reply_gets_concrete_fallback_summary(self):
+        fake_result = SimpleNamespace(
+            response="",
+            tool_calls_log=[
+                {
+                    "tool": "file_write",
+                    "success": True,
+                    "args": {"path": "index.html"},
+                    "output_preview": "File overwritten: index.html",
+                }
+            ],
+            files_modified=["index.html"],
+            files_read=["index.html"],
+            turns_used=2,
+            compacted=False,
+            total_duration_ms=12,
+        )
+
+        with patch("agents.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.detect_runtime", return_value={}):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Fix the landing page copy", "mode": "agent"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["applied_changes"]["applied_files"], ["index.html"])
+        self.assertIn("Applied changes to 1 file(s): index.html.", payload["assistant_message"])
+        self.assertNotEqual(payload["assistant_message"], "Agent completed the task.")
+
+    def test_chat_agent_mode_read_only_tool_loop_falls_back_to_code_application(self):
+        fake_result = SimpleNamespace(
+            response="",
+            tool_calls_log=[
+                {
+                    "tool": "file_read",
+                    "success": True,
+                    "args": {"path": "index.html"},
+                    "output_preview": "File: index.html",
+                }
+            ],
+            files_modified=[],
+            files_read=["index.html"],
+            turns_used=2,
+            compacted=False,
+            total_duration_ms=20,
+        )
+        fallback_changes = {
+            "applied_files": ["index.html"],
+            "count": 1,
+            "plan": {"objective": "Retrofy the snake game UI"},
+            "review": {"approved": True, "summary": "Looks good."},
+            "validation_results": [],
+            "context_files": ["index.html", "style.css", "game.js"],
+        }
+
+        with patch("agents.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Could you make this project retro and Nokia-like?", "mode": "agent"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        mock_apply_changes.assert_called_once()
+        self.assertEqual(payload["applied_changes"]["applied_files"], ["index.html"])
+        self.assertEqual(payload["assistant_message"], "Applied the requested update to 1 file(s): index.html.")
+        self.assertEqual(payload["trace"]["chat_mode"], "agent")
+        self.assertEqual(payload["trace"]["state_reason"], "Tool-calling loop completed without file edits; implementation fallback applied.")
+        self.assertEqual(payload["trace"]["plan"]["objective"], "Retrofy the snake game UI")
+        self.assertTrue(any(action.get("type") == "implementation_fallback" for action in payload["workspace_actions"]))
+
+    def test_chat_agent_mode_fallback_forwards_image_attachments_to_code_application(self):
+        fake_result = SimpleNamespace(
+            response="",
+            tool_calls_log=[
+                {
+                    "tool": "file_read",
+                    "success": True,
+                    "args": {"path": "index.html"},
+                    "output_preview": "File: index.html",
+                }
+            ],
+            files_modified=[],
+            files_read=["index.html"],
+            turns_used=2,
+            compacted=False,
+            total_duration_ms=20,
+        )
+        fallback_changes = {
+            "applied_files": ["index.html"],
+            "count": 1,
+            "plan": {"objective": "Apply the screenshot guidance"},
+            "review": {"approved": True, "summary": "Looks good."},
+            "validation_results": [],
+            "context_files": ["index.html"],
+        }
+
+        with patch("agents.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps(
+                    {
+                        "content": "Make the UI match this screenshot.",
+                        "mode": "agent",
+                        "attachments": [self.sample_attachment],
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_apply_changes.call_args.kwargs["request_attachments"][0]["name"], "mockup.png")
+
+    def test_chat_agent_mode_explain_request_stays_read_only(self):
+        fake_result = SimpleNamespace(
+            response="The snake movement is driven by a grid-based tick loop in the game script.",
+            tool_calls_log=[
+                {
+                    "tool": "file_read",
+                    "success": True,
+                    "args": {"path": "index.html"},
+                    "output_preview": "File: index.html",
+                }
+            ],
+            files_modified=[],
+            files_read=["index.html"],
+            turns_used=1,
+            compacted=False,
+            total_duration_ms=8,
+        )
+
+        with patch("agents.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes") as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Could you explain how the current snake movement logic works?", "mode": "agent"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        mock_apply_changes.assert_not_called()
+        self.assertEqual(payload["assistant_message"], "The snake movement is driven by a grid-based tick loop in the game script.")
+        self.assertFalse(payload["applied_changes"])
+        self.assertEqual(payload["trace"]["chat_mode"], "agent")
+
+    def test_chat_agent_direct_tool_edits_are_undoable(self):
+        def fake_run(engine_self, user_message, conversation_history=None, system_prompt="", max_turns=25):
+            (self.project_root / "index.html").write_text("<h1>Agent-edited heading</h1>", encoding="utf-8")
+            return SimpleNamespace(
+                response="",
+                tool_calls_log=[
+                    {
+                        "tool": "file_write",
+                        "success": True,
+                        "args": {"path": "index.html"},
+                        "output_preview": "File overwritten: index.html",
+                    }
+                ],
+                files_modified=["index.html"],
+                files_read=["index.html"],
+                turns_used=2,
+                compacted=False,
+                total_duration_ms=15,
+            )
+
+        with patch("agents.query_engine.QueryEngine.run", new=fake_run), patch("api.views.detect_runtime", return_value={}):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Use agent mode to edit the heading", "mode": "agent"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("Agent-edited heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
+        self.assertTrue(payload["trace"]["undo"]["available"])
+
+        undo_response = self.client.post(
+            f"/api/projects/{self.project.id}/chat/undo/",
+            data=json.dumps({
+                "changeset_id": payload["trace"]["changeset_id"],
+                "session_id": payload["session_id"],
+            }),
+            content_type="application/json",
+        )
+
+        self.assertEqual(undo_response.status_code, 200)
+        self.assertIn("Old heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
+        original_changeset = Changeset.objects.get(project=self.project, id=payload["trace"]["changeset_id"])
+        self.assertEqual(original_changeset.ai_review["source"], "chat_agent")
+        self.assertFalse(original_changeset.ai_review["undo"]["available"])
+
+    def test_chat_edit_mode_feeds_project_customizations_into_coder_pipeline(self):
+        meta_dir = self.project_root / ".devhub"
+        prompts_dir = meta_dir / "prompts"
+        skills_dir = meta_dir / "skills" / "accessibility"
+        prompts_dir.mkdir(parents=True, exist_ok=True)
+        skills_dir.mkdir(parents=True, exist_ok=True)
+
+        (prompts_dir / "implementation.md").write_text(
+            "Always preserve semantic HTML structure and keep the requested change scoped.",
+            encoding="utf-8",
+        )
+        (prompts_dir / "coder.md").write_text(
+            "Favor accessible headings and concise landing-page copy.",
+            encoding="utf-8",
+        )
+        (skills_dir / "SKILL.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: accessibility",
+                    "description: Improve semantics and clarity.",
+                    "---",
+                    "# Accessibility",
+                    "Use semantic HTML and improve the clarity of visible copy.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        captured: dict[str, str] = {}
+
+        def fake_generate(self, prompt, tools=None, response_schema=None):
+            if self.role == "Senior Software Engineer":
+                captured["coder_system_instruction"] = self.system_instruction
+                captured["coder_prompt"] = prompt
+                return json.dumps(
+                    [
+                        {
+                            "path": "index.html",
+                            "content": "<main><h1>Accessible heading</h1><p>Clearer landing page copy.</p></main>",
+                        }
+                    ]
+                )
+            raise AssertionError(f"Unexpected role reached in this test: {self.role}")
+
+        with patch("api.views.ai_config_is_usable", return_value=False), patch("agents.base.BaseAgent.generate", new=fake_generate):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "/accessibility refresh the landing page copy", "mode": "edit"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trace"]["chat_mode"], "edit")
+        self.assertEqual(payload["applied_changes"]["applied_files"], ["index.html"])
+        self.assertIn("Shared Implementation Override", captured["coder_system_instruction"])
+        self.assertIn("Always preserve semantic HTML structure", captured["coder_system_instruction"])
+        self.assertIn("Favor accessible headings", captured["coder_system_instruction"])
+        self.assertIn("Active Project Skill", captured["coder_system_instruction"])
+        self.assertIn("Description: refresh the landing page copy", captured["coder_prompt"])
+        self.assertNotIn("Description: /accessibility refresh the landing page copy", captured["coder_prompt"])
+        self.assertIn("Use semantic HTML and improve the clarity of visible copy.", captured["coder_prompt"])
+        self.assertIn("Accessible heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
+
+    def test_get_project_includes_coder_customization_manifest(self):
+        meta_dir = self.project_root / ".devhub"
+        prompts_dir = meta_dir / "prompts"
+        skills_dir = meta_dir / "skills" / "accessibility"
+        prompts_dir.mkdir(parents=True, exist_ok=True)
+        skills_dir.mkdir(parents=True, exist_ok=True)
+
+        (prompts_dir / "coder.md").write_text(
+            "Favor accessible headings and concise landing-page copy.",
+            encoding="utf-8",
+        )
+        (skills_dir / "SKILL.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: accessibility",
+                    "description: Improve semantics and clarity.",
+                    "---",
+                    "# Accessibility",
+                    "Use semantic HTML and improve the clarity of visible copy.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        response = self.client.get(f"/api/projects/{self.project.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        manifest = payload["coder_customization"]
+        self.assertTrue(manifest["available"])
+        self.assertEqual(manifest["meta_root"], ".devhub")
+        self.assertTrue(manifest["meta_path"].endswith(".devhub"))
+        self.assertEqual(manifest["slash_commands"], ["/accessibility"])
+        self.assertEqual(manifest["skills"][0]["name"], "accessibility")
+        self.assertEqual(manifest["prompt_overrides"][0]["name"], "coder")
+
+    def test_bootstrap_endpoint_seeds_project_coder_customization_files(self):
+        response = self.client.post(
+            f"/api/projects/{self.project.id}/coder-customization/bootstrap/",
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertTrue((self.project_root / ".devhub" / "prompts" / "implementation.md").exists())
+        self.assertTrue((self.project_root / ".devhub" / "prompts" / "coder.md").exists())
+        self.assertTrue((self.project_root / ".devhub" / "skills" / "debugging" / "SKILL.md").exists())
+        self.assertTrue((self.project_root / ".devhub" / "skills" / "cleanup" / "SKILL.md").exists())
+        manifest = payload["coder_customization"]
+        self.assertTrue(manifest["available"])
+        self.assertIn("/debugging", manifest["slash_commands"])
+        self.assertIn(".devhub/prompts/coder.md", manifest["suggested_files"])
 
 
 @override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
@@ -1441,6 +2147,52 @@ class ProjectChatTraceTests(TestCase):
             "export default function App() { return <main>Hello trace</main>; }\n",
             encoding="utf-8",
         )
+        (self.project_root / "frontend" / "src" / "pages").mkdir(parents=True)
+        (self.project_root / "frontend" / "src" / "components").mkdir(parents=True)
+        (self.project_root / "frontend" / "src" / "pages" / "ProjectView.tsx").write_text(
+            "\n".join(
+                [
+                    "export default function ProjectView({ activeTab, tabs }: any) {",
+                    "  return (",
+                    '    <aside>',
+                    '      <div className="hidden lg:block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">Views</div>',
+                    "      {tabs.map((tab: any) => (",
+                    "        <button",
+                    "          key={tab.id}",
+                    "          className={`shrink-0 lg:w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-black text-white shadow-[0_18px_38px_rgba(15,23,42,0.18)]' : 'border border-transparent text-slate-600 hover:bg-white hover:border-black/5'}`}",
+                    "        >",
+                    "          <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold ${activeTab === tab.id ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}>{tab.icon}</span>",
+                    "          <span className={`hidden lg:block truncate text-[10px] ${activeTab === tab.id ? 'text-white/70' : 'text-slate-400'}`}>{tab.helper}</span>",
+                    "        </button>",
+                    "      ))}",
+                    "    </aside>",
+                    "  );",
+                    "}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (self.project_root / "frontend" / "src" / "components" / "CodeWorkspace.tsx").write_text(
+            "\n".join(
+                [
+                    "export default function CodeWorkspace({ treeNodes, selectedFile, expandedDirs, toggleDirectory, loadFile }: any) {",
+                    "  const renderTreeNode = (node: any, depth = 0) => (",
+                    '    <div key={node.path}>',
+                    "      <button",
+                    "        type=\"button\"",
+                    "        onClick={() => (node.type === 'directory' ? toggleDirectory(node.path) : loadFile(node.path))}",
+                    "        className={`flex w-full items-center gap-1 rounded-md py-1 pr-3 text-left text-[11px] ${selectedFile === node.path ? 'bg-[#37373d] text-white' : 'text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white'}`}",
+                    "      >",
+                    "        <span>{node.name}</span>",
+                    "      </button>",
+                    "    </div>",
+                    "  );",
+                    "  return <div>{treeNodes.map((node: any) => renderTreeNode(node))}</div>;",
+                    "}",
+                ]
+            ),
+            encoding="utf-8",
+        )
         (self.project_root / "backend" / "agents" / "architect.py").write_text(
             "class ArchitectAgent:\n    pass\n",
             encoding="utf-8",
@@ -1579,6 +2331,33 @@ class ProjectChatTraceTests(TestCase):
         self.assertTrue(any(item.get("path") == "src/App.tsx" for item in payload["trace"].get("files_accessed", [])))
         self.assertTrue(any(item.get("label") == "@codebase-planned" for item in payload["trace"].get("context_sources", [])))
 
+    def test_chat_change_question_includes_full_primary_file_context(self):
+        build_blueprint_context(self.project, self.project_root, force=True)
+
+        captured_prompt = {}
+
+        def fake_generate(prompt):
+            captured_prompt["prompt"] = prompt
+            return "Full file answer."
+
+        with patch("agents.base.BaseAgent.generate", side_effect=fake_generate):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps(
+                    {
+                        "content": "How do I change the App component in this project?",
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["assistant_message"], "Full file answer.")
+        self.assertIn("--- FULL FILE: src/App.tsx ---", captured_prompt.get("prompt", ""))
+        self.assertEqual(payload["trace"].get("chat_state"), "grounded_answer")
+        self.assertTrue(any(item.get("path") == "src/App.tsx" and item.get("mode") == "full" for item in payload["trace"].get("files_accessed", [])))
+
     def test_chat_broad_folder_question_materializes_multiple_related_files(self):
         build_blueprint_context(self.project, self.project_root, force=True)
 
@@ -1601,6 +2380,102 @@ class ProjectChatTraceTests(TestCase):
         trace_paths = {item.get("path") for item in payload["trace"].get("files_accessed", [])}
         self.assertIn("backend/agents/architect.py", trace_paths)
         self.assertIn("backend/agents/memory.py", trace_paths)
+
+    def test_chat_ambiguous_sidebar_question_requests_clarification(self):
+        build_blueprint_context(self.project, self.project_root, force=True)
+
+        response = self.client.post(
+            f"/api/projects/{self.project.id}/chat/",
+            data=json.dumps(
+                {
+                    "content": "How do I change the color for the sidebar item highlight?",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        answer = payload["assistant_message"]
+        self.assertIn("I'm not fully sure which UI surface you mean.", answer)
+        self.assertIn("frontend/src/pages/ProjectView.tsx", answer)
+        self.assertIn("frontend/src/components/CodeWorkspace.tsx", answer)
+        self.assertEqual(payload["trace"].get("chat_state"), "needs_clarification")
+        self.assertTrue(any(item.get("label") == "@clarification-needed" for item in payload["trace"].get("context_sources", [])))
+
+    def test_chat_specific_workspace_sidebar_question_returns_exact_current_classes(self):
+        build_blueprint_context(self.project, self.project_root, force=True)
+
+        response = self.client.post(
+            f"/api/projects/{self.project.id}/chat/",
+            data=json.dumps(
+                {
+                    "content": "How do I change the color for the workspace file explorer highlight?",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        answer = payload["assistant_message"]
+        self.assertIn("frontend/src/components/CodeWorkspace.tsx", answer)
+        self.assertIn("bg-[#37373d] text-white", answer)
+        self.assertNotIn("bg-blue-50 text-blue-700", answer)
+        self.assertEqual(payload["trace"].get("chat_state"), "grounded_answer")
+        self.assertTrue(any(item.get("label") == "@ui-style-evidence" for item in payload["trace"].get("context_sources", [])))
+
+    def test_chat_broad_theme_request_does_not_trigger_ui_style_shortcut(self):
+        build_blueprint_context(self.project, self.project_root, force=True)
+
+        captured_prompt = {}
+
+        def fake_generate(prompt):
+            captured_prompt["prompt"] = prompt
+            return "Theme answer."
+
+        with patch("agents.base.BaseAgent.generate", side_effect=fake_generate):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps(
+                    {
+                        "content": "How do I change the whole UI and make it dark themed, make the topbar translucent, and move delete to the bottom?",
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["assistant_message"], "Theme answer.")
+        self.assertEqual(payload["trace"].get("chat_state"), "broad_redesign")
+        self.assertFalse(any(item.get("label") == "@ui-style-evidence" for item in payload["trace"].get("context_sources", [])))
+        prompt = captured_prompt.get("prompt", "")
+        self.assertIn("--- FULL FILE: frontend/src/components/CodeWorkspace.tsx ---", prompt)
+        self.assertIn("Current chat state: broad_redesign", prompt)
+
+    def test_chat_explicit_apply_changes_routes_to_edit_request_state(self):
+        build_blueprint_context(self.project, self.project_root, force=True)
+
+        with patch(
+            "api.views.apply_chat_changes",
+            return_value={"applied_files": ["src/App.tsx"], "commands_ran": [], "patch": "", "diff": "", "notes": []},
+        ):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps(
+                    {
+                        "content": "Change the App component greeting.",
+                        "apply_changes": True,
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trace"].get("chat_state"), "edit_request")
+        self.assertIn("Applied the requested update to 1 file(s): src/App.tsx.", payload["assistant_message"])
 
 
 @override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
@@ -2438,3 +3313,105 @@ class RuntimeDetectionTests(TestCase):
             self.assertIn(str(first_port), first_runtime["preview_url"])
             self.assertIn(str(second_port), second_runtime["run_command"])
             self.assertIn(str(second_port), second_runtime["preview_url"])
+
+    @patch.dict("os.environ", {"DEVHUB_SANDBOX_MODE": "docker"}, clear=False)
+    def test_fastapi_runtime_uses_container_safe_python_command_in_docker_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            (project_root / "requirements.txt").write_text(
+                "fastapi==0.116.1\nuvicorn[standard]==0.35.0\n",
+                encoding="utf-8",
+            )
+            (project_root / "main.py").write_text(
+                "\n".join(
+                    [
+                        "from fastapi import FastAPI",
+                        "",
+                        "app = FastAPI()",
+                        "",
+                        "if __name__ == '__main__':",
+                        "    import uvicorn",
+                        "    uvicorn.run(app, host='127.0.0.1', port=8000)",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            runtime = detect_runtime(project_root)
+            expected_port = _stable_runtime_port(project_root, start=8100)
+
+            self.assertEqual(runtime["runtime_type"], "python")
+            self.assertIn("python -m uvicorn main:app", str(runtime["run_command"]))
+            self.assertIn(str(expected_port), str(runtime["run_command"]))
+            self.assertEqual(runtime["setup_command"], "python -m pip install -r requirements.txt")
+            self.assertEqual(runtime["preview_url"], f"http://127.0.0.1:{expected_port}")
+            self.assertTrue(runtime["install_required"])
+
+
+@override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
+class WorkspaceRuntimeEndpointTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.project_root = Path(self.temp_dir.name)
+        workspace_id = workspace_manager.create_workspace(str(self.project_root), managed=False)
+        self.workspace_id = workspace_id
+
+    def tearDown(self):
+        try:
+            workspace_manager.delete_workspace(self.workspace_id)
+        except Exception:
+            pass
+        self.temp_dir.cleanup()
+
+    @patch("api.views._wait_for_preview_ready", return_value=(False, "Preview is still starting"))
+    @patch("sandbox.executor.sandbox.run_command")
+    @patch("sandbox.executor.sandbox.get_status")
+    @patch("api.views.detect_runtime")
+    def test_runtime_post_returns_200_while_preview_boots(
+        self,
+        mock_detect_runtime,
+        mock_get_status,
+        mock_run_command,
+        _mock_wait_for_preview,
+    ):
+        mock_detect_runtime.return_value = {
+            "runtime_type": "node",
+            "run_command": "npm run dev",
+            "setup_command": "npm install",
+            "install_required": True,
+            "preview_url": "http://127.0.0.1:5173",
+        }
+        mock_get_status.side_effect = [
+            {"exists": False, "running": False, "backend": "local"},
+            {
+                "exists": True,
+                "running": True,
+                "command": "npm run dev",
+                "work_dir": str(self.project_root),
+                "uptime_seconds": 1,
+                "backend": "local",
+            },
+            {
+                "exists": True,
+                "running": True,
+                "command": "npm run dev",
+                "work_dir": str(self.project_root),
+                "uptime_seconds": 1,
+                "backend": "local",
+            },
+        ]
+
+        response = self.client.post(
+            f"/api/workspace/{self.workspace_id}/runtime/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload["ready"])
+        self.assertEqual(payload["preview_error"], "Preview is still starting")
+        self.assertEqual(payload["sandbox"]["mode"], "local")
+        mock_run_command.assert_called_once()
+

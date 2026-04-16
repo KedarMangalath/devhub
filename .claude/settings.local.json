@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__code-review-graph__semantic_search_nodes_tool",
+      "Bash(python -c ':*)",
+      "mcp__code-review-graph__get_architecture_overview_tool"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "code-review-graph"
+  ]
+}

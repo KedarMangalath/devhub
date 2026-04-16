@@ -19,6 +19,7 @@ urlpatterns = [
     path('projects/import/folder/pick/', views.pick_local_folder, name='pick_local_folder'),
     path('projects/import/folder/inspect/', views.inspect_folder_import, name='inspect_folder_import'),
     path('projects/<str:project_id>/', views.get_project, name='get_project'),
+    path('projects/<str:project_id>/coder-customization/bootstrap/', views.project_coder_customization_bootstrap, name='project_coder_customization_bootstrap'),
     path('projects/<str:project_id>/update/', views.update_project, name='update_project'),
     path('projects/<str:project_id>/delete/', views.delete_project, name='delete_project'),
     path('projects/<str:project_id>/documentation/', views.project_documentation, name='project_documentation'),
@@ -32,6 +33,7 @@ urlpatterns = [
 
     # Chat
     path('projects/<str:project_id>/chat/', views.project_chat, name='project_chat'),
+    path('projects/<str:project_id>/chat/undo/', views.project_chat_undo, name='project_chat_undo'),
     path('projects/<str:project_id>/github/', integration_views.project_github_status, name='project_github_status'),
     path('projects/<str:project_id>/github/issues/', integration_views.project_github_issues, name='project_github_issues'),
     path('projects/<str:project_id>/github/pulls/', integration_views.project_github_pulls, name='project_github_pulls'),

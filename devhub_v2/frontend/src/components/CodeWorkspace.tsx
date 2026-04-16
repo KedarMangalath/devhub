@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, ChevronDown, ChevronRight, Code2, FileText, Folder, FolderOpen, FolderTree, Globe, Loader2, PanelLeftClose, PanelRightClose, Play, RefreshCw, Save, Search, Square, TerminalSquare, Wrench, X } from 'lucide-react';
-import ProjectChatPanel from './ProjectChatPanel';
+import { Bot, ChevronDown, ChevronRight, Code2, FileText, Folder, FolderOpen, FolderTree, Globe, Loader2, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, PanelRightClose, Play, RefreshCw, RotateCcw, Save, Search, Square, TerminalSquare, Wrench, X } from 'lucide-react';
+import ProjectChatPanel, { type CoderCustomization } from './ProjectChatPanel';
 
 import { CodeEditor } from './Editor';
 import { Terminal } from './Terminal';
@@ -11,11 +11,13 @@ type RuntimeState = {
   runtime_type?: string;
   run_command?: string | null;
   setup_command?: string | null;
+  install_required?: boolean;
   preview_url?: string | null;
   ready?: boolean;
   preview_error?: string | null;
   process_id?: string;
-  status?: { exists?: boolean; running?: boolean; command?: string; uptime_seconds?: number };
+  status?: { exists?: boolean; running?: boolean; command?: string; uptime_seconds?: number; backend?: string; container_name?: string };
+  sandbox?: { mode?: string; image?: string | null; runtime?: string | null; network?: string | null };
 };
 
 type FileNode = {
@@ -32,7 +34,12 @@ type Props = {
   workspaceId: string | null;
   projectId: string;
   projectPath?: string | null;
+  coderCustomization?: CoderCustomization | null;
   onProjectChanged?: () => void;
+  projectSidebarCollapsed?: boolean;
+  onToggleProjectSidebar?: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 };
 
 const getLanguage = (path: string | null) => {
@@ -78,13 +85,13 @@ const findNode = (nodes: FileNode[], targetPath: string): FileNode | null => {
   return null;
 };
 
-export default function CodeWorkspace({ workspaceId, projectId, projectPath, onProjectChanged }: Props) {
+export default function CodeWorkspace({ workspaceId, projectId, projectPath, coderCustomization, onProjectChanged, projectSidebarCollapsed = false, onToggleProjectSidebar, isFullscreen = false, onToggleFullscreen }: Props) {
   const [activeSidePanel, setActiveSidePanel] = useState<'files' | 'search'>('files');
   const [showSidePanel, setShowSidePanel] = useState(true);
   const [showBottomPanel, setShowBottomPanel] = useState(true);
   const [activeBottomTab, setActiveBottomTab] = useState<'terminal' | 'output'>('terminal');
   const [activeEditorTab, setActiveEditorTab] = useState<'code' | 'preview'>('code');
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   const [treeNodes, setTreeNodes] = useState<FileNode[]>([]);
   const [expandedDirs, setExpandedDirs] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -92,6 +99,7 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
   const [saving, setSaving] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeState | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const [startPhase, setStartPhase] = useState<'idle' | 'setup' | 'run'>('idle');
   const [runtimeOutput, setRuntimeOutput] = useState('');
   const [setupRunning, setSetupRunning] = useState(false);
   const [setupOutput, setSetupOutput] = useState('');
@@ -104,7 +112,27 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
   const previewUrl = runtime?.preview_url || (inferredPort ? `http://127.0.0.1:${inferredPort}` : null);
   const previewAvailable = Boolean(runtime?.status?.running && previewUrl && runtime?.ready);
   const previewPending = Boolean(runtime?.status?.running && previewUrl && runtime?.ready === false);
+  const needsSetupBeforeRun = Boolean(!runtime?.status?.running && runtime?.setup_command && runtime?.install_required);
+  const runtimeBackend = runtime?.status?.backend || runtime?.sandbox?.mode || 'local';
+  const containerName = runtime?.status?.container_name;
+  const previewPort = previewUrl ? new URL(previewUrl).port : null;
+  const sandboxRuntimeName = runtime?.sandbox?.runtime || '';
+  const manualSetupLabel = setupRunning ? 'Setup Running...' : needsSetupBeforeRun ? 'Setup Only' : 'Re-run Setup';
+  const primaryActionLabel = runtime?.status?.running
+    ? 'Stop Project'
+    : runtimeLoading
+      ? startPhase === 'setup'
+        ? 'Preparing Project...'
+        : 'Starting Project...'
+      : needsSetupBeforeRun
+        ? 'Setup & Start'
+        : runtime?.run_command
+          ? 'Start Project'
+          : 'No Start Command';
   const rootLabel = projectPath?.split(/[\\/]/).pop() || 'PROJECT';
+  const customSkillCount = Array.isArray(coderCustomization?.skills) ? coderCustomization.skills.length : 0;
+  const promptOverrideCount = Array.isArray(coderCustomization?.prompt_overrides) ? coderCustomization.prompt_overrides.length : 0;
+  const customizationSummary = String(coderCustomization?.summary || '').trim();
 
   const fetchDirectory = async (path = '') => {
     if (!workspaceId) return [];
@@ -124,31 +152,87 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
     setTreeNodes(snapshot);
   };
 
-  const fetchRuntime = () => {
-    if (!workspaceId) return;
-    fetch(`${API}/workspace/${workspaceId}/runtime/`)
-      .then((r) => r.json())
-      .then((data) => {
-        setRuntime(data);
-        if (data?.status?.running && data.preview_error && data.ready === false) {
-          setRuntimeOutput((current) => current || `Preview warming up: ${data.preview_error}`);
-        }
-      });
+  const fetchRuntime = async () => {
+    if (!workspaceId) return null;
+    const response = await fetch(`${API}/workspace/${workspaceId}/runtime/`);
+    const data = await response.json();
+    setRuntime(data);
+    if (data?.status?.running && data.preview_error && data.ready === false) {
+      setRuntimeOutput((current) => current || `Preview warming up: ${data.preview_error}`);
+    }
+    return data as RuntimeState;
+  };
+
+  const fetchSetupStatus = async () => {
+    if (!workspaceId) return null;
+    const response = await fetch(`${API}/workspace/${workspaceId}/setup/`);
+    const data = await response.json();
+    if (data?.status && !data.status.running) {
+      setSetupRunning(false);
+    }
+    return data;
+  };
+
+  const startSetupProcess = async ({ resetOutput = true }: { resetOutput?: boolean } = {}) => {
+    if (!workspaceId) return null;
+    setSetupRunning(true);
+    if (resetOutput) {
+      setSetupOutput('');
+    }
+    setShowBottomPanel(true);
+    setActiveBottomTab('output');
+    const response = await fetch(`${API}/workspace/${workspaceId}/setup/`, { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok || data?.error) {
+      setSetupRunning(false);
+      throw new Error(data?.error || 'Setup failed to start.');
+    }
+    return data;
+  };
+
+  const waitForSetupToFinish = async (timeoutMs = 120_000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const data = await fetchSetupStatus();
+      if (!data?.status?.running) {
+        return data;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    }
+    return null;
   };
 
 
 
   useEffect(() => {
     if (!workspaceId) return;
-    refreshTree();
-    fetchRuntime();
+    void refreshTree();
+    void fetchRuntime();
   }, [workspaceId, projectId]);
 
   useEffect(() => {
     if (!workspaceId) return;
-    const interval = setInterval(fetchRuntime, 4000);
-    return () => clearInterval(interval);
-  }, [workspaceId]);
+
+    const isActivelyChanging = runtimeLoading || setupRunning || awaitingPreview || previewPending;
+    const pollDelay = isActivelyChanging
+      ? 1500
+      : runtime?.status?.running
+        ? 15000
+        : 30000;
+
+    const timeout = window.setTimeout(() => {
+      void fetchRuntime();
+    }, pollDelay);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    workspaceId,
+    runtimeLoading,
+    setupRunning,
+    awaitingPreview,
+    previewPending,
+    runtime?.status?.running,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -189,6 +273,7 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
     });
     setSaving(false);
     refreshTree();
+    onProjectChanged?.();
   };
 
   const toggleDirectory = async (path: string) => {
@@ -230,7 +315,10 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
     });
     if (setupRunning && workspaceId) connectSocket(`${workspaceId}_setup`, (data) => {
       if (data.output) setSetupOutput((current) => current + data.output);
-      if (data.status && !data.status.running) setSetupRunning(false);
+      if (data.status && !data.status.running) {
+        setSetupRunning(false);
+        void fetchRuntime();
+      }
     });
   }, [workspaceId, termPid, runtime?.process_id, runtime?.status?.running, setupRunning]);
 
@@ -243,22 +331,52 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
   const runProject = async () => {
     if (!workspaceId) return;
     setRuntimeLoading(true);
+    setStartPhase(needsSetupBeforeRun ? 'setup' : 'run');
     setRuntimeOutput('');
-    setAwaitingPreview(true);
     setShowBottomPanel(true);
     setActiveBottomTab('output');
     try {
+      if (needsSetupBeforeRun) {
+        setSetupOutput('Preparing project dependencies before launch...\n');
+        await startSetupProcess({ resetOutput: false });
+        const setupStatus = await waitForSetupToFinish();
+        if (!setupStatus) {
+          setRuntimeOutput('Setup is still running. Let it finish in the output panel, then start the project.');
+          setAwaitingPreview(false);
+          return;
+        }
+        const refreshedRuntime = await fetchRuntime();
+        if (refreshedRuntime?.install_required) {
+          setRuntimeOutput('Setup finished, but the project still looks unprepared. Review the setup output and try again.');
+          setAwaitingPreview(false);
+          return;
+        }
+      }
+
+      setStartPhase('run');
+      setAwaitingPreview(true);
+      setRuntimeOutput((current) => current || 'Starting project...\n');
       const response = await fetch(`${API}/workspace/${workspaceId}/runtime/`, { method: 'POST' });
       const data = await response.json();
+      if (!response.ok || data?.error) {
+        throw new Error(data?.error || 'Unable to start the project.');
+      }
       setRuntime(data);
       if (data.ready && (data.preview_url || data.run_command)) {
         setActiveEditorTab('preview');
         setAwaitingPreview(false);
+      } else if (data?.status?.running && data.preview_url) {
+        setActiveEditorTab('preview');
       } else if (data.preview_error) {
-        setRuntimeOutput(data.preview_error);
+        setRuntimeOutput((current) => `${current}${current.endsWith('\n') ? '' : '\n'}${data.preview_error}`);
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to start the project.';
+      setRuntimeOutput(message);
+      setAwaitingPreview(false);
     } finally {
       setRuntimeLoading(false);
+      setStartPhase('idle');
     }
   };
 
@@ -266,29 +384,72 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
     if (!workspaceId) return;
     await fetch(`${API}/workspace/${workspaceId}/runtime/`, { method: 'DELETE' });
     setAwaitingPreview(false);
-    fetchRuntime();
+    void fetchRuntime();
     setActiveEditorTab('code');
+  };
+
+  const restartProject = async () => {
+    if (!workspaceId) return;
+    if (runtime?.status?.running) {
+      await stopProject();
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    }
+    await runProject();
   };
 
   const runSetup = async () => {
     if (!workspaceId) return;
-    setSetupRunning(true);
-    setSetupOutput('');
-    setShowBottomPanel(true);
-    setActiveBottomTab('output');
-    await fetch(`${API}/workspace/${workspaceId}/setup/`, { method: 'POST' });
+    try {
+      await startSetupProcess();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Setup failed to start.';
+      setSetupOutput(message);
+    }
   };
 
   const handleCodeApplied = async (appliedFiles: string[]) => {
     await refreshTree();
-    fetchRuntime();
+    void fetchRuntime();
     onProjectChanged?.();
     if (selectedFile && appliedFiles.includes(selectedFile)) {
-      loadFile(selectedFile);
+      void loadFile(selectedFile);
     } else if (appliedFiles.length > 0) {
-      loadFile(appliedFiles[0]);
+      void loadFile(appliedFiles[0]);
     }
     if (runtime?.status?.running) setPreviewRefreshKey((current) => current + 1);
+  };
+
+  const handleAgentAction = async (actions: any[]) => {
+    if (!Array.isArray(actions) || !actions.length) return;
+
+    setShowBottomPanel(true);
+    setActiveBottomTab('output');
+
+    const actionTypes = new Set(actions.map((item) => String(item?.type || '')));
+    const touchesRuntime = [...actionTypes].some((item) => item.startsWith('runtime_') || item === 'setup');
+    const touchesFiles = actionTypes.has('setup') || actionTypes.has('terminal_command');
+
+    if (touchesFiles) {
+      await refreshTree();
+    }
+
+    if (touchesRuntime) {
+      const nextRuntime = await fetchRuntime();
+      await fetchSetupStatus();
+
+      if (actionTypes.has('runtime_stop')) {
+        setActiveEditorTab('code');
+        setAwaitingPreview(false);
+      }
+
+      if ((actionTypes.has('runtime_start') || actionTypes.has('runtime_restart')) && nextRuntime?.preview_url) {
+        setAwaitingPreview(!nextRuntime.ready);
+        if (nextRuntime.ready) {
+          setActiveEditorTab('preview');
+          setPreviewRefreshKey((current) => current + 1);
+        }
+      }
+    }
   };
 
   const renderTreeNode = (node: FileNode, depth = 0): any => (
@@ -296,7 +457,7 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
       <button
         type="button"
         onClick={() => (node.type === 'directory' ? toggleDirectory(node.path) : loadFile(node.path))}
-        className={`flex w-full items-center gap-1 rounded-md py-1 pr-3 text-left text-[11px] ${selectedFile === node.path ? 'bg-[#37373d] text-white' : 'text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white'}`}
+        className={`flex w-full items-center gap-1 rounded-md py-1 pr-3 text-left text-[11px] ${selectedFile === node.path ? 'bg-blue-600 text-white' : 'text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white'}`}
         style={{ paddingLeft: `${12 + depth * 14}px` }}
       >
         {node.type === 'directory' ? (expandedDirs.includes(node.path) ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#858585]" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#858585]" />) : <span className="h-3.5 w-3.5 shrink-0" />}
@@ -312,17 +473,14 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
   }
 
   return (
-    <div className="flex h-full w-full min-h-0 min-w-0 overflow-hidden rounded-lg border border-[#333333] bg-[#1e1e1e] text-[#cccccc]">
-      <div className="z-10 flex w-12 shrink-0 flex-col items-center border-r border-[#333333] bg-[#252526] py-2">
-        <button onClick={() => { setActiveSidePanel('files'); setShowSidePanel(true); }} className={`group relative mb-2 rounded-lg p-2.5 ${activeSidePanel === 'files' && showSidePanel ? 'text-white' : 'text-[#858585] hover:text-white'}`}><FolderTree className="h-5 w-5" />{activeSidePanel === 'files' && showSidePanel && <div className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 bg-[#007acc]" />}</button>
-        <button onClick={() => { setActiveSidePanel('search'); setShowSidePanel(true); }} className={`group relative mb-2 rounded-lg p-2.5 ${activeSidePanel === 'search' && showSidePanel ? 'text-white' : 'text-[#858585] hover:text-white'}`}><Search className="h-5 w-5" />{activeSidePanel === 'search' && showSidePanel && <div className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 bg-[#007acc]" />}</button>
-        <div className="flex-1" />
-      </div>
-
+    <div className={`flex h-full w-full min-h-0 min-w-0 overflow-hidden bg-[#1e1e1e] text-[#cccccc] ${isFullscreen ? 'rounded-none border-0' : 'rounded-lg border border-[#333333]'}`}>
       {showSidePanel && (
         <div className="flex w-[min(24rem,40vw)] min-w-[18rem] max-w-[25rem] shrink-0 flex-col overflow-hidden border-r border-[#333333] bg-[#252526]">
-          <div className="flex h-[35px] items-center justify-between px-4 text-xs font-semibold uppercase tracking-wide text-[#BBBBBB]">
-            {activeSidePanel === 'files' ? 'Explorer' : 'Search'}
+          <div className="flex h-[35px] items-center justify-between px-3 border-b border-[#333333] text-[11px] font-semibold uppercase tracking-wide text-[#BBBBBB]">
+            <div className="flex h-full">
+              <button onClick={() => setActiveSidePanel('files')} className={`flex h-full items-center gap-1.5 border-b-2 px-2 ${activeSidePanel === 'files' ? 'border-[#007acc] text-white' : 'border-transparent text-[#858585] hover:text-white'}`}><FolderTree className="h-3.5 w-3.5" /> Files</button>
+              <button onClick={() => setActiveSidePanel('search')} className={`flex h-full items-center gap-1.5 border-b-2 px-2 ${activeSidePanel === 'search' ? 'border-[#007acc] text-white' : 'border-transparent text-[#858585] hover:text-white'}`}><Search className="h-3.5 w-3.5" /> Search</button>
+            </div>
             <button onClick={() => setShowSidePanel(false)} className="rounded p-1 text-[#858585] hover:bg-[#333333] hover:text-white"><PanelLeftClose className="h-4 w-4" /></button>
           </div>
           <div className="flex-1 min-h-0 overflow-hidden">
@@ -332,18 +490,79 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
         </div>
       )}
 
+      <div className="relative flex min-h-0 min-w-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#1e1e1e]">
-        <div className="flex h-[35px] min-w-0 items-center justify-between border-b border-[#333333] bg-[#181818] shrink-0">
+        <div className="flex h-[35px] min-w-0 items-center justify-between border-b border-[#333333] bg-black shrink-0">
           <div className="flex h-full min-w-0">
             <button onClick={() => setActiveEditorTab('code')} className={`flex h-full min-w-0 items-center border-r border-[#333333] px-4 text-[11px] font-medium ${activeEditorTab === 'code' ? 'border-t border-t-[#007acc] bg-[#1e1e1e] text-white' : 'text-[#858585] hover:bg-[#2a2d2e]'}`}><Code2 className="mr-1.5 h-3.5 w-3.5 shrink-0 text-blue-400" /><span className="truncate">{selectedFile ? selectedFile.split(/[\\/]/).pop() : 'Welcome'}</span></button>
             {runtime?.status?.running && previewUrl && <button onClick={() => previewAvailable && setActiveEditorTab('preview')} className={`flex h-full min-w-0 items-center border-r border-[#333333] px-4 text-[11px] font-medium ${activeEditorTab === 'preview' && previewAvailable ? 'border-t border-t-[#007acc] bg-[#1e1e1e] text-emerald-400' : previewAvailable ? 'text-emerald-600/70 hover:bg-[#2a2d2e]' : 'cursor-wait text-[#858585]'}`}><Globe className="mr-1.5 h-3.5 w-3.5 shrink-0" /><span className="truncate">{previewAvailable ? 'Live Preview' : 'Preview Starting...'}</span></button>}
           </div>
-          <div className="flex min-w-0 max-w-[420px] items-center gap-2 overflow-x-auto px-3">
+          <div className="flex min-w-0 max-w-[620px] items-center gap-2 overflow-x-auto px-3">
+            {onToggleProjectSidebar && (
+              <button
+                onClick={onToggleProjectSidebar}
+                className="rounded p-1.5 text-[#858585] hover:bg-[#333333] hover:text-white"
+                title={projectSidebarCollapsed ? 'Expand project sidebar' : 'Collapse project sidebar'}
+              >
+                {projectSidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              </button>
+            )}
             {!showSidePanel && <button onClick={() => setShowSidePanel(true)} className="rounded p-1.5 text-[#858585] hover:bg-[#333333] hover:text-white"><PanelRightClose className="h-4 w-4 scale-x-[-1]" /></button>}
+            {!chatOpen && (
+              <button
+                onClick={() => setChatOpen(true)}
+                className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded border border-[#2f4f78] bg-[#0f2233] px-2.5 text-[10px] font-medium text-[#9dd2ff] hover:border-[#3b6a9e] hover:bg-[#13304a] hover:text-white"
+                title="Reopen the coding agent panel"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span className="truncate">Open Chat</span>
+              </button>
+            )}
+            {onToggleFullscreen && (
+              <button
+                onClick={onToggleFullscreen}
+                className="rounded p-1.5 text-[#858585] hover:bg-[#333333] hover:text-white"
+                title={isFullscreen ? 'Exit fullscreen workspace' : 'Open workspace fullscreen'}
+              >
+                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </button>
+            )}
             <div className="mx-1 h-4 w-px bg-[#333333]" />
-            {runtime?.setup_command && <button onClick={runSetup} disabled={setupRunning} className="flex h-6 shrink-0 items-center gap-1.5 rounded border border-[#333333] px-2.5 text-[10px] font-medium text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white disabled:opacity-50">{setupRunning ? <Loader2 className="h-3 w-3 animate-spin text-white" /> : <Wrench className="h-3 w-3 text-[#cccccc]" />}<span className="truncate">Setup</span></button>}
-            {previewPending && <span className="shrink-0 rounded border border-[#2f4f78] bg-[#10263e] px-2 py-0.5 text-[10px] text-[#8ec7ff]">Waiting for preview...</span>}
-            {runtime?.status?.running ? <button onClick={stopProject} className="flex h-6 shrink-0 items-center gap-1.5 rounded bg-[#801c1c] px-2.5 text-[10px] font-medium text-white hover:bg-[#a12323]"><Square className="h-3 w-3 fill-white" /><span className="truncate">Stop Project</span></button> : <button onClick={runProject} disabled={runtimeLoading || !runtime?.run_command} className="flex h-6 shrink-0 items-center gap-1.5 rounded border border-[#2a6834] bg-[#1e4c25] px-2.5 text-[10px] font-medium text-white hover:bg-[#265e2f] disabled:opacity-50">{runtimeLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-emerald-400" />}<span className="truncate">{runtime?.run_command ? 'Run Project' : 'No Run Command'}</span></button>}
+            {coderCustomization && (
+              <>
+                {(customSkillCount > 0 || promptOverrideCount > 0) ? (
+                  <>
+                    <span
+                      className="shrink-0 rounded border border-[#2f4f78] bg-[#0f2233] px-2 py-0.5 text-[10px] text-[#9dd2ff]"
+                      title={customizationSummary || 'Project skills and prompt overrides loaded from .devhub'}
+                    >
+                      {customSkillCount} skills
+                    </span>
+                    <span
+                      className="shrink-0 rounded border border-[#244053] bg-[#10202c] px-2 py-0.5 text-[10px] text-[#c7e6ff]"
+                      title={customizationSummary || 'Project skills and prompt overrides loaded from .devhub'}
+                    >
+                      {promptOverrideCount} prompt rules
+                    </span>
+                  </>
+                ) : (
+                  <span
+                    className="shrink-0 rounded border border-[#5f4c19] bg-[#2d230c] px-2 py-0.5 text-[10px] text-[#f6d77a]"
+                    title="This project has no .devhub coder customization yet. Open the Coding Agent panel to enable the Project Kit."
+                  >
+                    Project kit empty
+                  </span>
+                )}
+              </>
+            )}
+            {runtimeBackend === 'docker' && <span className="shrink-0 rounded border border-[#2f4f78] bg-[#0f2233] px-2 py-0.5 text-[10px] text-[#9dd2ff]" title={runtime?.sandbox?.image || 'Docker sandbox'}>Running in Docker</span>}
+            {sandboxRuntimeName && <span className="shrink-0 rounded border border-[#2b3443] bg-[#131a24] px-2 py-0.5 text-[10px] text-[#cbd5e1]">{sandboxRuntimeName === 'runsc' ? 'gVisor / runsc' : sandboxRuntimeName}</span>}
+            {containerName && <span className="shrink-0 rounded border border-[#333333] bg-[#141414] px-2 py-0.5 text-[10px] text-[#cbd5e1]" title={containerName}>{containerName}</span>}
+            {runtime?.setup_command && !runtime?.status?.running && <button onClick={() => { void runSetup(); }} disabled={setupRunning || runtimeLoading} className="flex h-6 shrink-0 items-center gap-1.5 rounded border border-[#333333] px-2.5 text-[10px] font-medium text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white disabled:opacity-50">{setupRunning ? <Loader2 className="h-3 w-3 animate-spin text-white" /> : <Wrench className="h-3 w-3 text-[#cccccc]" />}<span className="truncate">{manualSetupLabel}</span></button>}
+            {needsSetupBeforeRun && <span className="shrink-0 rounded border border-[#5a4d24] bg-[#2b2513] px-2 py-0.5 text-[10px] text-[#f6d77a]">Setup required</span>}
+            {previewPending && <span className="shrink-0 rounded border border-[#2f4f78] bg-[#10263e] px-2 py-0.5 text-[10px] text-[#8ec7ff]">Starting preview...</span>}
+            {runtime?.status?.running && <button onClick={() => { void restartProject(); }} disabled={runtimeLoading} className="flex h-6 shrink-0 items-center gap-1.5 rounded border border-[#333333] px-2.5 text-[10px] font-medium text-[#cccccc] hover:bg-[#2a2d2e] hover:text-white disabled:opacity-50"><RotateCcw className="h-3 w-3" /><span className="truncate">Restart</span></button>}
+            {runtime?.status?.running ? <button onClick={stopProject} className="flex h-6 shrink-0 items-center gap-1.5 rounded bg-[#801c1c] px-2.5 text-[10px] font-medium text-white hover:bg-[#a12323]"><Square className="h-3 w-3 fill-white" /><span className="truncate">{primaryActionLabel}</span></button> : <button onClick={() => { void runProject(); }} disabled={runtimeLoading || !runtime?.run_command} className="flex h-6 shrink-0 items-center gap-1.5 rounded border border-[#2a6834] bg-[#1e4c25] px-2.5 text-[10px] font-medium text-white hover:bg-[#265e2f] disabled:opacity-50">{runtimeLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-emerald-400" />}<span className="truncate">{primaryActionLabel}</span></button>}
           </div>
         </div>
 
@@ -353,33 +572,46 @@ export default function CodeWorkspace({ workspaceId, projectId, projectPath, onP
           {activeEditorTab === 'preview' && runtime?.status?.running && previewUrl && !previewAvailable && <div className="absolute inset-0 flex min-h-0 min-w-0 flex-col items-center justify-center gap-4 bg-[#111827] px-6 text-center text-white"><Loader2 className="h-8 w-8 animate-spin text-slate-300" /><div><p className="text-sm font-medium">Preview is still starting</p><p className="mt-2 max-w-md text-xs leading-6 text-slate-400">{runtime?.preview_error || 'The local server has not responded yet. Keep the project running for a moment and it will become available automatically.'}</p></div></div>}
         </div>
 
-        {showBottomPanel && <div className="flex h-64 min-h-0 shrink-0 flex-col border-t border-[#333333] bg-[#1e1e1e]"><div className="relative flex h-8 items-center justify-between border-b border-[#2d2d2d] bg-[#1e1e1e] px-4"><div className="flex h-full gap-4"><button onClick={() => setActiveBottomTab('terminal')} className={`flex h-full items-center border-b-[2px] text-[10px] font-medium uppercase tracking-wide ${activeBottomTab === 'terminal' ? 'border-[#007acc] text-white' : 'border-transparent text-[#858585] hover:text-[#cccccc]'}`}><TerminalSquare className="mr-1.5 h-3.5 w-3.5" />Terminal</button><button onClick={() => setActiveBottomTab('output')} className={`flex h-full items-center border-b-[2px] text-[10px] font-medium uppercase tracking-wide ${activeBottomTab === 'output' ? 'border-[#007acc] text-white' : 'border-transparent text-[#858585] hover:text-[#cccccc]'}`}><Play className="mr-1.5 h-3.5 w-3.5" />App Output</button></div><button onClick={() => setShowBottomPanel(false)} className="rounded p-1 text-[#858585] hover:bg-[#333333] hover:text-white"><X className="h-3.5 w-3.5" /></button></div><div className="relative flex-1 min-h-0 bg-[#1e1e1e]">{activeBottomTab === 'terminal' ? <div className="absolute inset-0 p-1"><Terminal ref={terminalRef} onInput={termInput} /></div> : <div className="absolute inset-0 overflow-y-auto p-4 text-[12px] leading-relaxed text-[#cccccc] selection:bg-[#264f78]"><pre className="whitespace-pre-wrap font-mono">{runtimeOutput || (!runtime?.status?.running ? <span className="italic text-[#858585]">Run the project to stream output here...</span> : '')}{setupOutput && `\n\n--- Setup Output ---\n${setupOutput}`}</pre></div>}</div></div>}
+        {showBottomPanel && <div className="flex h-64 min-h-0 shrink-0 flex-col overflow-hidden border-t border-[#333333] bg-[#1e1e1e]"><div className="relative flex h-8 items-center justify-between border-b border-[#2d2d2d] bg-[#1e1e1e] px-4 shrink-0"><div className="flex h-full gap-4"><button onClick={() => setActiveBottomTab('terminal')} className={`flex h-full items-center border-b-[2px] text-[10px] font-medium uppercase tracking-wide ${activeBottomTab === 'terminal' ? 'border-[#007acc] text-white' : 'border-transparent text-[#858585] hover:text-[#cccccc]'}`}><TerminalSquare className="mr-1.5 h-3.5 w-3.5" />Terminal</button><button onClick={() => setActiveBottomTab('output')} className={`flex h-full items-center border-b-[2px] text-[10px] font-medium uppercase tracking-wide ${activeBottomTab === 'output' ? 'border-[#007acc] text-white' : 'border-transparent text-[#858585] hover:text-[#cccccc]'}`}><Play className="mr-1.5 h-3.5 w-3.5" />App Output</button></div><button onClick={() => setShowBottomPanel(false)} className="rounded p-1 text-[#858585] hover:bg-[#333333] hover:text-white"><X className="h-3.5 w-3.5" /></button></div><div className="relative flex-1 min-h-0 overflow-hidden bg-[#1e1e1e]">{activeBottomTab === 'terminal' ? <div className="absolute inset-0 overflow-hidden p-1"><Terminal ref={terminalRef} onInput={termInput} /></div> : <div className="absolute inset-0 overflow-y-auto p-4 text-[12px] leading-relaxed text-[#cccccc] selection:bg-[#264f78]"><pre className="whitespace-pre-wrap font-mono">{runtimeOutput}{setupOutput ? `${runtimeOutput ? '\n\n' : ''}--- Setup Output ---\n${setupOutput}` : ''}{!runtimeOutput && !setupOutput && !setupRunning && !runtimeLoading && !runtime?.status?.running ? <span className="italic text-[#858585]">Start the project to stream setup and runtime output here...</span> : ''}</pre></div>}</div></div>}
 
         <div className="z-20 flex h-5 shrink-0 items-center justify-between bg-[#007acc] px-3 text-[10px] text-white">
-          <div className="flex items-center gap-3"><span className="flex items-center gap-1 rounded px-1 hover:bg-white/20"><Wrench className="h-3 w-3" />DevHub IDE</span>{selectedFile && <span>{getLanguage(selectedFile).toUpperCase()}</span>}{runtime?.status?.running && previewUrl && <span className="flex items-center gap-1 px-1"><span className="h-1.5 w-1.5 rounded-full bg-green-300 animate-pulse" />Port {new URL(previewUrl).port}</span>}</div>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1 rounded px-1 hover:bg-white/20"><Wrench className="h-3 w-3" />DevHub IDE</span>
+            {selectedFile && <span>{getLanguage(selectedFile).toUpperCase()}</span>}
+            <span className="rounded px-1 hover:bg-white/20">{runtimeBackend === 'docker' ? 'SANDBOX: DOCKER' : 'SANDBOX: LOCAL'}</span>
+            {sandboxRuntimeName && <span className="rounded px-1 hover:bg-white/20">{sandboxRuntimeName === 'runsc' ? 'RUNTIME: GVISOR' : `RUNTIME: ${sandboxRuntimeName.toUpperCase()}`}</span>}
+            {runtime?.status?.running && previewPort && <span className="flex items-center gap-1 px-1"><span className="h-1.5 w-1.5 rounded-full bg-green-300 animate-pulse" />Port {previewPort}</span>}
+          </div>
           <div className="flex items-center gap-3">{!showBottomPanel && <button onClick={() => { setShowBottomPanel(true); setActiveBottomTab('terminal'); }} className="flex items-center gap-1 rounded px-1 hover:bg-white/20"><TerminalSquare className="h-3 w-3" />Layout: Bottom Panel Hidden</button>}</div>
         </div>
       </div>
-
-      <div className="pointer-events-none fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+      {!chatOpen && (
+        <button
+          type="button"
+          onClick={() => setChatOpen(true)}
+          className="absolute right-3 top-1/2 z-30 flex -translate-y-1/2 items-center gap-2 rounded-l-2xl rounded-r-md border border-[#2f4f78] bg-[linear-gradient(180deg,#14314b,#0f2233)] px-3 py-2 text-left text-[11px] font-medium text-[#dbeafe] shadow-[0_14px_30px_rgba(0,0,0,0.38)] transition hover:border-[#4b7fb8] hover:text-white"
+          title="Bring back the workspace chat"
+          aria-label="Bring back the workspace chat"
+        >
+          <Bot className="h-4 w-4 shrink-0" />
+          <span className="whitespace-nowrap">Open Coding Agent</span>
+        </button>
+      )}
+      {chatOpen && (
         <ProjectChatPanel
           projectId={projectId}
-          mode="floating"
+          mode="workspace"
           selectedFile={selectedFile}
           fileContent={fileContent}
           treeNodes={treeNodes}
+          coderCustomization={coderCustomization}
           onCodeApplied={handleCodeApplied}
+          onAgentAction={handleAgentAction}
+          onCustomizationChanged={onProjectChanged}
           onToggleChat={setChatOpen}
           chatOpen={chatOpen}
         />
-
-        <button
-          type="button"
-          onClick={() => setChatOpen((current) => !current)}
-          className={`pointer-events-auto flex items-center justify-center rounded-full border border-white/90 bg-white text-slate-900 shadow-[0_18px_48px_rgba(15,23,42,0.22)] transition-all hover:scale-105 hover:bg-slate-50 hover:shadow-[0_24px_56px_rgba(15,23,42,0.28)] ${chatOpen ? 'h-12 w-12' : 'h-14 w-14'}`}
-        >
-          {chatOpen ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
-        </button>
+      )}
       </div>
     </div>
   );

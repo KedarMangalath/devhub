@@ -213,6 +213,7 @@ export default function BlueprintPanel({
   const [repoDoc, setRepoDoc] = useState<any>(null);
   const [repoDocLoading, setRepoDocLoading] = useState(false);
   const [repoDocError, setRepoDocError] = useState('');
+  const [showFullReadmePreview, setShowFullReadmePreview] = useState(false);
   const lastScrollTopRef = useRef(0);
   const tabs = useMemo<BlueprintTab[]>(
     () => [
@@ -291,6 +292,7 @@ export default function BlueprintPanel({
     setSelectedRepoPath('');
     setRepoDoc(null);
     setRepoDocError('');
+    setShowFullReadmePreview(false);
   }, [projectId, blueprint?._meta?.fingerprint]);
 
   useEffect(() => {
@@ -337,6 +339,17 @@ export default function BlueprintPanel({
   const designDocumentSections = toArray(blueprint.design_document_sections);
   const repoTreeNodes = toArray(blueprint.repo_tree_nodes);
   const readmeExcerpt = toText(blueprint.readme_excerpt, '').trim();
+  const rootReadmePath = (() => {
+    for (const node of repoTreeNodes) {
+      const name = toText(node?.name, '').toLowerCase();
+      const path = toText(node?.path, '');
+      if (path && (name === 'readme.md' || name === 'readme' || name === 'readme.txt')) {
+        return path;
+      }
+    }
+    return '';
+  })();
+  const repoSidebarReadmeText = showFullReadmePreview ? readmeExcerpt : readmeExcerpt.slice(0, 400).trim();
   const endpointGroups = useMemo(() => {
     const groups = new Map<string, any[]>();
     endpoints.forEach((endpoint) => {
@@ -553,10 +566,29 @@ export default function BlueprintPanel({
           <Section title="Verified Repository Snapshot" subtitle="Root docs, generated interpretation, and evidence-backed coverage from the imported codebase.">
             <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
               <div className="space-y-5">
-                <div className="rounded-[24px] border border-black/5 bg-[#fbfcfe] p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Root Documentation</p>
-                  {readmeExcerpt ? <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">{readmeExcerpt}</p> : <p className="mt-3 text-sm text-slate-400">No root README excerpt detected yet.</p>}
-                </div>
+                  <div className="rounded-[24px] border border-black/5 bg-[#fbfcfe] p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Root Documentation</p>
+                    {readmeExcerpt ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="max-h-[26rem] overflow-y-auto rounded-2xl bg-white/70 p-4">
+                          <div className="prose prose-sm prose-slate max-w-none">
+                            {renderRichMarkdown(readmeExcerpt)}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {rootReadmePath && (
+                            <button
+                              type="button"
+                              onClick={() => void fetchRepoDoc(rootReadmePath)}
+                              className="inline-flex items-center rounded-full border border-black/5 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50"
+                            >
+                              Open Full README
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : <p className="mt-3 text-sm text-slate-400">No root README excerpt detected yet.</p>}
+                  </div>
                 <div><p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Generated Project Summary</p><p className="mt-3 text-sm leading-7 text-slate-600">{toText(blueprint.project_summary)}</p></div>
                 <div><p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Generated Architecture Interpretation</p><p className="mt-3 text-sm leading-7 text-slate-600">{toText(blueprint.architecture_overview)}</p></div>
                 <div><p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Generated Data Flow Interpretation</p><p className="mt-3 text-sm leading-7 text-slate-600">{toText(blueprint.data_flow)}</p></div>
@@ -745,7 +777,27 @@ export default function BlueprintPanel({
                 {readmeExcerpt && (
                   <div className="mt-4 rounded-xl border border-black/5 bg-white p-4 shadow-sm">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">README Context</p>
-                    <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{readmeExcerpt.slice(0, 400)}</p>
+                    <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-slate-600">{repoSidebarReadmeText}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {readmeExcerpt.length > 400 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowFullReadmePreview((current) => !current)}
+                          className="inline-flex items-center rounded-full border border-black/5 bg-[#fbfcfe] px-3 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-white"
+                        >
+                          {showFullReadmePreview ? 'Show Less' : 'Show More'}
+                        </button>
+                      )}
+                      {rootReadmePath && (
+                        <button
+                          type="button"
+                          onClick={() => void fetchRepoDoc(rootReadmePath)}
+                          className="inline-flex items-center rounded-full border border-black/5 bg-[#fbfcfe] px-3 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-white"
+                        >
+                          Open Full README
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

@@ -1,3 +1,4 @@
+import base64
 import json
 import hashlib
 import html
@@ -24,9 +25,11 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from agents.base import ai_config_is_usable, normalize_ai_config
+from agents.base import ai_config_is_usable, describe_image_attachments, normalize_ai_config
+from agents.checkpoints import create_workspace_checkpoint, delete_workspace_checkpoint, restore_workspace_checkpoint, snapshot_previous_contents
 from agents.documentation import generate_codebase_reference_sync
 from agents.memory import _file_summary, _query_requests_broad_listing, _query_requests_system_explanation, build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, read_query_relevant_file_content, record_episode, retrieve_relevant_files, upsert_working_memory
+from agents.project_customization import bootstrap_project_customization, build_implementation_customization_bundle, build_project_customization_summary, build_role_customization_addendum, build_role_prompt_context, implementation_request_text, list_project_prompt_overrides, list_project_skills, suggested_project_customization_files
 from agents.workspace import PROJECTS_DIR, SKIP_DIRS, workspace_manager
 from core.models import AgentRun, Changeset, ChatMessage, DocumentationRun, EpisodicMemory, Feature, FeatureApproval, FeatureHistory, FileDiff, Project, SemanticMemory, TestResult, WorkingMemory
 from integrations.github import GitHubIntegrationError, clone_repository_with_token, get_user_repository, github_oauth_config
@@ -39,12 +42,179 @@ PROJECT_MEMORY_FILE = "project-memory.md"
 PROJECT_INSTRUCTIONS_FILE = "DEVHUB.md"
 DEVHUB_SETTINGS_FILE = Path(__file__).resolve().parents[2] / "data" / "devhub-settings.json"
 MEMORY_DB_ERRORS = (OperationalError, ProgrammingError)
+CHAT_ATTACHMENT_MAX_COUNT = 3
+CHAT_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024
+CHAT_ATTACHMENT_MAX_TOTAL_BYTES = 10 * 1024 * 1024
+CHAT_ATTACHMENT_ALLOWED_MIME_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+}
 
 
 def _parse_json_body(request):
     if not request.body:
         return {}
     return json.loads(request.body)
+
+
+def _chat_attachment_data_parts(data_url: str) -> tuple[str, str]:
+    value = str(data_url or "").strip()
+    if not value.startswith("data:") or ";base64," not in value:
+        raise ValueError("Attachments must be base64 data URLs.")
+    header, encoded = value.split(",", 1)
+    mime_type = str(header[5:].replace(";base64", "")).strip().lower()
+    encoded = "".join(encoded.split())
+    if not mime_type or not encoded:
+        raise ValueError("Attachments must include a mime type and image data.")
+    return mime_type, encoded
+
+
+def _normalize_chat_attachments(raw_attachments) -> list[dict]:
+    if raw_attachments in (None, ""):
+        return []
+    if not isinstance(raw_attachments, list):
+        raise ValueError("attachments must be a list.")
+    if len(raw_attachments) > CHAT_ATTACHMENT_MAX_COUNT:
+        raise ValueError(f"You can attach up to {CHAT_ATTACHMENT_MAX_COUNT} images per message.")
+
+    normalized: list[dict] = []
+    total_bytes = 0
+
+    for index, item in enumerate(raw_attachments, start=1):
+        if not isinstance(item, dict):
+            raise ValueError("Each attachment must be an object.")
+
+        data_url = str(item.get("data_url") or item.get("dataUrl") or "").strip()
+        mime_type, encoded = _chat_attachment_data_parts(data_url)
+        if mime_type not in CHAT_ATTACHMENT_ALLOWED_MIME_TYPES:
+            raise ValueError("Only PNG, JPEG, WEBP, and GIF images are supported.")
+
+        try:
+            binary = base64.b64decode(encoded, validate=True)
+        except Exception as exc:
+            raise ValueError("One of the attached images could not be decoded.") from exc
+
+        size_bytes = len(binary)
+        if size_bytes > CHAT_ATTACHMENT_MAX_BYTES:
+            raise ValueError("Each attached image must be 4 MB or smaller.")
+
+        total_bytes += size_bytes
+        if total_bytes > CHAT_ATTACHMENT_MAX_TOTAL_BYTES:
+            raise ValueError("The total attached image payload is too large for one message.")
+
+        raw_name = str(item.get("name") or f"image-{index}").strip() or f"image-{index}"
+        safe_name = re.sub(r"[^A-Za-z0-9._ -]+", "_", raw_name)[:120].strip(" .") or f"image-{index}"
+        normalized.append(
+            {
+                "name": safe_name,
+                "mime_type": mime_type,
+                "size_bytes": size_bytes,
+                "data_url": f"data:{mime_type};base64,{encoded}",
+            }
+        )
+
+    return normalized
+
+
+def _chat_request_text(content: str, attachments: list[dict] | None = None, *, include_attachment_inventory: bool = False) -> str:
+    text = str(content or "").strip()
+    if not text and attachments:
+        text = "Please inspect the attached image and use it as the primary context for this request."
+        if len(attachments) != 1:
+            text = "Please inspect the attached images and use them as the primary context for this request."
+
+    if include_attachment_inventory:
+        attachment_summary = describe_image_attachments(attachments)
+        if attachment_summary:
+            text = f"{text}\n\n{attachment_summary}" if text else attachment_summary
+    return text
+
+
+def _chat_message_attachments(item: dict | None) -> list[dict]:
+    metadata = {}
+    if isinstance(item, dict):
+        metadata = item if "attachments" in item else dict(item.get("metadata") or {})
+    attachments = metadata.get("attachments")
+    if not isinstance(attachments, list):
+        return []
+    return [attachment for attachment in attachments if isinstance(attachment, dict) and attachment.get("data_url")]
+
+
+def _chat_checkpoint_review_payload(checkpoint: dict | None, *, source: str, chat_mode: str | None, undo_label: str = 'Undo') -> dict:
+    payload = {
+        'source': source,
+        'chat_mode': chat_mode or 'auto',
+    }
+    if not checkpoint:
+        return payload
+    payload['checkpoint'] = {
+        'id': str(checkpoint.get('id') or ''),
+        'created_at': checkpoint.get('created_at'),
+        'label': checkpoint.get('label'),
+        'source': checkpoint.get('source'),
+    }
+    payload['undo'] = {
+        'available': True,
+        'checkpoint_id': str(checkpoint.get('id') or ''),
+        'label': undo_label or 'Undo',
+    }
+    return payload
+
+
+def _chat_undo_payload_from_review(changeset_id: str, ai_review: dict | None) -> dict | None:
+    ai_review = dict(ai_review or {})
+    undo = dict(ai_review.get('undo') or {})
+    checkpoint = dict(ai_review.get('checkpoint') or {})
+    checkpoint_id = str(undo.get('checkpoint_id') or checkpoint.get('id') or '').strip()
+    if not checkpoint_id:
+        return None
+    return {
+        'available': bool(undo.get('available')),
+        'changeset_id': str(changeset_id),
+        'checkpoint_id': checkpoint_id,
+        'label': str(undo.get('label') or 'Undo'),
+        'undone_at': undo.get('undone_at'),
+        'restored_by_changeset_id': undo.get('restored_by_changeset_id'),
+        'source': str(ai_review.get('source') or 'chat'),
+    }
+
+
+def _chat_changeset_trace_metadata(changeset: Changeset | None) -> dict:
+    if not changeset:
+        return {}
+    payload = {'changeset_id': str(changeset.id)}
+    undo = _chat_undo_payload_from_review(str(changeset.id), changeset.ai_review)
+    if undo:
+        payload['undo'] = undo
+        payload['undo_available'] = bool(undo.get('available'))
+    return payload
+
+
+def _changeset_by_id(project: Project, changeset_id: str) -> Changeset | None:
+    normalized = str(changeset_id or '').strip()
+    if not normalized:
+        return None
+    try:
+        return Changeset.objects.filter(project=project, id=normalized).first()
+    except Exception:
+        return None
+
+
+def _mark_changeset_undone(changeset: Changeset, restoring_changeset: Changeset | None = None) -> None:
+    review = dict(changeset.ai_review or {})
+    undo = dict(review.get('undo') or {})
+    undo.update({
+        'available': False,
+        'checkpoint_id': str(undo.get('checkpoint_id') or (review.get('checkpoint') or {}).get('id') or ''),
+        'label': str(undo.get('label') or 'Undo'),
+        'undone_at': timezone.now().isoformat(),
+        'restored_by_changeset_id': str(restoring_changeset.id) if restoring_changeset else None,
+    })
+    review['undo'] = undo
+    changeset.ai_review = review
+    changeset.save(update_fields=['ai_review'])
 
 
 def _normalize_path(path_str: str) -> Path:
@@ -68,6 +238,112 @@ def _matches_any(tokens: set[str], values: set[str]) -> bool:
     return any(token in tokens for token in values)
 
 
+def _project_intent_tokens(project: Project, *extra_parts: str) -> set[str]:
+    tokens = set()
+    for item in [project.name or "", project.description or "", *extra_parts]:
+        for token in re.split(r'[\s,/+]+', str(item).strip().lower()):
+            if token:
+                tokens.add(token)
+    return tokens
+
+
+def _contains_any_phrase(text: str, phrases: tuple[str, ...]) -> bool:
+    return any(phrase in text for phrase in phrases)
+
+
+def _prefers_backend_only_from_text(text: str) -> bool:
+    lowered = str(text or "").lower()
+    if not lowered:
+        return False
+
+    backend_only_hints = (
+        "api only",
+        "backend only",
+        "rest api",
+        "backend service",
+        "python api",
+        "fastapi api",
+        "build an api",
+        "api for",
+    )
+    interactive_hints = (
+        "frontend",
+        "react",
+        "vite",
+        "ui",
+        "interface",
+        "web app",
+        "website",
+        "screen",
+        "page",
+        "game",
+        "canvas",
+    )
+
+    return _contains_any_phrase(lowered, backend_only_hints) and not _contains_any_phrase(lowered, interactive_hints)
+
+
+def _wants_connected_fullstack_from_text(text: str) -> bool:
+    lowered = str(text or "").lower()
+    if not lowered or _prefers_backend_only_from_text(lowered):
+        return False
+
+    explicit_fullstack_hints = (
+        "full stack",
+        "full-stack",
+        "fullstack",
+        "frontend and backend",
+        "backend and frontend",
+        "frontend + backend",
+        "backend + frontend",
+    )
+    persistence_hints = (
+        "backend",
+        "database",
+        " db ",
+        "db-backed",
+        "db backed",
+        "sqlite",
+        "postgres",
+        "postgresql",
+        "mysql",
+        "mongodb",
+        "leaderboard",
+        "score saving",
+        "save scores",
+        "scores",
+        "auth",
+        "login",
+        "signup",
+        "session",
+        "persist",
+        "persistence",
+        "saved",
+    )
+    interactive_hints = (
+        "frontend",
+        "react",
+        "vite",
+        "ui",
+        "interface",
+        "web app",
+        "website",
+        "dashboard",
+        "game",
+        "snake",
+        "canvas",
+        "screen",
+        "page",
+        "player",
+        "mobile app",
+    )
+
+    if _contains_any_phrase(lowered, explicit_fullstack_hints):
+        return True
+
+    return _contains_any_phrase(lowered, persistence_hints) and _contains_any_phrase(lowered, interactive_hints)
+
+
 def _suggested_stack_from_text(idea: str, tech_stack: list[str] | None = None) -> list[str]:
     existing = _normalize_tech_stack(tech_stack or [])
     if existing:
@@ -76,15 +352,17 @@ def _suggested_stack_from_text(idea: str, tech_stack: list[str] | None = None) -
     text = str(idea or "").lower()
     if any(token in text for token in ("django", "manage.py", "admin panel", "django app")):
         return ["Django"]
-    if any(token in text for token in ("fastapi", "api", "backend", "python api")):
-        return ["FastAPI"]
     if any(token in text for token in ("vue", "nuxt")):
         return ["Vue", "Node.js"]
     if any(token in text for token in ("next.js", "nextjs", "next app")):
         return ["Next.js", "React", "Node.js"]
-    if any(token in text for token in ("react", "vite", "frontend", "ui", "dashboard", "landing page", "web app", "app")):
-        return ["React"]
-    return ["React"]
+    if _wants_connected_fullstack_from_text(text):
+        return ["React", "FastAPI"]
+    if any(token in text for token in ("fastapi", "api", "backend", "python api")):
+        return ["FastAPI"]
+    if any(token in text for token in ("react", "vite", "frontend", "ui", "dashboard", "landing page", "web app", "app", "game", "snake")):
+        return ["React", "FastAPI"]
+    return ["React", "FastAPI"]
 
 
 def _starter_app_kind(project: Project, starter_brief: str = "") -> str:
@@ -823,6 +1101,349 @@ textarea {
   .calc-button {
     min-height: 58px;
     border-radius: 18px;
+  }
+}
+"""
+
+
+def _react_generated_shell_app_source(title: str, description: str) -> str:
+    title_literal = json.dumps(title)
+    description_literal = json.dumps(description)
+    return f"""const title = {title_literal};
+const description = {description_literal};
+
+const focusAreas = description
+  .split(/[.]/)
+  .map((item) => item.trim())
+  .filter(Boolean)
+  .slice(0, 3);
+
+export default function App() {{
+  return (
+    <main className="generated-shell">
+      <section className="generated-hero">
+        <p className="generated-kicker">Prompt-driven starter</p>
+        <h1>{{title}}</h1>
+        <p className="generated-copy">{{description}}</p>
+      </section>
+
+      <section className="generated-grid">
+        <article className="generated-card">
+          <h2>Ready to shape</h2>
+          <p>
+            DevHub created a clean React surface for this request. The coding agent can
+            now turn it into the exact product flow you described instead of forcing a
+            canned template.
+          </p>
+        </article>
+
+        <article className="generated-card">
+          <h2>Current scope</h2>
+          <ul>
+            {{(focusAreas.length ? focusAreas : ['Initial UI shell', 'Live preview wiring', 'Ready for generated features']).map((item) => (
+              <li key={{item}}>{{item}}</li>
+            ))}}
+          </ul>
+        </article>
+      </section>
+    </main>
+  );
+}}
+"""
+
+
+def _react_generated_shell_styles_source() -> str:
+    return """* {
+  box-sizing: border-box;
+}
+
+:root {
+  color: #111827;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: inherit;
+}
+
+.generated-shell {
+  min-height: 100vh;
+  padding: 56px 24px 72px;
+}
+
+.generated-hero,
+.generated-card {
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.08);
+}
+
+.generated-hero {
+  padding: 28px;
+}
+
+.generated-kicker {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #2563eb;
+}
+
+.generated-hero h1 {
+  margin: 0;
+  font-size: clamp(2.8rem, 8vw, 5rem);
+  line-height: 0.96;
+}
+
+.generated-copy {
+  max-width: 760px;
+  margin: 18px 0 0;
+  font-size: 1.06rem;
+  line-height: 1.7;
+  color: #475569;
+}
+
+.generated-grid {
+  display: grid;
+  gap: 22px;
+  width: min(100%, 1040px);
+  margin: 22px auto 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.generated-card {
+  padding: 24px;
+}
+
+.generated-card h2 {
+  margin: 0 0 12px;
+  font-size: 1.3rem;
+}
+
+.generated-card p,
+.generated-card li {
+  color: #475569;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.generated-card ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+@media (max-width: 760px) {
+  .generated-shell {
+    padding: 24px 16px 40px;
+  }
+
+  .generated-grid {
+    grid-template-columns: 1fr;
+  }
+}
+"""
+
+
+def _react_fastapi_frontend_app_source(title: str, description: str) -> str:
+    title_literal = json.dumps(title)
+    description_literal = json.dumps(description)
+    return f"""import {{ useEffect, useState }} from 'react';
+
+const title = {title_literal};
+const description = {description_literal};
+
+export default function App() {{
+  const [health, setHealth] = useState({{ loading: true, payload: null, error: '' }});
+  const [context, setContext] = useState(null);
+
+  useEffect(() => {{
+    let active = true;
+
+    const load = async () => {{
+      try {{
+        const [healthResponse, contextResponse] = await Promise.all([
+          fetch('/api/health'),
+          fetch('/api/app-context'),
+        ]);
+
+        const healthPayload = await healthResponse.json();
+        const contextPayload = await contextResponse.json();
+
+        if (!active) return;
+        setHealth({{ loading: false, payload: healthPayload, error: '' }});
+        setContext(contextPayload);
+      }} catch (error) {{
+        if (!active) return;
+        setHealth({{
+          loading: false,
+          payload: null,
+          error: error instanceof Error ? error.message : 'Unable to reach the backend.',
+        }});
+      }}
+    }};
+
+    load();
+    return () => {{
+      active = false;
+    }};
+  }}, []);
+
+  return (
+    <main className="stack-shell">
+      <section className="stack-hero">
+        <p className="stack-kicker">Connected full-stack starter</p>
+        <h1>{{title}}</h1>
+        <p className="stack-copy">{{description}}</p>
+      </section>
+
+      <section className="stack-grid">
+        <article className="stack-card">
+          <div className="stack-card-head">
+            <h2>Frontend</h2>
+            <span>React + Vite</span>
+          </div>
+          <p>
+            This UI is already wired to the backend through <code>/api</code> so generated
+            features can use real data instead of placeholder copy.
+          </p>
+        </article>
+
+        <article className="stack-card">
+          <div className="stack-card-head">
+            <h2>Backend</h2>
+            <span>FastAPI</span>
+          </div>
+          <p>
+            {{health.loading ? 'Checking backend status...' : health.error ? `Backend error: ${{health.error}}` : `Backend status: ${{health.payload?.status || 'ok'}}`}}
+          </p>
+          <pre>{{JSON.stringify(context || health.payload || {{ status: 'loading' }}, null, 2)}}</pre>
+        </article>
+      </section>
+    </main>
+  );
+}}
+"""
+
+
+def _react_fastapi_frontend_styles_source() -> str:
+    return """* {
+  box-sizing: border-box;
+}
+
+:root {
+  color: #111827;
+  background: radial-gradient(circle at top, #f8fbff 0%, #edf3ff 48%, #e8f0ff 100%);
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: inherit;
+}
+
+.stack-shell {
+  min-height: 100vh;
+  padding: 52px 24px 64px;
+}
+
+.stack-hero,
+.stack-card {
+  width: min(100%, 1120px);
+  margin: 0 auto;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.08);
+}
+
+.stack-hero {
+  padding: 32px;
+}
+
+.stack-kicker {
+  margin: 0 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.82rem;
+  color: #2563eb;
+}
+
+.stack-hero h1 {
+  margin: 0;
+  font-size: clamp(3rem, 8vw, 5.4rem);
+  line-height: 0.95;
+}
+
+.stack-copy {
+  max-width: 840px;
+  margin: 18px 0 0;
+  font-size: 1.08rem;
+  line-height: 1.7;
+  color: #475569;
+}
+
+.stack-grid {
+  display: grid;
+  gap: 24px;
+  width: min(100%, 1120px);
+  margin: 24px auto 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.stack-card {
+  padding: 26px;
+}
+
+.stack-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stack-card-head h2 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.stack-card-head span {
+  padding: 8px 12px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.stack-card p {
+  margin: 16px 0 0;
+  color: #475569;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.stack-card pre {
+  margin: 16px 0 0;
+  overflow: auto;
+  padding: 18px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 860px) {
+  .stack-shell {
+    padding: 24px 16px 40px;
+  }
+
+  .stack-grid {
+    grid-template-columns: 1fr;
   }
 }
 """
@@ -1742,24 +2363,12 @@ def _react_scaffold_files(project: Project, starter_brief: str = "") -> dict:
     title = project.name or "DevHub App"
     description = _display_description(project)
     package_name = _project_slug(project)
-    app_kind = _starter_app_kind(project, starter_brief)
-
-    if app_kind == "calculator":
-        app_source = _react_calculator_app_source(title, description)
-        styles_source = _react_calculator_styles_source()
-        starter_note = "This starter includes a working calculator interface instead of a generic landing screen."
-    elif app_kind == "expense":
-        app_source = _react_expense_app_source(title, description)
-        styles_source = _react_expense_styles_source()
-        starter_note = "This starter includes a working expense tracker with totals and entry management."
-    elif app_kind == "dashboard":
-        app_source = _react_dashboard_app_source(title, description)
-        styles_source = _react_dashboard_styles_source()
-        starter_note = "This starter includes a working dashboard with live range switching and operational panels."
-    else:
-        app_source = _react_planner_app_source(title, description)
-        styles_source = _react_planner_styles_source()
-        starter_note = "This starter includes a working planner board so the idea starts as a real application."
+    app_source = _react_generated_shell_app_source(title, description)
+    styles_source = _react_generated_shell_styles_source()
+    starter_note = (
+        "This starter stays intentionally neutral so DevHub can generate the requested product "
+        "instead of forcing a canned demo template."
+    )
 
     return {
         "package.json": f"""{{
@@ -1839,6 +2448,138 @@ Then open [http://127.0.0.1:4173](http://127.0.0.1:4173).
 {starter_note}
 """,
         ".gitignore": "node_modules/\ndist/\n.vite/\n",
+    }
+
+
+def _react_fastapi_scaffold_files(project: Project, starter_brief: str = "") -> dict:
+    title = project.name or "DevHub App"
+    description = _display_description(project)
+    package_name = _project_slug(project)
+    title_literal = json.dumps(title)
+    description_literal = json.dumps(description)
+
+    return {
+        "package.json": f"""{{
+  "name": "{package_name}",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {{
+    "dev": "concurrently -k -n frontend,backend -c cyan,magenta \\"npm --prefix frontend run dev -- --host 127.0.0.1 --port 4173\\" \\"python -m uvicorn backend.main:app --host 127.0.0.1 --port 8100 --reload\\"",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview -- --host 127.0.0.1 --port 4173",
+    "postinstall": "npm --prefix frontend install"
+  }},
+  "devDependencies": {{
+    "concurrently": "^9.0.1"
+  }}
+}}
+""",
+        "requirements.txt": "fastapi==0.116.1\nuvicorn[standard]==0.35.0\n",
+        "frontend/package.json": f"""{{
+  "name": "{package_name}-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {{
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }},
+  "dependencies": {{
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }},
+  "devDependencies": {{
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.10"
+  }}
+}}
+""",
+        "frontend/vite.config.js": """import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '127.0.0.1',
+    port: 4173,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8100',
+        changeOrigin: true,
+      },
+    },
+  },
+  preview: {
+    host: '127.0.0.1',
+    port: 4173,
+  },
+});
+""",
+        "frontend/index.html": f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+""",
+        "frontend/src/main.jsx": """import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './styles.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+""",
+        "frontend/src/App.jsx": _react_fastapi_frontend_app_source(title, description),
+        "frontend/src/styles.css": _react_fastapi_frontend_styles_source(),
+        "backend/main.py": f"""from fastapi import FastAPI
+
+app = FastAPI(title={title_literal}, description={description_literal})
+
+
+@app.get("/api/health")
+def health():
+    return {{"status": "ok", "project": {title_literal}, "message": "Backend connected successfully."}}
+
+
+@app.get("/api/app-context")
+def app_context():
+    return {{
+        "name": {title_literal},
+        "description": {description_literal},
+        "stack": ["React", "FastAPI"],
+        "mode": "fullstack-starter",
+    }}
+""",
+        "README.md": f"""# {title}
+
+{description}
+
+## Structure
+
+- `frontend/` contains the React + Vite client
+- `backend/` contains the FastAPI server
+- root `package.json` boots both services together inside DevHub
+
+## Run locally
+
+```bash
+npm install
+python -m pip install -r requirements.txt
+npm run dev
+```
+""",
+        ".gitignore": "__pycache__/\n*.pyc\nnode_modules/\nfrontend/node_modules/\n.devhub/\ndist/\n",
     }
 
 
@@ -2250,8 +2991,13 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 def build_scaffold_files(project: Project, starter_brief: str = "") -> dict:
     tokens = _project_tokens(project, starter_brief)
+    starter_text = " ".join(filter(None, [project.name or "", project.description or "", starter_brief])).lower()
 
-    if 'react' in tokens or 'vite' in tokens:
+    if "react" in tokens and "fastapi" in tokens:
+        files = _react_fastapi_scaffold_files(project, starter_brief=starter_brief)
+    elif _wants_connected_fullstack_from_text(starter_text):
+        files = _react_fastapi_scaffold_files(project, starter_brief=starter_brief)
+    elif 'react' in tokens or 'vite' in tokens:
         files = _react_scaffold_files(project, starter_brief=starter_brief)
     elif 'fastapi' in tokens:
         files = _fastapi_scaffold_files(project)
@@ -2270,11 +3016,16 @@ def build_scaffold_files(project: Project, starter_brief: str = "") -> dict:
         agent = ScaffolderAgent(ai_config=ai_config)
         scaffold = agent.generate_scaffold(
             description=(
-                f"Create a small but working starter application for {project.name}. "
+                f"Create a small but working application for {project.name}. "
                 f"Description: {_display_description(project)}. "
                 f"Original user brief: {starter_brief or _display_description(project)}. "
-                "The starter must be runnable immediately after setup, include a visible UI, "
-                "and support future edits from an AI coding assistant."
+                "Generate the actual product the user asked for, not a canned landing page or placeholder marketing screen. "
+                "If the selected stack spans frontend and backend, create connected frontend and backend folders, "
+                "wire the UI to real backend endpoints, and keep the whole project runnable after setup. "
+                "If the request mentions games, leaderboards, saved scores, auth, or persistence, include the real backend models/routes/storage "
+                "and connect the frontend to them. "
+                "Do not collapse browser app requests with backend requirements into a single static HTML page. "
+                "Prefer replacing the main scaffold files with app-specific code instead of adding disconnected alternates."
             ),
             tech_stack=", ".join(project.tech_stack or []) or "HTML, CSS, JavaScript",
         )
@@ -2284,20 +3035,7 @@ def build_scaffold_files(project: Project, starter_brief: str = "") -> dict:
             if isinstance(item, dict) and item.get('path') and item.get('content') is not None
         })
         if ai_files:
-            protected_files = {
-                'package.json',
-                'vite.config.js',
-                'vite.config.ts',
-                'requirements.txt',
-                'main.py',
-                'manage.py',
-                'index.html',
-                'src/main.jsx',
-                'src/main.js',
-            }
             for rel_path, content in ai_files.items():
-                if rel_path in protected_files and rel_path in files:
-                    continue
                 files[rel_path] = content
     except Exception:
         pass
@@ -2371,8 +3109,76 @@ def _node_preview_url(project_root: Path, scripts: dict, run_command: str | None
     return None
 
 
+def _node_setup_command(project_root: Path) -> str | None:
+    commands: list[str] = []
+    if (project_root / "package.json").exists():
+        commands.append("npm install")
+    if (project_root / "requirements.txt").exists():
+        python_cmd = _python_executable_command()
+        commands.append(f"{python_cmd} -m pip install -r requirements.txt")
+    return " && ".join(commands) if commands else None
+
+
+def _node_install_required(project_root: Path) -> bool:
+    frontend_package = project_root / "frontend" / "package.json"
+    frontend_node_modules = project_root / "frontend" / "node_modules"
+    needs_frontend_packages = frontend_package.exists() and not frontend_node_modules.exists()
+    needs_root_packages = (project_root / "package.json").exists() and not (project_root / "node_modules").exists()
+    needs_python_packages = (project_root / "requirements.txt").exists() and _python_install_required(project_root)
+    return needs_root_packages or needs_frontend_packages or needs_python_packages
+
+
 def _python_executable_command() -> str:
+    sandbox_mode = str(os.environ.get("DEVHUB_SANDBOX_MODE") or "").strip().lower()
+    if sandbox_mode == "docker":
+        return "python"
     return f'"{sys.executable}"'
+
+
+def _read_runtime_text_if_exists(path: Path) -> str:
+    try:
+        if path.exists() and path.is_file():
+            return path.read_text(encoding='utf-8', errors='ignore')
+    except Exception:
+        pass
+    return ""
+
+
+def _detect_python_app_runtime(project_root: Path, entrypoint: str, python_cmd: str) -> tuple[str, str | None]:
+    entrypoint_path = project_root / entrypoint
+    entrypoint_text = _read_runtime_text_if_exists(entrypoint_path).lower()
+    requirements_blob = _read_runtime_text_if_exists(project_root / "requirements.txt").lower()
+    port = _stable_runtime_port(project_root, start=8100)
+    module_name = Path(entrypoint).stem
+
+    if "fastapi" in requirements_blob or "uvicorn" in requirements_blob or "fastapi(" in entrypoint_text:
+        return (
+            f"{python_cmd} -m uvicorn {module_name}:app --host 127.0.0.1 --port {port}",
+            f"http://127.0.0.1:{port}",
+        )
+
+    if "flask" in requirements_blob or "flask(" in entrypoint_text:
+        return (
+            f"{python_cmd} -m flask --app {module_name}:app run --host 127.0.0.1 --port {port}",
+            f"http://127.0.0.1:{port}",
+        )
+
+    return (
+        f"{python_cmd} {entrypoint}",
+        _preview_url_for_command(f"{python_cmd} {entrypoint}"),
+    )
+
+
+def _python_install_required(project_root: Path) -> bool:
+    requirements_file = project_root / "requirements.txt"
+    if not requirements_file.exists():
+        return False
+
+    sandbox_mode = str(os.environ.get("DEVHUB_SANDBOX_MODE") or "").strip().lower()
+    if sandbox_mode == "docker":
+        return not (project_root / ".devhub" / "python-packages").exists()
+
+    return False
 
 
 def _stable_runtime_port(project_root: Path, *, start: int, size: int = 700) -> int:
@@ -2439,8 +3245,8 @@ def detect_runtime(project_root: Path) -> dict:
             "runtime_type": "node",
             "entrypoint": "package.json",
             "run_command": run_command,
-            "setup_command": "npm install",
-            "install_required": not (project_root / "node_modules").exists(),
+            "setup_command": _node_setup_command(project_root),
+            "install_required": _node_install_required(project_root),
             "preview_url": _node_preview_url(project_root, scripts, run_command),
         }
 
@@ -2454,7 +3260,7 @@ def detect_runtime(project_root: Path) -> dict:
             "entrypoint": "manage.py",
             "run_command": f"{python_cmd} manage.py runserver 127.0.0.1:{port}",
             "setup_command": f"{python_cmd} -m pip install -r requirements.txt" if requirements_file.exists() else None,
-            "install_required": False,
+            "install_required": _python_install_required(project_root),
             "preview_url": f"http://127.0.0.1:{port}",
         }
 
@@ -2462,14 +3268,15 @@ def detect_runtime(project_root: Path) -> dict:
         entrypoint = "main.py" if (project_root / "main.py").exists() else "app.py"
         requirements_file = project_root / "requirements.txt"
         python_cmd = _python_executable_command()
+        run_command, preview_url = _detect_python_app_runtime(project_root, entrypoint, python_cmd)
         return {
             "label": project_root.name,
             "runtime_type": "python",
             "entrypoint": entrypoint,
-            "run_command": f'{python_cmd} {entrypoint}',
+            "run_command": run_command,
             "setup_command": f"{python_cmd} -m pip install -r requirements.txt" if requirements_file.exists() else None,
-            "install_required": False,
-            "preview_url": _preview_url_for_command(f'{python_cmd} {entrypoint}'),
+            "install_required": _python_install_required(project_root),
+            "preview_url": preview_url,
         }
 
     if (project_root / "index.html").exists():
@@ -2506,7 +3313,14 @@ def setup_process_id(workspace_id: str) -> str:
 
 def _runtime_response_payload(runtime: dict, process_id: str, sandbox, *, wait_for_preview: bool = False) -> dict:
     status = sandbox.get_status(process_id)
-    payload = {**runtime, "process_id": process_id, "status": status, "ready": False, "preview_error": None}
+    payload = {
+        **runtime,
+        "process_id": process_id,
+        "status": status,
+        "ready": False,
+        "preview_error": None,
+        "sandbox": sandbox.details(),
+    }
     preview_url = runtime.get("preview_url")
 
     if not preview_url or not status.get("running"):
@@ -6886,7 +7700,7 @@ def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_conte
     blueprint['repository_map'] = _build_repository_map_from_context(codebase_context)
     blueprint['repo_tree'] = str(codebase_context.get('repo_tree') or '')
     blueprint['repo_tree_nodes'] = _blueprint_list(codebase_context.get('repo_tree_nodes'))
-    blueprint['readme_excerpt'] = str(codebase_context.get('readme_excerpt') or '')[:4000]
+    blueprint['readme_excerpt'] = str(codebase_context.get('readme_excerpt') or '')
     blueprint['instruction_files'] = _blueprint_list(_public_instruction_files(codebase_context))
     blueprint['file_structure_visualizer'] = _build_file_structure_visualizer(codebase_context)
     blueprint['change_guide'] = _build_change_guide(codebase_context)
@@ -6960,6 +7774,8 @@ def _create_implementation_plan(
     project_memory: str,
     memory_context_text: str = "",
     selected_file: str = "",
+    customization_bundle: dict | None = None,
+    request_attachments: list[dict] | None = None,
 ) -> dict:
     codebase_context = {}
     try:
@@ -6984,6 +7800,9 @@ Memory Recall:
 Cached Codebase Context:
 {codebase_summary[:5000]}
 """
+    customization_context = build_role_prompt_context(customization_bundle, "planner")
+    if customization_context:
+        supporting_context = f"{supporting_context}\n\nProject Customization:\n{customization_context[:8000]}"
 
     if not ai_config_is_usable(_project_ai_config(project)):
         return _fallback_plan(selected_file, file_inventory, request_text)
@@ -6991,7 +7810,10 @@ Cached Codebase Context:
     try:
         from agents.planner import PlannerAgent
 
-        planner = PlannerAgent(ai_config=_project_ai_config(project))
+        planner = PlannerAgent(
+            ai_config=_project_ai_config(project),
+            customization_instruction=build_role_customization_addendum(customization_bundle, "planner"),
+        )
         plan = planner.create_plan(
             project_name=project.name,
             request_title=request_title,
@@ -7001,6 +7823,8 @@ Cached Codebase Context:
             file_inventory=file_inventory[:5000],
             blueprint_summary=blueprint_summary,
             supporting_context=supporting_context[:8000],
+            customization_context=customization_context[:8000],
+            request_attachments=request_attachments,
         )
         if not isinstance(plan, dict):
             return _fallback_plan(selected_file, file_inventory, request_text)
@@ -7082,7 +7906,7 @@ def _collect_relevant_files(
     return context
 
 
-def _build_supporting_context(project: Project, plan: dict, workspace_path: Path) -> str:
+def _build_supporting_context(project: Project, plan: dict, workspace_path: Path, customization_bundle: dict | None = None) -> str:
     runtime = detect_runtime(workspace_path)
     codebase_context = {}
     try:
@@ -7090,6 +7914,7 @@ def _build_supporting_context(project: Project, plan: dict, workspace_path: Path
     except Exception:
         logger.exception("Failed to load codebase context for supporting context in project %s", project.id)
     instruction_context = codebase_context.get('instruction_files') or []
+    customization_context = build_role_prompt_context(customization_bundle, "coder")
     return f"""Runtime:
 {json.dumps(runtime, indent=2)}
 
@@ -7107,6 +7932,9 @@ Plan Acceptance Checks:
 
 Project Instructions:
 {json.dumps(instruction_context, indent=2)[:2500] if instruction_context else 'No DEVHUB.md / AGENTS.md style instruction file detected.'}
+
+Project Customization:
+{customization_context[:8000] if customization_context else 'No additional implementation customization detected.'}
 """
 
 
@@ -7334,7 +8162,16 @@ def _build_review_diff(workspace_path: Path, previous_contents: dict, applied_fi
     return "\n".join(sections)[:14000]
 
 
-def _review_attempt(project: Project, workspace_path: Path, previous_contents: dict, applied_files: list[str], validation_results: list[dict]) -> dict:
+def _review_attempt(
+    project: Project,
+    workspace_path: Path,
+    previous_contents: dict,
+    applied_files: list[str],
+    validation_results: list[dict],
+    customization_bundle: dict | None = None,
+    request_text: str = "",
+    request_attachments: list[dict] | None = None,
+) -> dict:
     if not applied_files:
         return {
             'approved': True,
@@ -7363,12 +8200,18 @@ def _review_attempt(project: Project, workspace_path: Path, previous_contents: d
     try:
         from agents.reviewer import ReviewerAgent
 
-        reviewer = ReviewerAgent(ai_config=_project_ai_config(project))
+        reviewer = ReviewerAgent(
+            ai_config=_project_ai_config(project),
+            customization_instruction=build_role_customization_addendum(customization_bundle, "reviewer"),
+        )
         return reviewer.review_changeset(
             changeset_diff=_build_review_diff(workspace_path, previous_contents, applied_files),
             tech_stack=", ".join(project.tech_stack or []),
             blueprint=json.dumps(project.blueprint or {}, indent=2)[:3000],
             evaluation_summary=_validation_summary(validation_results),
+            customization_context=build_role_prompt_context(customization_bundle, "reviewer")[:8000],
+            request_text=request_text,
+            request_attachments=request_attachments,
         )
     except Exception:
         logger.exception("ReviewerAgent failed for project %s", project.id)
@@ -7380,20 +8223,64 @@ def _review_attempt(project: Project, workspace_path: Path, previous_contents: d
         }
 
 
+def _count_total_workspace_files(workspace_path: Path) -> int:
+    """
+    Count all files in the workspace (not just indexable ones).
+    Used for routing decisions so that Go/Rust/Java/etc. repos aren't
+    incorrectly classified as empty by manifest_file_count.
+    """
+    try:
+        total = 0
+        for root, dirs, files in os.walk(workspace_path):
+            # Mirror SKIP_DIRS logic to avoid inflating counts with node_modules etc.
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            total += len(files)
+            if total > 100_000:  # Cap to avoid hanging on massive repos
+                return total
+        return total
+    except Exception:
+        return 0
+
+
 def generate_blueprint_sync(project: Project):
-    codebase_context = {}
+    """
+    Generate a project blueprint and persist it to ``project.blueprint``.
+
+    Size-based routing uses TOTAL file count (all files, any language) so
+    that Go/Rust/Java/Ruby/etc. repos are routed correctly.
+
+      any size w/ workspace → BlueprintQueryAgent (tool-based exploration)
+                              agent self-discovers the tech stack via tools
+      ≥ 10 000 total files  → BlueprintQueryAgent.generate_parallel()
+                              (Coordinator + 3 parallel workers)
+      no workspace / no AI  → ArchitectAgent fallback (best-effort)
+
+    All paths enrich the raw blueprint through _enrich_blueprint_document and
+    store _meta for UI transparency.
+    """
+    # ── Thresholds ────────────────────────────────────────────────────────
+    PARALLEL_PATH_MIN_FILES = 10_000
+
+    codebase_context: dict = {}
     feature_summary = _render_project_features_summary(project, limit=20)
+
     try:
         from agents.architect import ArchitectAgent
+        from agents.blueprint_agent import BlueprintQueryAgent
         from agents.explorer import CodebaseExplorerAgent
+        from agents.memory import slim_context_for_llm
 
         local_scan = ""
         readme = ""
-        exploration_report = {}
+        exploration_report: dict = {}
         repo_map_text = ""
+        workspace_path: Path | None = None
+        total_file_count = 0
+
         if project.local_path and Path(project.local_path).is_dir():
             workspace_path = Path(project.local_path)
             local_scan = scan_local_folder(project.local_path)
+
             readme_path = workspace_path / "README.md"
             if not readme_path.exists():
                 readme_path = workspace_path / "readme.md"
@@ -7402,6 +8289,7 @@ def generate_blueprint_sync(project: Project):
                     readme = readme_path.read_text(encoding="utf-8", errors="ignore")[:3000]
                 except Exception:
                     pass
+
             try:
                 codebase_context = build_blueprint_context(project, workspace_path)
                 repo_map_path = workspace_path / DEVHUB_META_DIR / "repo-map.md"
@@ -7411,60 +8299,131 @@ def generate_blueprint_sync(project: Project):
                 logger.exception("Blueprint context build failed for project %s", project.id)
                 codebase_context = {}
 
-        if ai_config_is_usable(_project_ai_config(project)) and codebase_context:
-            try:
-                explorer = CodebaseExplorerAgent(ai_config=_project_ai_config(project))
-                exploration_report = explorer.explore_codebase(
+            # Count ALL files (not just indexable) for routing
+            total_file_count = _count_total_workspace_files(workspace_path)
+
+        manifest_file_count = int((codebase_context or {}).get('manifest_file_count') or 0)
+        ai_config = _project_ai_config(project)
+        usable_ai = ai_config_is_usable(ai_config)
+
+        logger.info(
+            "Blueprint routing for project %s: total_files=%d manifest_files=%d",
+            project.id,
+            total_file_count,
+            manifest_file_count,
+        )
+
+        # ── Route: always use tool-based BlueprintQueryAgent when possible ─
+        # The agent self-discovers the tech stack; no hardcoded language assumptions.
+        if usable_ai and workspace_path:
+            compact_summary = str((codebase_context or {}).get('compact_summary') or '')
+            repo_tree = str((codebase_context or {}).get('repo_tree') or repo_map_text or '')
+            dir_count = len((codebase_context or {}).get('directory_counts') or {})
+
+            agent = BlueprintQueryAgent(
+                workspace_path=workspace_path,
+                ai_config=ai_config,
+            )
+
+            if total_file_count >= PARALLEL_PATH_MIN_FILES:
+                logger.info("Blueprint: parallel coordinator path (%d total files)", total_file_count)
+                blueprint = agent.generate_parallel(
                     project_name=project.name,
                     tech_stack=project.tech_stack or [],
-                    codebase_context=codebase_context,
+                    compact_summary=compact_summary,
+                    repo_tree=repo_tree,
+                    feature_summary=feature_summary,
+                    file_count=total_file_count,
                 )
-                upsert_working_memory(
-                    project,
-                    'blueprint_exploration',
-                    json.dumps(exploration_report, indent=2)[:12000],
-                    {
-                        'fingerprint': codebase_context.get('fingerprint'),
-                        'important_files': [item.get('path') for item in (codebase_context.get('important_files') or [])[:12]],
-                    },
+            else:
+                logger.info("Blueprint: single-agent tool path (%d total files)", total_file_count)
+                blueprint = agent.generate(
+                    project_name=project.name,
+                    tech_stack=project.tech_stack or [],
+                    compact_summary=compact_summary,
+                    repo_tree=repo_tree,
+                    feature_summary=feature_summary,
+                    file_count=total_file_count,
+                    dir_count=dir_count,
                 )
-            except Exception:
-                logger.exception("Blueprint exploration failed for project %s", project.id)
 
-        architect = ArchitectAgent(ai_config=_project_ai_config(project))
-        blueprint = architect.generate_blueprint(
-            project_name=project.name,
-            tech_stack=project.tech_stack or [],
-            local_scan=local_scan,
-            readme=readme,
-            codebase_context=codebase_context,
-            exploration_report=exploration_report,
-            feature_summary=feature_summary,
-            repo_map=repo_map_text,
-        )
+        # ── Fallback: no workspace or no AI → ArchitectAgent single-call ──
+        else:
+            if usable_ai and codebase_context:
+                try:
+                    explorer = CodebaseExplorerAgent(ai_config=ai_config)
+                    exploration_report = explorer.explore_codebase(
+                        project_name=project.name,
+                        tech_stack=project.tech_stack or [],
+                        codebase_context=codebase_context,
+                    )
+                    upsert_working_memory(
+                        project,
+                        'blueprint_exploration',
+                        json.dumps(exploration_report, indent=2)[:12000],
+                        {
+                            'fingerprint': codebase_context.get('fingerprint'),
+                            'important_files': [
+                                item.get('path')
+                                for item in (codebase_context.get('important_files') or [])[:12]
+                            ],
+                        },
+                    )
+                except Exception:
+                    logger.exception("Blueprint exploration failed for project %s", project.id)
+
+            architect = ArchitectAgent(ai_config=ai_config)
+            blueprint = architect.generate_blueprint(
+                project_name=project.name,
+                tech_stack=project.tech_stack or [],
+                local_scan=local_scan,
+                readme=readme,
+                codebase_context=codebase_context,
+                exploration_report=exploration_report,
+                feature_summary=feature_summary,
+                repo_map=repo_map_text,
+            )
+
         blueprint = _enrich_blueprint_document(project, blueprint, codebase_context, feature_summary)
         if isinstance(blueprint, dict):
             blueprint["_meta"] = {
-                "codebase_fingerprint": codebase_context.get("fingerprint") if isinstance(codebase_context, dict) else None,
-                "indexed_files": codebase_context.get("file_count") if isinstance(codebase_context, dict) else None,
-                "cached": True if codebase_context else False,
+                "codebase_fingerprint": (codebase_context or {}).get("fingerprint"),
+                "indexed_files": (codebase_context or {}).get("file_count"),
+                "total_files": total_file_count,
+                "manifest_files": manifest_file_count,
+                "generation_path": (
+                    "parallel_coordinator" if total_file_count >= PARALLEL_PATH_MIN_FILES
+                    else "tool_agent" if workspace_path and usable_ai
+                    else "fallback_single_call"
+                ),
+                "cached": bool(codebase_context),
             }
         project.blueprint = blueprint
         project.save()
+
     except Exception as exc:
         fallback_blueprint = {
-            "architecture_overview": f"Blueprint generation failed: {str(exc)}. Check the configured DevHub AI provider settings.",
-            "tech_stack_details": [{"tech": t, "purpose": "Core technology"} for t in (project.tech_stack or [])],
+            "architecture_overview": (
+                f"Blueprint generation failed: {str(exc)}. "
+                "Check the configured DevHub AI provider settings."
+            ),
+            "tech_stack_details": [
+                {"tech": t, "purpose": "Core technology"} for t in (project.tech_stack or [])
+            ],
             "services": [],
             "setup_steps": [],
             "gotchas": [str(exc)],
         }
         try:
-            fallback_blueprint = _enrich_blueprint_document(project, fallback_blueprint, codebase_context, feature_summary)
+            fallback_blueprint = _enrich_blueprint_document(
+                project, fallback_blueprint, codebase_context, feature_summary
+            )
             fallback_blueprint["_meta"] = {
-                "codebase_fingerprint": codebase_context.get("fingerprint") if isinstance(codebase_context, dict) else None,
-                "indexed_files": codebase_context.get("file_count") if isinstance(codebase_context, dict) else None,
-                "cached": True if codebase_context else False,
+                "codebase_fingerprint": (codebase_context or {}).get("fingerprint"),
+                "indexed_files": (codebase_context or {}).get("file_count"),
+                "manifest_files": int((codebase_context or {}).get("manifest_file_count") or 0),
+                "generation_path": "fallback",
+                "cached": bool(codebase_context),
             }
         except Exception:
             logger.exception("Blueprint fallback enrichment failed for project %s", project.id)
@@ -7506,10 +8465,17 @@ def _generate_documentation_for_project_id(project_id: str) -> None:
         close_old_connections()
 
 
-def _schedule_project_context_generation(project: Project, *, include_documentation: bool = False) -> None:
-    blueprint_thread = threading.Thread(target=_generate_blueprint_for_project_id, args=(str(project.id),))
-    blueprint_thread.daemon = True
-    blueprint_thread.start()
+def _schedule_project_context_generation(
+    project: Project,
+    *,
+    include_documentation: bool = False,
+    include_blueprint: bool = True,
+) -> None:
+    if include_blueprint:
+        logger.info("Scheduling background blueprint generation for project %s", project.id)
+        blueprint_thread = threading.Thread(target=_generate_blueprint_for_project_id, args=(str(project.id),))
+        blueprint_thread.daemon = True
+        blueprint_thread.start()
 
     if not include_documentation:
         return
@@ -7517,6 +8483,7 @@ def _schedule_project_context_generation(project: Project, *, include_documentat
     if DocumentationRun.objects.filter(project=project, status__in=['pending', 'running']).exists():
         return
 
+    logger.info("Scheduling background documentation generation for project %s", project.id)
     documentation_thread = threading.Thread(target=_generate_documentation_for_project_id, args=(str(project.id),))
     documentation_thread.daemon = True
     documentation_thread.start()
@@ -7550,6 +8517,10 @@ def _run_multi_agent_implementation(
     spec: dict,
     selected_file: str = "",
     selected_content: str = "",
+    request_attachments: list[dict] | None = None,
+    checkpoint: dict | None = None,
+    chat_mode: str | None = None,
+    changeset_source: str = 'chat',
 ) -> dict:
     if not project.workspace_id:
         raise ValueError("No active workspace for this project.")
@@ -7567,7 +8538,9 @@ def _run_multi_agent_implementation(
     compressed_summary = compress_recent_activity(project)
     project_memory = _read_project_memory(project, workspace_path)
     project_instructions = _read_project_instructions(project, workspace_path)
-    memory_context = build_memory_context(project, request_text, selected_file=selected_file)
+    customization_bundle = build_implementation_customization_bundle(workspace_path, request_text)
+    base_request_text = implementation_request_text(customization_bundle, request_text) or request_text
+    memory_context = build_memory_context(project, base_request_text, selected_file=selected_file)
     memory_context_text = f"""Working Memory:
 {memory_context.get('working_summary') or compressed_summary}
 
@@ -7582,19 +8555,35 @@ Semantic Memory:
 """
 
     baseline_contents: dict[str, str] = {}
-    agent = CoderAgent(ai_config=_project_ai_config(project))
     attempt_logs = []
     all_applied_files: list[str] = []
     latest_plan = {}
     latest_review = {}
     latest_validation_results: list[dict] = []
     latest_context_files: list[str] = []
-    current_request_text = request_text
+    current_request_text = base_request_text
     codebase_context = {}
     try:
         codebase_context = build_blueprint_context(project, workspace_path)
     except Exception:
         logger.exception("Failed to load cached codebase context for implementation in project %s", project.id)
+
+    active_skill = customization_bundle.get("skill") if isinstance(customization_bundle.get("skill"), dict) else {}
+    if active_skill:
+        spec = {
+            **(spec or {}),
+            "project_skill": {
+                "name": active_skill.get("name"),
+                "description": active_skill.get("description"),
+                "path": active_skill.get("path"),
+                "arguments": customization_bundle.get("skill_arguments") or "",
+            },
+        }
+
+    agent = CoderAgent(
+        ai_config=_project_ai_config(project),
+        customization_instruction=build_role_customization_addendum(customization_bundle, "coder"),
+    )
 
     for attempt in range(1, 4):
         plan = _create_implementation_plan(
@@ -7605,6 +8594,8 @@ Semantic Memory:
             project_memory=f"{project_memory[:8000]}\n\nProject Instructions:\n{project_instructions[:3000]}\n\n{memory_context_text[:4000]}",
             memory_context_text=memory_context_text,
             selected_file=selected_file,
+            customization_bundle=customization_bundle,
+            request_attachments=request_attachments,
         )
         latest_plan = plan
 
@@ -7621,7 +8612,7 @@ Semantic Memory:
             baseline_contents.setdefault(item['path'], item['content'])
 
         supporting_context = (
-            _build_supporting_context(project, plan, workspace_path)
+            _build_supporting_context(project, plan, workspace_path, customization_bundle=customization_bundle)
             + "\n\nMemory Recall:\n"
             + memory_context_text
             + "\n\nValidation Guidance:\n"
@@ -7637,6 +8628,8 @@ Semantic Memory:
             implementation_plan=plan,
             project_memory=f"{project_memory[:8000]}\n\nProject Instructions:\n{project_instructions[:3000]}",
             supporting_context=supporting_context[:10000],
+            customization_context=build_role_prompt_context(customization_bundle, "coder")[:10000],
+            request_attachments=request_attachments,
         )
 
         if result.get("status") != "success":
@@ -7648,7 +8641,16 @@ Semantic Memory:
                 all_applied_files.append(rel_path)
 
         latest_validation_results = _run_validation_suite(workspace_path)
-        latest_review = _review_attempt(project, workspace_path, baseline_contents, all_applied_files, latest_validation_results)
+        latest_review = _review_attempt(
+            project,
+            workspace_path,
+            baseline_contents,
+            all_applied_files,
+            latest_validation_results,
+            customization_bundle=customization_bundle,
+            request_text=current_request_text,
+            request_attachments=request_attachments,
+        )
         attempt_logs.append({
             'attempt': attempt,
             'applied_files': applied_files,
@@ -7664,7 +8666,7 @@ Semantic Memory:
 
         repair_issues = latest_review.get('issues', [])
         repair_lines = [
-            request_text,
+            base_request_text,
             "",
             f"Repair pass {attempt}: keep the requested behavior, but fix the validation and review issues below.",
             "Validation Results:",
@@ -7704,7 +8706,21 @@ Semantic Memory:
             f"Reviewer: {latest_review.get('summary', 'No summary available.')}"
         )
 
-    _record_chat_changes(project, request_text, workspace_path, baseline_contents, all_applied_files)
+    changeset = _record_chat_changes(
+        project,
+        request_text,
+        workspace_path,
+        baseline_contents,
+        all_applied_files,
+        ai_review=_chat_checkpoint_review_payload(
+            checkpoint,
+            source=changeset_source,
+            chat_mode=chat_mode,
+            undo_label='Undo Restore' if changeset_source == 'chat_undo' else 'Undo',
+        ),
+    )
+    if checkpoint and not changeset:
+        delete_workspace_checkpoint(str(project.id), str(checkpoint.get('id') or ''))
     _update_project_memory(project, workspace_path, request_text, all_applied_files, latest_plan.get('memory_updates', []))
     index_semantic_memory(project, workspace_path, changed_paths=all_applied_files)
     record_episode(
@@ -7750,6 +8766,8 @@ Semantic Memory:
         "validation_results": latest_validation_results,
         "attempts": attempt_logs,
         "context_files": latest_context_files,
+        "changeset_id": str(changeset.id) if changeset else None,
+        "undo": _chat_changeset_trace_metadata(changeset).get('undo') if changeset else None,
     }
 
 
@@ -7846,11 +8864,56 @@ def _looks_like_edit_request(message: str) -> bool:
     lower = message.lower()
     edit_verbs = (
         'add', 'build', 'change', 'create', 'edit', 'fix', 'implement',
+        'make',
         'improve', 'modify', 'redesign', 'refactor', 'remove', 'rename',
         'replace', 'restyle', 'update',
     )
     question_starts = ('what', 'why', 'how', 'explain', 'show', 'where', 'which')
     return any(re.search(rf'\b{verb}\b', lower) for verb in edit_verbs) and not lower.startswith(question_starts)
+
+
+def _looks_like_read_only_request(message: str) -> bool:
+    lowered = str(message or '').strip().lower()
+    if not lowered:
+        return False
+
+    edit_verbs = (
+        'add', 'build', 'change', 'create', 'edit', 'fix', 'implement',
+        'make', 'improve', 'modify', 'redesign', 'refactor', 'remove',
+        'rename', 'replace', 'restyle', 'update',
+    )
+    if any(re.search(rf'\b{verb}\b', lowered) for verb in edit_verbs):
+        return False
+
+    explicit_read_only_prefixes = (
+        'what ', 'why ', 'how ', 'where ', 'which ', 'explain ',
+        'inspect ', 'analyze ', 'analyse ', 'review ', 'summarize ',
+        'summarise ', 'show me ', 'tell me ', 'read through ', 'go through ',
+    )
+    explicit_read_only_phrases = (
+        'how does',
+        'what does',
+        'why does',
+        'can you explain',
+        'could you explain',
+        'can you inspect',
+        'could you inspect',
+        'can you review',
+        'could you review',
+        'just explain',
+        'just inspect',
+        'just analyze',
+        'just review',
+        'without changing',
+        'without edits',
+        'do not change',
+        "don't change",
+        'read-only',
+    )
+    return (
+        any(lowered.startswith(prefix) for prefix in explicit_read_only_prefixes)
+        or any(phrase in lowered for phrase in explicit_read_only_phrases)
+    )
 
 
 CHAT_SPECIAL_CONTEXTS = {
@@ -7943,7 +9006,13 @@ def _chat_session_title(messages: list[dict], session_id: str) -> str:
         if str(item.get('role') or '') != 'user':
             continue
         content = str(item.get('content') or '').strip()
+        attachments = _chat_message_attachments(item)
         if not content:
+            if attachments:
+                first_name = str((attachments[0] or {}).get('name') or 'Attached image').strip() or 'Attached image'
+                if len(attachments) == 1:
+                    return first_name
+                return f"{first_name} (+{len(attachments) - 1} more)"
             continue
         first_line = content.splitlines()[0].strip()
         if not first_line:
@@ -7952,8 +9021,14 @@ def _chat_session_title(messages: list[dict], session_id: str) -> str:
     return 'Previous chat' if session_id == LEGACY_CHAT_SESSION_ID else 'New chat'
 
 
-def _serialize_chat_message(item: dict) -> dict:
+def _serialize_chat_message(project: Project, item: dict) -> dict:
     metadata = dict(item.get('metadata') or {})
+    attachments = _chat_message_attachments(metadata)
+    if attachments:
+        metadata['attachments'] = attachments
+    changeset = _changeset_by_id(project, metadata.get('changeset_id'))
+    if changeset:
+        metadata.update(_chat_changeset_trace_metadata(changeset))
     return {
         'id': item.get('id'),
         'role': item.get('role'),
@@ -8065,6 +9140,1158 @@ def _lazy_chat_file_context(workspace_path: Path | None, rel_path: str, codebase
     return "\n".join(blocks), summary
 
 
+def _looks_like_ui_style_question(content: str) -> bool:
+    lowered = str(content or '').lower()
+    if not lowered:
+        return False
+    broad_redesign_markers = (
+        'whole ui', 'entire ui', 'make it dark', 'dark theme', 'dark themed',
+        'glassmorphism', 'glassmorph', 'translucent', 'topbar', 'top bar',
+        'delete button', 'remove the', 'move it', 'move the', 'retheme',
+        'redesign', 'restyle the whole', 'overall theme',
+    )
+    if any(marker in lowered for marker in broad_redesign_markers):
+        return False
+    style_markers = (
+        'color', 'colour', 'highlight', 'background', 'bg-', 'hover', 'text color',
+        'text-color', 'selected', 'active', 'border', 'hover state',
+    )
+    ui_markers = (
+        'sidebar', 'side bar', 'nav', 'navigation', 'menu', 'tab', 'tabs',
+        'item', 'items', 'button', 'buttons', 'file tree', 'explorer',
+        'folder', 'panel', 'selected', 'active',
+    )
+    action_markers = ('change', 'edit', 'update', 'modify', 'set', 'switch', 'customize', 'tweak')
+    has_style = any(marker in lowered for marker in style_markers)
+    has_ui = any(marker in lowered for marker in ui_markers)
+    has_action = any(marker in lowered for marker in action_markers) or 'how do i' in lowered or 'how to' in lowered
+    return has_style and has_ui and has_action
+
+
+def _looks_like_ui_redesign_request(content: str) -> bool:
+    lowered = str(content or '').lower()
+    if not lowered:
+        return False
+    redesign_markers = (
+        'whole ui', 'entire ui', 'make it dark', 'dark theme', 'dark themed',
+        'glassmorphism', 'glassmorph', 'translucent', 'topbar', 'top bar',
+        'toolbar', 'header', 'delete button', 'remove the', 'move it', 'move the',
+        'layout', '2 pane', 'two pane', 'two-pane', 'split pane', 'split view',
+        'restyle', 'redesign', 'workspace',
+    )
+    action_markers = ('change', 'edit', 'update', 'modify', 'make', 'move', 'remove', 'convert')
+    return any(marker in lowered for marker in redesign_markers) and any(marker in lowered for marker in action_markers)
+
+
+CHAT_STATE_NEEDS_CLARIFICATION = 'needs_clarification'
+CHAT_STATE_GROUNDED_ANSWER = 'grounded_answer'
+CHAT_STATE_EDIT_REQUEST = 'edit_request'
+CHAT_STATE_BROAD_REDESIGN = 'broad_redesign'
+CHAT_STATE_AGENT_REQUEST = 'agent_request'
+
+CHAT_MODE_ASK = 'ask'
+CHAT_MODE_EDIT = 'edit'
+CHAT_MODE_AGENT = 'agent'
+CHAT_MODE_VALUES = {CHAT_MODE_ASK, CHAT_MODE_EDIT, CHAT_MODE_AGENT}
+
+
+def _normalize_chat_mode(value) -> str | None:
+    normalized = str(value or '').strip().lower()
+    if normalized in CHAT_MODE_VALUES:
+        return normalized
+    return None
+
+
+def _should_apply_changes_for_chat_mode(chat_mode: str | None, content: str, apply_changes) -> bool:
+    if chat_mode == CHAT_MODE_ASK:
+        return False
+    if chat_mode == CHAT_MODE_EDIT:
+        return True
+    if chat_mode == CHAT_MODE_AGENT:
+        if apply_changes is None:
+            return not _looks_like_read_only_request(content)
+        return bool(apply_changes)
+    return _looks_like_edit_request(content) if apply_changes is None else bool(apply_changes)
+
+
+def _extract_class_fragments(snippet: str) -> list[str]:
+    fragments: list[str] = []
+    seen: set[str] = set()
+    patterns = [
+        r"'([^']+)'",
+        r'"([^"]+)"',
+    ]
+    for pattern in patterns:
+        for match in re.findall(pattern, str(snippet or '')):
+            normalized = str(match or '').strip()
+            if not normalized or normalized in seen:
+                continue
+            if any(marker in normalized for marker in ('${', '?', '=>', '{', '}')):
+                continue
+            tokens = [token for token in normalized.split() if token]
+            if not tokens:
+                continue
+            if not any(
+                token.startswith(('bg-', 'text-', 'hover:', 'border-', 'shadow-[', 'fill-', 'ring-', 'outline-', 'from-', 'to-'))
+                for token in tokens
+            ):
+                continue
+            seen.add(normalized)
+            fragments.append(normalized)
+    return fragments
+
+
+def _describe_ui_style_match(snippet: str) -> str:
+    lowered = str(snippet or '').lower()
+    if 'activetab === tab.id' in lowered:
+        return 'active navigation item'
+    if 'selectedfile === node.path' in lowered:
+        return 'selected file row'
+    if 'activesidepanel' in lowered:
+        return 'active side panel icon'
+    if 'hover:bg' in lowered or 'hover:text' in lowered:
+        return 'hover state'
+    if 'selected' in lowered:
+        return 'selected item'
+    if 'active' in lowered:
+        return 'active item'
+    return 'matching UI state'
+
+
+def _extract_ui_style_evidence(workspace_path: Path | None, file_paths: list[str], query: str, limit: int = 4) -> list[dict]:
+    if not workspace_path:
+        return []
+
+    unique_paths: list[str] = []
+    seen_paths: set[str] = set()
+    for raw_path in file_paths:
+        normalized = str(raw_path or '').replace('\\', '/').strip('/')
+        if not normalized or normalized in seen_paths:
+            continue
+        seen_paths.add(normalized)
+        unique_paths.append(normalized)
+
+    def path_score(rel_path: str) -> float:
+        lowered_path = str(rel_path or '').lower()
+        score = 0.0
+        if 'sidebar' in str(query or '').lower():
+            if any(token in lowered_path for token in ('projectview', 'workspace', 'sidebar', 'nav', 'panel')):
+                score += 3.0
+        if any(token in lowered_path for token in ('projectview', 'workspace', 'panel', 'layout', 'header', 'nav', 'sidebar')):
+            score += 1.5
+        if '/pages/' in lowered_path:
+            score += 1.0
+        return score
+
+    unique_paths.sort(key=lambda path: (-path_score(path), path))
+
+    query_terms = {
+        term for term in re.findall(r'[a-z0-9_#-]+', str(query or '').lower())
+        if len(term) > 2
+    }
+    target_terms = query_terms | {
+        'sidebar', 'views', 'explorer', 'navigation', 'nav', 'tab', 'tabs',
+        'item', 'items', 'selected', 'active', 'hover', 'foldertree',
+    }
+
+    evidence: list[dict] = []
+    for rel_path in unique_paths[:24]:
+        if not rel_path.lower().endswith(('.tsx', '.jsx', '.ts', '.js', '.css', '.scss')):
+            continue
+        content = _safe_read_workspace_file(workspace_path, rel_path, limit=50000)
+        if not content:
+            continue
+        lines = content.splitlines()
+        matches: list[dict] = []
+        for index in range(len(lines)):
+            window_start = max(0, index - 2)
+            window_end = min(len(lines), index + 3)
+            snippet = "\n".join(lines[window_start:window_end]).strip()
+            lowered = snippet.lower()
+            if not any(marker in lowered for marker in ('classname', 'class=', 'bg-', 'text-', 'hover:', 'border-', 'selected', 'active')):
+                continue
+            classes = _extract_class_fragments(snippet)
+            if not classes and 'classname' not in lowered and 'class=' not in lowered:
+                continue
+            score = 0.0
+            if 'classname' in lowered or 'class=' in lowered:
+                score += 2.0
+            if classes:
+                score += 1.0
+                if any(any(token.startswith(prefix) for prefix in ('bg-', 'hover:bg', 'text-white', 'border-', 'shadow-[')) for token in " ".join(classes).split()):
+                    score += 1.5
+            if any(marker in lowered for marker in ('selected', 'active', 'hover')):
+                score += 1.5
+            if any(marker in lowered for marker in ('activetab ===', 'selectedfile ===', 'activesidepanel', '=== node.path')):
+                score += 3.0
+            if any(term in lowered for term in target_terms):
+                score += 2.0
+            if any(term in rel_path.lower() for term in ('view', 'sidebar', 'workspace', 'panel', 'nav', 'explorer')):
+                score += 1.0
+            if score < 2.5:
+                continue
+            matches.append(
+                {
+                    'path': rel_path,
+                    'line_number': index + 1,
+                    'snippet': snippet,
+                    'classes': classes,
+                    'label': _describe_ui_style_match(snippet),
+                    'score': score,
+                }
+            )
+        matches.sort(key=lambda item: (-float(item.get('score') or 0), int(item.get('line_number') or 0)))
+        evidence.extend(matches[:2])
+
+    evidence.sort(key=lambda item: (-float(item.get('score') or 0), str(item.get('path') or ''), int(item.get('line_number') or 0)))
+    return evidence[:limit]
+
+
+def _answer_ui_style_question_from_evidence(
+    project: Project,
+    content: str,
+    selected_file: str,
+    context_trace: dict,
+) -> str:
+    if not _looks_like_ui_style_question(content):
+        return ''
+
+    workspace_path = _chat_workspace_path(project)
+    if not workspace_path:
+        return ''
+
+    candidate_paths = []
+    if selected_file:
+        candidate_paths.append(selected_file)
+    candidate_paths.extend(str(item.get('path') or '') for item in (context_trace.get('files_accessed') or []))
+    evidence = _extract_ui_style_evidence(workspace_path, candidate_paths, content)
+    if not evidence:
+        return ''
+
+    high_confidence = [
+        item for item in evidence
+        if str(item.get('label') or '') in {'active navigation item', 'selected file row', 'active side panel icon'}
+    ]
+    if 'sidebar' in str(content or '').lower():
+        if not high_confidence:
+            return ''
+        evidence = high_confidence[:4]
+    elif high_confidence:
+        evidence = high_confidence[:4]
+
+    lines = ["I found the current sidebar-related highlight styles directly in the codebase."]
+    if len(evidence) > 1:
+        lines.append("There are multiple sidebar-like surfaces in this project:")
+
+    for item in evidence:
+        path = str(item.get('path') or '')
+        line_number = int(item.get('line_number') or 1)
+        label = str(item.get('label') or 'matching UI state')
+        classes = list(item.get('classes') or [])
+        if classes:
+            class_text = "`, `".join(classes[:3])
+            lines.append(f"- `{path}:{line_number}` controls the {label} with `{class_text}`.")
+        else:
+            snippet = " ".join(str(item.get('snippet') or '').split())
+            lines.append(f"- `{path}:{line_number}` controls the {label}. Current code: `{snippet[:220]}`")
+
+    lines.append("Change those current class strings to your new Tailwind colors instead of adding a separate template example.")
+    return "\n".join(lines)
+
+
+def _build_ui_clarification_question(
+    project: Project,
+    content: str,
+    selected_file: str,
+    context_mentions,
+    context_trace: dict,
+) -> str:
+    lowered = str(content or '').lower()
+    if not _looks_like_ui_style_question(content):
+        return ''
+    if selected_file:
+        return ''
+
+    normalized_mentions = _normalize_chat_mentions(context_mentions)
+    if any(item.get('type') == 'file' for item in normalized_mentions):
+        return ''
+    if any(token in lowered for token in ('@currentfile', '@codebase', '.tsx', '.jsx', '.ts', '.js', '/', '\\')):
+        return ''
+    if any(token in lowered for token in ('workspace', 'file explorer', 'explorer', 'project view', 'views nav', 'navigation menu', 'blueprint')):
+        return ''
+
+    ambiguous_terms = [term for term in ('sidebar', 'panel', 'topbar', 'top bar', 'header', 'toolbar') if term in lowered]
+    if not ambiguous_terms:
+        return ''
+
+    workspace_path = _chat_workspace_path(project)
+    if not workspace_path:
+        return ''
+
+    candidate_paths = [str(item.get('path') or '') for item in (context_trace.get('files_accessed') or [])]
+    codebase_context = {}
+    try:
+        codebase_context = build_blueprint_context(project, workspace_path)
+    except Exception:
+        codebase_context = {}
+    candidate_paths.extend(_ui_style_candidate_paths(codebase_context, candidate_paths))
+
+    evidence = _extract_ui_style_evidence(workspace_path, candidate_paths, content, limit=8)
+    if not evidence:
+        return ''
+
+    distinct: list[dict] = []
+    seen = set()
+    for item in evidence:
+        key = (str(item.get('path') or ''), str(item.get('label') or ''))
+        if key in seen:
+            continue
+        seen.add(key)
+        distinct.append(item)
+
+    if len({str(item.get('path') or '') for item in distinct}) < 2:
+        return ''
+
+    lines = ["I’m not fully sure which UI surface you mean."]
+    lines.append("Which one should I help you change?")
+    lines[0] = "I'm not fully sure which UI surface you mean."
+    for item in distinct[:3]:
+        path = str(item.get('path') or '')
+        label = str(item.get('label') or 'UI state')
+        lines.append(f"- `{path}`: {label}")
+    lines.append("Reply with the one you mean, and I’ll point to the exact classes to edit.")
+    lines = [line for line in lines if "Reply with the one you mean" not in line]
+    lines.append("Reply with the one you mean, and I'll point to the exact classes to edit.")
+    return "\n".join(lines)
+
+
+def _classify_chat_state(
+    project: Project,
+    content: str,
+    selected_file: str,
+    context_mentions,
+    context_trace: dict,
+    should_apply_changes: bool,
+) -> dict:
+    if should_apply_changes and project.workspace_id:
+        return {
+            'state': CHAT_STATE_EDIT_REQUEST,
+            'reason': 'The request looks like a code change and the project has an editable workspace.',
+            'response_contract': (
+                "When the change succeeds, summarize what changed and which files were touched. "
+                "If the change fails, explain the failure plainly and keep the trace intact."
+            ),
+        }
+
+    clarification_question = _build_ui_clarification_question(
+        project,
+        content,
+        selected_file,
+        context_mentions,
+        context_trace,
+    )
+    if clarification_question:
+        return {
+            'state': CHAT_STATE_NEEDS_CLARIFICATION,
+            'reason': 'The request names an ambiguous UI surface and needs a human follow-up before suggesting edits.',
+            'response': clarification_question,
+            'response_contract': (
+                "Ask one short clarifying question, list the most likely UI surfaces, and wait for the user's reply."
+            ),
+        }
+
+    if _looks_like_ui_redesign_request(content):
+        return {
+            'state': CHAT_STATE_BROAD_REDESIGN,
+            'reason': 'The request is a broader UI or layout redesign and should use full grounded code context.',
+            'response_contract': (
+                "Response contract:\n"
+                "1. Current implementation\n"
+                "2. Files to edit\n"
+                "3. Change plan\n"
+                "4. Risks or follow-ups\n"
+                "Use only retrieved evidence when describing the current layout, and do not invent panes or components."
+            ),
+        }
+
+    direct_style_answer = _answer_ui_style_question_from_evidence(
+        project,
+        content,
+        selected_file,
+        context_trace,
+    )
+    if direct_style_answer:
+        return {
+            'state': CHAT_STATE_GROUNDED_ANSWER,
+            'reason': 'Exact style evidence was extracted from retrieved files, so the answer can be grounded directly.',
+            'response': direct_style_answer,
+            'response_contract': (
+                "Response contract:\n"
+                "1. File to edit\n"
+                "2. Exact current classes or tokens\n"
+                "3. What to change"
+            ),
+            'mode': 'deterministic_ui_style',
+        }
+
+    return {
+        'state': CHAT_STATE_GROUNDED_ANSWER,
+        'reason': 'The question can be answered from retrieved workspace evidence without asking for clarification.',
+        'response_contract': (
+            "Response contract:\n"
+            "1. Files or surfaces involved\n"
+            "2. Current implementation\n"
+            "3. Suggested next step\n"
+            "Keep examples clearly labeled when they are not the current implementation."
+        ),
+    }
+
+
+def _extract_agent_explicit_command(content: str) -> str:
+    text = str(content or '').strip()
+    if not text:
+        return ''
+    fenced = re.search(r"```(?:bash|sh|shell|powershell|cmd)?\s*\n(.+?)```", text, re.IGNORECASE | re.DOTALL)
+    if fenced:
+        candidate = fenced.group(1).strip()
+        if candidate:
+            return candidate
+    inline = re.search(r"`([^`\n]+)`", text)
+    if inline:
+        candidate = inline.group(1).strip()
+        if candidate:
+            return candidate
+    return ''
+
+
+def _default_agent_terminal_command(content: str, runtime: dict, workspace_path: Path) -> str:
+    lowered = str(content or '').lower()
+    runtime_type = str(runtime.get('runtime_type') or '').lower()
+    python_cmd = _python_executable_command()
+
+    if any(marker in lowered for marker in ('run tests', 'run the tests', 'test suite', 'execute tests', 'pytest')):
+        if runtime_type == 'node':
+            return 'npm test'
+        return 'pytest'
+
+    if any(marker in lowered for marker in ('run build', 'build the project', 'production build')):
+        if runtime_type == 'node':
+            return 'npm run build'
+
+    if any(marker in lowered for marker in ('makemigrations', 'make migrations')) and (workspace_path / 'manage.py').exists():
+        return f'{python_cmd} manage.py makemigrations'
+
+    if any(marker in lowered for marker in ('run migrations', 'migrate database', 'apply migrations', 'migrate')) and (workspace_path / 'manage.py').exists():
+        return f'{python_cmd} manage.py migrate'
+
+    return ''
+
+
+def _plan_agent_workspace_actions(content: str, runtime: dict, *, edits_applied: bool = False, workspace_path: Path | None = None) -> dict:
+    lowered = str(content or '').lower()
+    explicit_command = _extract_agent_explicit_command(content)
+    generated_command = ''
+    if not explicit_command and workspace_path:
+        generated_command = _default_agent_terminal_command(content, runtime, workspace_path)
+
+    wants_stop = any(marker in lowered for marker in ('stop project', 'stop the project', 'stop app', 'stop the app', 'stop server', 'kill server', 'shut down'))
+    wants_restart = any(marker in lowered for marker in ('restart project', 'restart the project', 'restart app', 'restart the app', 'restart server', 're-run the project', 'rerun the project'))
+    wants_run = any(marker in lowered for marker in ('run project', 'run the project', 'start project', 'start the project', 'launch the project', 'launch app', 'open preview', 'boot the app'))
+    wants_setup = any(marker in lowered for marker in ('setup project', 'install dependencies', 'prepare project', 'run setup', 'setup & start'))
+
+    should_run_after_edits = edits_applied and bool(runtime.get('run_command'))
+    terminal_command = explicit_command or generated_command
+    run_setup = bool(runtime.get('setup_command')) and (
+        wants_setup
+        or ((wants_run or wants_restart or should_run_after_edits or bool(terminal_command)) and runtime.get('install_required'))
+    )
+    start_runtime = bool(runtime.get('run_command')) and not terminal_command and (wants_run or wants_restart or should_run_after_edits)
+    stop_runtime = bool(runtime.get('run_command')) and (wants_stop or wants_restart)
+
+    return {
+        'explicit_command': explicit_command,
+        'terminal_command': terminal_command,
+        'run_setup': run_setup,
+        'start_runtime': start_runtime,
+        'stop_runtime': stop_runtime,
+        'restart_runtime': wants_restart,
+        'should_run_after_edits': should_run_after_edits,
+        'actionable': any([run_setup, start_runtime, stop_runtime, bool(terminal_command), wants_restart]),
+    }
+
+
+def _trim_agent_output(output: str, limit: int = 320) -> str:
+    text = str(output or '').strip()
+    if len(text) <= limit:
+        return text
+    return text[-limit:]
+
+
+def _agent_project_memory_text(memory_context: dict | None) -> str:
+    memory_context = memory_context or {}
+    sections: list[str] = []
+
+    blueprint_summary = str(memory_context.get('blueprint_summary') or '').strip()
+    if blueprint_summary and blueprint_summary != 'No cached codebase summary yet.':
+        sections.append(f"Codebase Summary:\n{blueprint_summary[:9000]}")
+
+    semantic_summary = str(memory_context.get('semantic_summary') or '').strip()
+    if semantic_summary and semantic_summary != 'No semantic matches yet.':
+        sections.append(f"Relevant Semantic Recall:\n{semantic_summary[:5000]}")
+
+    if not sections:
+        return ''
+
+    sections.append(
+        "Use project memory only as background context. Do not treat earlier tasks, examples, or unrelated past chat topics as current requirements unless the user repeats them in this request."
+    )
+    return "\n\n".join(sections)
+
+
+def _agent_execution_prompt_addendum(*, should_apply_changes: bool, selected_file: str = '') -> str:
+    lines = [
+        "## Workspace Agent Contract",
+        "You are operating in a live project workspace with permission to inspect files, edit files, create files, replace files, search code, and run non-destructive commands.",
+        "- If the user asks to build, fix, change, refactor, restyle, wire up, migrate, or otherwise modify the project, perform that work directly with tools instead of stopping after analysis.",
+        "- Read and search only as much as needed to find the right files, then make the change.",
+        "- Use `file_edit` for focused patches.",
+        "- Use `file_write` after reading a file first when a full-file rewrite is the clearest or safest way to implement the request.",
+        "- Treat prior memory as background only. Do not anchor on previous examples, stale feature ideas, or earlier chats unless the user explicitly asks for them again.",
+        "- Keep the request generic to the current project. Do not inject unrelated themes or canned examples.",
+        "- Before finishing, inspect the changed files and run a targeted verification command when practical.",
+        "- Your final response must summarize the concrete work completed, list files changed, and mention commands run or blockers.",
+    ]
+
+    if selected_file:
+        lines.append(f"- The currently open file is `{selected_file}`. Use it as a hint, not as a hard limit, if the request spans other files.")
+
+    if should_apply_changes:
+        lines.append(
+            "- The current user request is an execution request. Apply the requested change in the workspace before you respond; do not answer with analysis alone unless you are blocked."
+        )
+
+    return "\n".join(lines)
+
+
+def _agent_response_fallback(qr, applied_files: list[str]) -> str:
+    response = str(getattr(qr, 'response', '') or '').strip()
+    if response:
+        return response
+
+    tool_calls = list(getattr(qr, 'tool_calls_log', []) or [])
+    files_read = list(getattr(qr, 'files_read', []) or [])
+    bash_calls = [entry for entry in tool_calls if entry.get('tool') == 'bash']
+
+    if applied_files:
+        preview = ", ".join(applied_files[:6])
+        if bash_calls:
+            return (
+                f"Applied changes to {len(applied_files)} file(s): {preview}. "
+                f"Ran {len(bash_calls)} command(s) to verify or update the workspace."
+            )
+        return f"Applied changes to {len(applied_files)} file(s): {preview}."
+
+    if files_read or tool_calls:
+        inspected = f"inspected {len(files_read)} file(s)" if files_read else f"used {len(tool_calls)} tool call(s)"
+        tools_used = ", ".join(
+            dict.fromkeys(str(entry.get('tool') or '') for entry in tool_calls if entry.get('tool'))
+        )
+        if tools_used:
+            return f"The agent {inspected} using {tools_used}, but no code changes were applied."
+        return f"The agent {inspected}, but no code changes were applied."
+
+    return "The agent did not return a final summary."
+
+
+def _wait_for_sandbox_process(sandbox, process_id: str, *, timeout_seconds: float = 240.0, poll_interval: float = 0.35) -> tuple[dict, str]:
+    deadline = time.time() + timeout_seconds
+    chunks: list[str] = []
+    while time.time() < deadline:
+        chunks.extend(sandbox.get_output(process_id))
+        status = sandbox.get_status(process_id)
+        if not status.get('running'):
+            chunks.extend(sandbox.get_output(process_id))
+            return sandbox.get_status(process_id), ''.join(chunks)
+        time.sleep(poll_interval)
+    chunks.extend(sandbox.get_output(process_id))
+    return sandbox.get_status(process_id), ''.join(chunks)
+
+
+def _handle_agent_chat_request(
+    project: Project,
+    content: str,
+    *,
+    selected_file: str = '',
+    selected_content: str = '',
+    attachments: list[dict] | None = None,
+    session_id: str = '',
+    should_apply_changes: bool = False,
+    context_trace: dict | None = None,
+    memory_context: dict | None = None,
+    checkpoint: dict | None = None,
+) -> dict:
+    from pathlib import Path as _Path
+    from sandbox.executor import sandbox
+
+    context_trace = dict(context_trace or {})
+    memory_context = memory_context or {}
+    attachments = list(attachments or [])
+    request_text = _chat_request_text(content, attachments)
+    prompt_text = _chat_request_text(content, attachments, include_attachment_inventory=True)
+    workspace_path = _chat_workspace_path(project)
+    if not project.workspace_id or not workspace_path:
+        return {
+            'handled': True,
+            'assistant_message': (
+                "Agent mode needs a connected workspace before it can edit files or run sandbox commands."
+            ),
+            'assistant_trace': {
+                'approach': 'Agent mode was requested, but this project has no active workspace attached.',
+                'chat_state': CHAT_STATE_AGENT_REQUEST,
+                'chat_mode': CHAT_MODE_AGENT,
+                'state_reason': 'Agent mode requires an editable workspace.',
+                'session_id': session_id,
+                'context_mentions': context_trace.get('context_mentions') or [],
+                'context_sources': context_trace.get('context_sources') or [],
+                'files_accessed': context_trace.get('files_accessed') or [],
+                'commands_ran': [],
+                'workspace_actions': [],
+                'applied_files': [],
+            },
+            'applied_changes': None,
+            'workspace_actions': [],
+        }
+
+    # ── NEW: Use QueryEngine for tool-calling agent loop ──────────
+    try:
+        from agents.compaction import ContextCompactor
+        from agents.coordinator import Coordinator
+        from agents.prompts import PromptBuilder
+        from agents.query_engine import QueryEngine
+        from agents.tools.registry import ToolRegistry
+
+        ai_config = _project_ai_config(project)
+        registry = ToolRegistry.default_registry()
+        compactor = ContextCompactor()
+        prompt_builder = PromptBuilder()
+
+        # Build conversation history from session
+        conversation_history = []
+        try:
+            _grouped, _ = _group_project_chat_sessions(project)
+            recent = _grouped.get(session_id, [])[-10:]
+            for msg in recent:
+                role = msg.get('role', 'user') if isinstance(msg, dict) else getattr(msg, 'role', 'user')
+                msg_content = msg.get('content', '') if isinstance(msg, dict) else getattr(msg, 'content', '')
+                msg_attachments = _chat_message_attachments(msg if isinstance(msg, dict) else {'metadata': getattr(msg, 'metadata', {})})
+                gemini_role = 'model' if role == 'assistant' else 'user'
+                conversation_history.append(
+                    {
+                        'role': gemini_role,
+                        'content': _chat_request_text(str(msg_content), msg_attachments, include_attachment_inventory=True),
+                    }
+                )
+        except Exception:
+            logger.debug("Could not load chat history for session %s", session_id)
+
+        # Build enhanced system prompt
+        project_memory_text = _agent_project_memory_text(memory_context)
+        project_instructions_text = ''
+        try:
+            project_instructions_text = _read_project_instructions(project, workspace_path)
+        except Exception:
+            pass
+
+        customization_ctx = ''
+        try:
+            from agents.project_customization import build_project_customization_summary
+            customization_ctx = build_project_customization_summary(workspace_path)
+        except Exception:
+            pass
+
+        system_prompt = prompt_builder.build_system_prompt(
+            workspace_path=workspace_path,
+            tools=registry.all_tools(),
+            project_memory=project_memory_text,
+            project_instructions=project_instructions_text,
+            customization_context=customization_ctx,
+        )
+        system_prompt += "\n\n" + _agent_execution_prompt_addendum(
+            should_apply_changes=should_apply_changes,
+            selected_file=selected_file,
+        )
+
+        # Add file context if a file is selected
+        if selected_file:
+            file_context = f"\n\n## Active File Context\nThe user has file `{selected_file}` open."
+            if selected_content:
+                file_context += f"\nContent:\n```\n{selected_content[:4000]}\n```"
+            system_prompt += file_context
+
+        # Collect events for the trace
+        tool_events: list[dict] = []
+
+        def on_tool_start(name, args):
+            tool_events.append({'type': 'tool_start', 'tool': name, 'args_preview': {k: str(v)[:100] for k, v in args.items()}})
+
+        def on_tool_end(name, result):
+            tool_events.append({'type': 'tool_end', 'tool': name, 'success': result.success, 'preview': (result.output or '')[:200]})
+
+        engine = QueryEngine(
+            tool_registry=registry,
+            prompt_builder=prompt_builder,
+            compactor=compactor,
+            ai_config=ai_config,
+            workspace_id=project.workspace_id,
+            workspace_path=workspace_path,
+            on_tool_start=on_tool_start,
+            on_tool_end=on_tool_end,
+        )
+
+        qr = engine.run(
+            user_message=prompt_text,
+            attachments=attachments,
+            conversation_history=conversation_history,
+            system_prompt=system_prompt,
+            max_turns=25,
+        )
+
+        # Build response
+        applied_files = list(qr.files_modified)
+        workspace_actions = []
+        for tc in qr.tool_calls_log:
+            workspace_actions.append({
+                'type': tc.get('tool', 'tool_call'),
+                'status': 'completed' if tc.get('success') else 'failed',
+                'command': str(tc.get('args', {}).get('command', ''))[:200] if tc.get('tool') == 'bash' else '',
+                'detail': tc.get('output_preview', '')[:200],
+            })
+
+        assistant_trace = {
+            'approach': f"Agent used {len(qr.tool_calls_log)} tool calls across {qr.turns_used} turns. {'Context was auto-compacted.' if qr.compacted else ''}",
+            'chat_state': CHAT_STATE_AGENT_REQUEST,
+            'chat_mode': CHAT_MODE_AGENT,
+            'state_reason': 'Agentic tool-calling loop completed.',
+            'session_id': session_id,
+            'context_mentions': context_trace.get('context_mentions') or [],
+            'context_sources': context_trace.get('context_sources') or [],
+            'files_accessed': [{'path': p, 'reason': 'Read by agent'} for p in qr.files_read[:12]],
+            'commands_ran': [
+                {'command': tc.get('args', {}).get('command', tc.get('tool', '')), 'status': 'passed' if tc.get('success') else 'failed', 'detail': tc.get('output_preview', '')[:200]}
+                for tc in qr.tool_calls_log if tc.get('tool') == 'bash'
+            ],
+            'workspace_actions': workspace_actions,
+            'applied_files': applied_files,
+            'tool_events': tool_events[-20:],
+            'turns_used': qr.turns_used,
+            'compacted': qr.compacted,
+            'duration_ms': qr.total_duration_ms,
+            'semantic_hits': [
+                {'path': item.get('file_path'), 'symbol': item.get('symbol')}
+                for item in (memory_context.get('semantic_hits') or [])[:8]
+            ],
+        }
+
+        applied_changes = None
+        if applied_files:
+            changeset = _record_chat_changes(
+                project,
+                content,
+                workspace_path,
+                snapshot_previous_contents(str(project.id), str((checkpoint or {}).get('id') or ''), applied_files),
+                applied_files,
+                ai_review=_chat_checkpoint_review_payload(
+                    checkpoint,
+                    source='chat_agent',
+                    chat_mode=CHAT_MODE_AGENT,
+                    undo_label='Undo',
+                ),
+            )
+            if changeset:
+                applied_changes = {
+                    'applied_files': applied_files,
+                    'count': len(applied_files),
+                    'changeset_id': str(changeset.id),
+                    'undo': _chat_changeset_trace_metadata(changeset).get('undo'),
+                }
+                assistant_trace.update(_chat_changeset_trace_metadata(changeset))
+                try:
+                    _update_project_memory(project, workspace_path, content, applied_files, [])
+                except Exception:
+                    logger.exception("Failed to update project memory for agent changes in project %s", project.id)
+                try:
+                    index_semantic_memory(project, workspace_path, changed_paths=applied_files)
+                except Exception:
+                    logger.exception("Failed to re-index semantic memory for project %s", project.id)
+                try:
+                    record_episode(
+                        project=project,
+                        memory_type='implementation',
+                        title='Workspace agent execution',
+                        summary=f"Agent mode applied changes for '{request_text[:120]}'. Files: {', '.join(applied_files)}.",
+                        related_files=applied_files,
+                        metadata={'source': 'chat_agent', 'workspace_actions': workspace_actions},
+                    )
+                    upsert_working_memory(
+                        project,
+                        'implementation',
+                        (
+                            f"Latest implementation request: {request_text[:240]}\n"
+                            f"Files touched: {', '.join(applied_files)}\n"
+                            "Validation summary:\nNo structured validation was recorded for this direct agent tool execution.\n"
+                            "Reviewer summary: No structured review was recorded for this direct agent tool execution."
+                        ),
+                        {'latest_request': request_text[:240], 'files': applied_files, 'source': 'chat_agent'},
+                    )
+                except Exception:
+                    logger.exception("Failed to persist memory updates for agent changes in project %s", project.id)
+        assistant_message_override = ''
+
+        if should_apply_changes and not applied_files:
+            try:
+                fallback_changes = apply_chat_changes(
+                    project,
+                    request_text,
+                    selected_file=selected_file,
+                    selected_content=selected_content,
+                    request_attachments=attachments,
+                    checkpoint=checkpoint,
+                    chat_mode=CHAT_MODE_AGENT,
+                    changeset_source='chat_agent',
+                )
+                fallback_applied_files = list(fallback_changes.get('applied_files') or [])
+                if fallback_applied_files:
+                    applied_files = fallback_applied_files
+                    applied_changes = fallback_changes
+                    fallback_trace = _build_chat_trace_from_changes(fallback_changes, context_trace, memory_context)
+                    workspace_actions.append({
+                        'type': 'implementation_fallback',
+                        'status': 'completed',
+                        'detail': 'The tool-calling loop inspected the workspace but made no edits, so the structured implementation pipeline applied the requested code changes.',
+                    })
+                    assistant_trace.update({
+                        'approach': 'Agent mode inspected the workspace with tools first, then completed the edit through the structured implementation pipeline because the tool loop returned without file changes.',
+                        'state_reason': 'Tool-calling loop completed without file edits; implementation fallback applied.',
+                        'files_accessed': [
+                            *list(assistant_trace.get('files_accessed') or []),
+                            *list(fallback_trace.get('files_accessed') or []),
+                        ][:24],
+                        'commands_ran': list(fallback_trace.get('commands_ran') or []),
+                        'workspace_actions': workspace_actions,
+                        'applied_files': applied_files,
+                        'plan': fallback_trace.get('plan') or {},
+                        'review': fallback_trace.get('review') or {},
+                        'semantic_hits': list(fallback_trace.get('semantic_hits') or assistant_trace.get('semantic_hits') or []),
+                    })
+                    assistant_trace.update({
+                        key: value
+                        for key, value in fallback_trace.items()
+                        if key in {'changeset_id', 'undo', 'undo_available'}
+                    })
+                    assistant_message_override = (
+                        f"Applied the requested update to {len(applied_files)} file(s): "
+                        f"{', '.join(applied_files[:6])}."
+                    )
+            except Exception as fallback_exc:
+                logger.exception("Agent mode implementation fallback failed for project %s", project.id)
+                workspace_actions.append({
+                    'type': 'implementation_fallback',
+                    'status': 'failed',
+                    'detail': str(fallback_exc)[:220],
+                })
+                assistant_trace['state_reason'] = 'Tool-calling loop completed without file edits, and the implementation fallback also failed.'
+                assistant_trace['fallback_error'] = str(fallback_exc)
+                assistant_trace['workspace_actions'] = workspace_actions
+        elif checkpoint and not applied_files:
+            delete_workspace_checkpoint(str(project.id), str(checkpoint.get('id') or ''))
+
+        # After edits, also handle sandbox actions (setup + runtime)
+        runtime = detect_runtime(workspace_path)
+        if applied_files:
+            action_plan = _plan_agent_workspace_actions(
+                request_text, runtime, edits_applied=True, workspace_path=workspace_path,
+            )
+            runtime_pid = runtime_process_id(project.workspace_id)
+            setup_pid = setup_process_id(project.workspace_id)
+
+            if action_plan.get('run_setup') and runtime.get('setup_command'):
+                sandbox.run_command(setup_pid, str(runtime.get('setup_command')), str(workspace_path), kind='setup')
+                setup_status, setup_output = _wait_for_sandbox_process(sandbox, setup_pid)
+                setup_success = int(setup_status.get('returncode') or 0) == 0
+                workspace_actions.append({
+                    'type': 'setup',
+                    'status': 'completed' if setup_success else 'failed',
+                    'command': runtime.get('setup_command'),
+                    'detail': _trim_agent_output(setup_output) or ('Setup completed.' if setup_success else 'Setup failed.'),
+                })
+
+            if action_plan.get('start_runtime') and runtime.get('run_command'):
+                sandbox.run_command(runtime_pid, str(runtime.get('run_command')), str(workspace_path), kind='runtime', preview_url=runtime.get('preview_url'))
+                runtime_payload = _runtime_response_payload(runtime, runtime_pid, sandbox, wait_for_preview=True)
+                runtime_ready = bool(runtime_payload.get('ready'))
+                workspace_actions.append({
+                    'type': 'runtime_start',
+                    'status': 'completed' if runtime_ready else 'running',
+                    'command': runtime.get('run_command'),
+                    'preview_url': runtime_payload.get('preview_url'),
+                    'detail': 'Preview is ready.' if runtime_ready else 'Runtime started.',
+                })
+
+            assistant_trace['workspace_actions'] = workspace_actions
+
+        return {
+            'handled': True,
+            'assistant_message': assistant_message_override or _agent_response_fallback(qr, applied_files),
+            'assistant_trace': assistant_trace,
+            'applied_changes': applied_changes,
+            'workspace_actions': workspace_actions,
+        }
+
+    except Exception as exc:
+        logger.exception("QueryEngine agent mode failed for project %s — falling back", project.id)
+
+        # ── FALLBACK: Original agent handler for when engine fails ──
+        runtime = detect_runtime(workspace_path)
+        applied_changes = None
+        applied_files_fallback: list[str] = []
+        commands_ran_fallback = list(context_trace.get('commands_ran') or [])
+        workspace_actions_fallback: list[dict[str, Any]] = []
+        assistant_trace_fallback = {
+            'approach': f'Agent mode QueryEngine failed ({exc}), fell back to direct handler.',
+            'chat_state': CHAT_STATE_AGENT_REQUEST,
+            'chat_mode': CHAT_MODE_AGENT,
+            'state_reason': 'Agent mode fallback.',
+            'session_id': session_id,
+            'context_mentions': context_trace.get('context_mentions') or [],
+            'context_sources': context_trace.get('context_sources') or [],
+            'files_accessed': context_trace.get('files_accessed') or [],
+            'commands_ran': commands_ran_fallback,
+            'workspace_actions': workspace_actions_fallback,
+            'applied_files': applied_files_fallback,
+            'error': str(exc),
+        }
+
+        if should_apply_changes:
+            try:
+                applied_changes = apply_chat_changes(
+                    project,
+                    request_text,
+                    selected_file=selected_file,
+                    selected_content=selected_content,
+                    request_attachments=attachments,
+                    checkpoint=checkpoint,
+                    chat_mode=CHAT_MODE_AGENT,
+                    changeset_source='chat_agent',
+                )
+                applied_files_fallback = list(applied_changes.get('applied_files') or [])
+                assistant_trace_fallback['applied_files'] = applied_files_fallback
+                assistant_trace_fallback.update({
+                    key: value
+                    for key, value in applied_changes.items()
+                    if key in {'changeset_id', 'undo'}
+                })
+                assistant_trace_fallback['undo_available'] = bool((applied_changes.get('undo') or {}).get('available'))
+            except Exception as apply_exc:
+                assistant_trace_fallback['error'] = str(apply_exc)
+        elif checkpoint:
+            delete_workspace_checkpoint(str(project.id), str(checkpoint.get('id') or ''))
+
+        action_plan = _plan_agent_workspace_actions(request_text, runtime, edits_applied=bool(applied_files_fallback), workspace_path=workspace_path)
+        if not action_plan.get('actionable') and not applied_files_fallback:
+            if checkpoint and not applied_files_fallback:
+                delete_workspace_checkpoint(str(project.id), str(checkpoint.get('id') or ''))
+            return {'handled': False, 'assistant_message': '', 'assistant_trace': assistant_trace_fallback, 'applied_changes': None, 'workspace_actions': []}
+
+        summary_parts = []
+        if applied_files_fallback:
+            summary_parts.append(f"Updated {len(applied_files_fallback)} file(s): {', '.join(applied_files_fallback[:6])}.")
+        summary_parts.append(f"(Note: the advanced agent engine encountered an error: {exc})")
+
+        return {
+            'handled': True,
+            'assistant_message': " ".join(summary_parts) or f"Agent mode encountered an issue: {exc}",
+            'assistant_trace': assistant_trace_fallback,
+            'applied_changes': applied_changes,
+            'workspace_actions': workspace_actions_fallback,
+        }
+
+
+def _build_chat_evidence_index(context_trace: dict, limit: int = 12) -> str:
+    evidence_index_lines = []
+    for item in (context_trace.get('files_accessed') or [])[:limit]:
+        path = str(item.get('path') or '').strip()
+        if not path:
+            continue
+        reason = str(item.get('reason') or 'Retrieved as relevant evidence for this question.').strip()
+        evidence_index_lines.append(f"- {path}: {reason}")
+    return "\n".join(evidence_index_lines) or "- No explicit file evidence was captured for this turn."
+
+
+def _build_chat_llm_prompt(
+    project: Project,
+    content: str,
+    attachments: list[dict] | None,
+    selected_file: str,
+    selected_content: str,
+    session_id: str,
+    context_trace: dict,
+    memory_context: dict,
+    resolved_context_text: str,
+    chat_mode: str | None,
+    chat_state: str,
+    response_contract: str,
+) -> tuple[str, str]:
+    blueprint = project.blueprint or {}
+    arch = json.dumps(blueprint.get('architecture_overview', ''))[:800]
+    tech = ", ".join(project.tech_stack) if project.tech_stack else "Unknown"
+
+    grouped_sessions, _ = _group_project_chat_sessions(project)
+    recent = grouped_sessions.get(session_id, [])[-10:]
+    history_text = "\n".join(
+        [
+            f"{message['role']}: {_chat_request_text(message.get('content', ''), _chat_message_attachments(message), include_attachment_inventory=True)}"
+            for message in recent
+        ]
+    )
+
+    file_context = "No file selected."
+    if selected_file:
+        file_context = f"Active file: {selected_file}\n"
+        if selected_content:
+            file_context += selected_content[:4000]
+        elif project.workspace_id:
+            try:
+                file_context += workspace_manager.read_file(project.workspace_id, selected_file)[:4000]
+            except Exception:
+                file_context += "(Unable to read file content.)"
+    if resolved_context_text:
+        file_context += f"\n\nExplicit context mentions:\n{resolved_context_text[:48000]}"
+    attachment_context = describe_image_attachments(attachments) or "No image attachments were supplied for this turn."
+
+    evidence_index = _build_chat_evidence_index(context_trace)
+    system_instruction = f"""You are the DevHub AI assistant for the project "{project.name}".
+Tech Stack: {tech}
+Architecture: {arch}
+Working Memory: {memory_context.get('working_summary', '')[:2000]}
+Cached Codebase Summary: {memory_context.get('blueprint_summary', '')[:3000]}
+Episodic Memory: {memory_context.get('episodic_summary', '')[:1200]}
+
+Help the developer understand, plan and implement features, debug issues, and reason about the current code.
+Default to depth, not brevity: unless the user explicitly asks for a short or compact answer, give a thorough answer.
+For implementation or architecture questions, explain the real code path step by step using the retrieved evidence, not generic possibilities.
+When the question is system-level or end-to-end, cover all relevant layers that appear in context, including backend and frontend pieces when both are involved.
+Prefer sections like overview, backend, frontend, flow, and files to change when that helps clarity.
+When @codebase is mentioned, provide thorough, evidence-based answers citing specific file paths, function names, and code patterns you can see in the context.
+When relevant, use the active file context and keep answers action-oriented and detailed.
+If the current user turn includes attached images, treat them as first-class context and incorporate what you can directly observe from them.
+For codebase questions, prefer the exact implementation over examples:
+- name the real file path(s) first,
+- quote the current className, function, route, or variable that controls the behavior when it is present in context,
+- do not invent alternative code unless you clearly label it as an example,
+- if the evidence is incomplete, say what is confirmed versus what is inferred.
+If the retrieved evidence shows a concrete implementation that matches the question, answer from that implementation first and do not hedge with phrases like "might be in" or "it will look something like".
+Only mention multiple candidate files when the evidence truly shows multiple distinct implementations that fit the question.
+For UI or styling questions, identify the exact component and the current classes or style tokens that control the color, spacing, or state change before suggesting edits, and quote the current class string when available.
+For broader UI/layout redesign requests, first describe the current layout using only retrieved evidence, then name the exact file(s) to edit, and do not invent panes, panels, or components that are not present in the code you were given.
+DevHub can inspect the current workspace, and in Edit or Agent mode it can also modify files and run sandboxed project commands.
+Never say that you lack access to the local codebase or cannot make edits; instead respect the current mode:
+- Ask mode: answer only and suggest switching modes if the user wants action.
+- Edit mode: treat the request as an implementation request against the actual codebase.
+- Agent mode: assume DevHub may edit files and drive the sandboxed runtime when the request is actionable.
+
+Current chat mode: {chat_mode or 'auto'}
+Current chat state: {chat_state}
+{response_contract}"""
+    prompt = (
+        f"Current chat mode: {chat_mode or 'auto'}\n"
+        f"Current chat state: {chat_state}\n"
+        f"{response_contract}\n\n"
+        f"Attached images for this turn:\n{attachment_context}\n\n"
+        f"Retrieved evidence index:\n{evidence_index}\n\n"
+        f"Chat history:\n{history_text}\n\n"
+        f"Semantic recall:\n{memory_context.get('semantic_summary', 'No semantic recall.')}\n\n"
+        f"Active workspace context:\n{file_context}\n\nUser: {content}"
+    )
+    return system_instruction, prompt
+
+
+def _query_prefers_full_primary_files(content: str) -> bool:
+    lowered = str(content or '').lower()
+    if not lowered:
+        return False
+    if _looks_like_ui_style_question(content):
+        return True
+    if _looks_like_ui_redesign_request(content):
+        return True
+    if _looks_like_edit_request(content):
+        return True
+    markers = (
+        'how do i change', 'how to change', 'where do i change', 'which file',
+        'where is', 'where are', 'how do i update', 'how to update',
+        'how do i modify', 'how to modify', 'how do i edit', 'how to edit',
+        'how do i fix', 'how to fix', 'how does this work', 'trace this',
+        'follow this', 'walk me through',
+    )
+    return any(marker in lowered for marker in markers)
+
+
+def _chat_primary_file_paths(
+    retrieval: dict,
+    explicit_paths: list[str] | None,
+    query: str,
+    max_primary: int = 2,
+) -> set[str]:
+    primary: list[str] = []
+    seen: set[str] = set()
+    for path in explicit_paths or []:
+        normalized = str(path or '').replace('\\', '/').strip('/')
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            primary.append(normalized)
+    if _query_prefers_full_primary_files(query):
+        for item in retrieval.get('files', []):
+            path = str(item.get('path') or '').replace('\\', '/').strip('/')
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            primary.append(path)
+            if len(primary) >= max_primary:
+                break
+    return set(primary[:max_primary])
+
+
+def _ui_style_candidate_paths(cache: dict, existing_paths: list[str] | None = None, max_extra: int = 6) -> list[str]:
+    seen = {
+        str(path or '').replace('\\', '/').strip('/')
+        for path in (existing_paths or [])
+        if str(path or '').strip()
+    }
+    extras: list[str] = []
+    pool: list[dict] = []
+    for item in list(cache.get('all_file_summaries') or []) + list(cache.get('important_files') or []):
+        if not isinstance(item, dict):
+            continue
+        pool.append(item)
+        if len(pool) >= 240:
+            break
+    for item in pool:
+        path = str(item.get('path') or '').replace('\\', '/').strip('/')
+        lowered = path.lower()
+        if not path or path in seen:
+            continue
+        if not lowered.endswith(('.tsx', '.jsx', '.ts', '.js')):
+            continue
+        if '/frontend/' not in f'/{lowered}':
+            continue
+        if not any(token in lowered for token in ('view', 'workspace', 'panel', 'layout', 'header', 'nav', 'sidebar')):
+            continue
+        seen.add(path)
+        extras.append(path)
+        if len(extras) >= max_extra:
+            break
+    return extras
+
+
 def _resolve_chat_context(
     project: Project,
     content: str,
@@ -8134,24 +10361,35 @@ def _resolve_chat_context(
                 chars_used = 0
                 max_chars = 32000 if system_explanation else 22000
                 files_included = 0
+                full_primary_paths = _chat_primary_file_paths(retrieval, explicit_file_mentions, content)
                 for file_item in retrieval.get('files', []):
                     if chars_used >= max_chars:
                         break
                     rel_path = str(file_item.get('path') or '')
                     if not rel_path:
                         continue
-                    file_content = read_query_relevant_file_content(workspace_path, rel_path, query=content, limit=3200 if not broad_listing else 2600)
+                    use_full_content = rel_path in full_primary_paths
+                    file_content = read_query_relevant_file_content(
+                        workspace_path,
+                        rel_path,
+                        query=content,
+                        limit=12000 if use_full_content else (3200 if not broad_listing else 2600),
+                        force_full=use_full_content,
+                    )
                     if not file_content:
                         continue
                     file_summary = file_item.get('summary') or file_item.get('purpose') or ''
-                    block = f"\n--- FILE: {rel_path} ---\nSummary: {file_summary}\nContent:\n{file_content}\n--- END FILE ---"
+                    block_kind = "FULL FILE" if use_full_content else "FILE"
+                    block = f"\n--- {block_kind}: {rel_path} ---\nSummary: {file_summary}\nContent:\n{file_content}\n--- END {block_kind} ---"
                     codebase_parts.append(block)
                     chars_used += len(block)
                     files_included += 1
                 for item in retrieval.get('trace', [])[:20]:
+                    item_path = str(item.get('path') or '')
                     trace['files_accessed'].append({
-                        'path': item.get('path'),
+                        'path': item_path,
                         'source': item.get('source') or 'retrieval',
+                        'mode': 'full' if item_path in full_primary_paths else 'chunked',
                         'reason': item.get('reason') or 'Selected by codebase retrieval.',
                     })
             if codebase_parts:
@@ -8224,6 +10462,10 @@ def _resolve_chat_context(
                     trace['context_sources'].append({'label': f'@{value}', 'detail': 'Loaded a skipped or uncached file lazily from disk for this chat turn.'})
 
     if workspace_path and codebase_context and not any(block.startswith('@codebase') for block in context_blocks):
+        if _looks_like_ui_style_question(content) or _looks_like_ui_redesign_request(content):
+            for rel_path in _ui_style_candidate_paths(codebase_context, explicit_file_mentions):
+                if rel_path not in explicit_file_mentions:
+                    explicit_file_mentions.append(rel_path)
         retrieval = retrieve_relevant_files(
             codebase_context,
             workspace_path,
@@ -8232,19 +10474,36 @@ def _resolve_chat_context(
             max_files=retrieval_max_files,
             include_neighbors=True,
         )
+        if _looks_like_ui_style_question(content):
+            existing_ui_paths = [str(item.get('path') or '') for item in trace['files_accessed']]
+            for rel_path in _ui_style_candidate_paths(codebase_context, existing_ui_paths):
+                trace['files_accessed'].append({
+                    'path': rel_path,
+                    'source': 'ui_candidate',
+                    'mode': 'candidate',
+                    'reason': 'Added as a likely UI surface for a styling question.',
+                })
         planned_blocks = []
+        full_primary_paths = _chat_primary_file_paths(retrieval, explicit_file_mentions, content)
         for item in retrieval.get('files', [])[:retrieval_max_files]:
             rel_path = str(item.get('path') or '')
             if not rel_path:
                 continue
-            file_content = read_query_relevant_file_content(workspace_path, rel_path, query=content, limit=retrieval_file_limit)
+            use_full_content = rel_path in full_primary_paths
+            file_content = read_query_relevant_file_content(
+                workspace_path,
+                rel_path,
+                query=content,
+                limit=12000 if use_full_content else retrieval_file_limit,
+                force_full=use_full_content,
+            )
             if not file_content:
                 continue
             planned_blocks.append(
-                f"--- FILE: {rel_path} ---\n"
+                f"--- {'FULL FILE' if use_full_content else 'FILE'}: {rel_path} ---\n"
                 f"Summary: {item.get('summary') or item.get('purpose') or 'No summary available.'}\n"
                 f"Content:\n{file_content}\n"
-                f"--- END FILE ---"
+                f"--- END {'FULL FILE' if use_full_content else 'FILE'} ---"
             )
         if planned_blocks:
             context_blocks.append("@codebase-planned\n" + "\n\n".join(planned_blocks))
@@ -8257,6 +10516,7 @@ def _resolve_chat_context(
                 trace['files_accessed'].append({
                     'path': rel_path,
                     'source': item.get('source') or 'retrieval',
+                    'mode': 'full' if rel_path in full_primary_paths else 'chunked',
                     'reason': item.get('reason') or 'Selected by manifest-backed retrieval for this chat turn.',
                 })
 
@@ -8302,30 +10562,51 @@ def _build_chat_trace_from_changes(
             for item in (memory_context.get('semantic_hits') or [])[:8]
         ],
     }
+    if applied_changes.get('changeset_id'):
+        trace['changeset_id'] = applied_changes.get('changeset_id')
+    if isinstance(applied_changes.get('undo'), dict):
+        trace['undo'] = applied_changes.get('undo')
+        trace['undo_available'] = bool((applied_changes.get('undo') or {}).get('available'))
     return trace
 
 
-def _record_chat_changes(project: Project, request_text: str, workspace_path: Path, previous_contents: dict, applied_files: list[str]):
+def _record_chat_changes(
+    project: Project,
+    request_text: str,
+    workspace_path: Path,
+    previous_contents: dict | None,
+    applied_files: list[str],
+    *,
+    ai_review: dict | None = None,
+):
     if not applied_files:
-        return
+        return None
+
+    before_contents = dict(previous_contents or {})
+    checkpoint_review = dict(ai_review or {})
+    checkpoint_id = str(((checkpoint_review.get('checkpoint') or {}).get('id')) or '').strip()
+    if checkpoint_id:
+        checkpoint_contents = snapshot_previous_contents(str(project.id), checkpoint_id, applied_files)
+        for rel_path, content in checkpoint_contents.items():
+            before_contents.setdefault(rel_path, content)
 
     changeset = Changeset.objects.create(
         project=project,
         title=(request_text[:252] + '...') if len(request_text) > 255 else request_text,
         description=request_text,
         status='approved',
-        ai_review={'source': 'chat'},
+        ai_review=checkpoint_review or {'source': 'chat'},
     )
 
     for rel_path in applied_files:
         new_path = workspace_path / rel_path
-        before = previous_contents.get(rel_path, "")
+        before = before_contents.get(rel_path, "")
         after = ""
         action = 'modified'
 
         if new_path.exists():
             after = new_path.read_text(encoding='utf-8', errors='ignore')
-            action = 'modified' if rel_path in previous_contents else 'added'
+            action = 'modified' if rel_path in before_contents else 'added'
         else:
             action = 'deleted'
 
@@ -8345,8 +10626,20 @@ def _record_chat_changes(project: Project, request_text: str, workspace_path: Pa
             action=action,
         )
 
+    return changeset
 
-def apply_chat_changes(project: Project, request_text: str, selected_file: str = "", selected_content: str = "") -> dict:
+
+def apply_chat_changes(
+    project: Project,
+    request_text: str,
+    selected_file: str = "",
+    selected_content: str = "",
+    *,
+    request_attachments: list[dict] | None = None,
+    checkpoint: dict | None = None,
+    chat_mode: str | None = None,
+    changeset_source: str = 'chat',
+) -> dict:
     result = _run_multi_agent_implementation(
         project=project,
         request_title="Chat-requested update",
@@ -8359,6 +10652,10 @@ def apply_chat_changes(project: Project, request_text: str, selected_file: str =
         },
         selected_file=selected_file,
         selected_content=selected_content,
+        request_attachments=request_attachments,
+        checkpoint=checkpoint,
+        chat_mode=chat_mode,
+        changeset_source=changeset_source,
     )
     return {
         "applied_files": result.get("applied_files", []),
@@ -8367,6 +10664,8 @@ def apply_chat_changes(project: Project, request_text: str, selected_file: str =
         "review": result.get("review", {}),
         "validation_results": result.get("validation_results", []),
         "context_files": result.get("context_files", []),
+        "changeset_id": result.get("changeset_id"),
+        "undo": result.get("undo"),
     }
 
 
@@ -8896,6 +11195,60 @@ def _suggested_work_items(project: Project, features_payload: list[dict] | None 
     return suggestions
 
 
+def _derive_onboarding_ai_suggestions(
+    project: Project,
+    runtime: dict | None,
+    features_payload: list[dict],
+    suggested_work_items: list[dict],
+) -> list[str]:
+    blueprint = project.blueprint if isinstance(project.blueprint, dict) else {}
+    suggestions: list[str] = []
+    source_type = _project_source_type(project)
+
+    read_first = _blueprint_list(blueprint.get('overview_read_first'))
+    if read_first:
+        item = read_first[0] if isinstance(read_first[0], dict) else {}
+        title = str(item.get('title') or item.get('label') or 'the recommended starting files').strip()
+        reason = str(item.get('reason') or '').strip()
+        suggestions.append(
+            f"Start with {title}{f' to {reason.lower()}' if reason else ' before making changes'}."
+        )
+
+    runtime_command = str((runtime or {}).get('run_command') or '').strip()
+    if runtime_command:
+        suggestions.append(f"Run `{runtime_command}` in Workspace to verify the app boots before changing behavior.")
+    elif project.workspace_id:
+        suggestions.append("Open Workspace and confirm the detected runtime or setup commands before editing code.")
+
+    if suggested_work_items:
+        top_item = suggested_work_items[0]
+        title = str(top_item.get('title') or 'the top suggested work item').strip()
+        reason = str(top_item.get('reason') or '').strip()
+        suggestions.append(
+            f"Turn {title} into a tracked work item{f' because {reason.lower()}' if reason else ''}."
+        )
+    elif not features_payload:
+        suggestions.append("Create the first work item from the current blueprint so planning and implementation stay aligned.")
+    else:
+        active_feature = next(
+            (feature for feature in features_payload if str(feature.get('status') or '') in {'backlog', 'development', 'testing', 'code_review'}),
+            None,
+        )
+        if active_feature:
+            title = str(active_feature.get('title') or 'the active work item').strip()
+            status = str(active_feature.get('status') or 'current').replace('_', ' ')
+            suggestions.append(f"Continue with {title} from the {status} stage and keep the blueprint in sync with the change.")
+
+    docs_available = bool(str(blueprint.get('readme_excerpt') or '').strip()) or bool(_blueprint_list(blueprint.get('instruction_files')))
+    if docs_available and source_type in {'github', 'folder'}:
+        suggestions.append("Use the Repository and Onboarding tabs together to map root docs, important folders, and runtime entrypoints before deeper edits.")
+
+    if blueprint and source_type in {'starter', 'github', 'folder'}:
+        suggestions.append("Regenerate the blueprint after structural changes so repository docs, onboarding context, and architecture notes stay accurate.")
+
+    return _dedupe_json_items([item for item in suggestions if item])[:4]
+
+
 def _derive_onboarding_summary(project: Project, runtime: dict | None, features_payload: list[dict] | None = None) -> dict:
     features_payload = features_payload or _project_features_payload(project)
     source_type = _project_source_type(project)
@@ -8916,11 +11269,8 @@ def _derive_onboarding_summary(project: Project, runtime: dict | None, features_
             'Create or review the initial work items before editing code.',
         ])
     next_steps.append('Use Work Items to manage scope and Workspace to implement code changes.')
-    ai_suggestions = [
-        'Ask DevHub to generate or refine work items from the current blueprint.',
-        'Use AI implementation on a work item after reviewing the blueprint and repo map.',
-        'Refresh the blueprint after meaningful code changes so onboarding stays current.',
-    ]
+    suggested_work_items = _suggested_work_items(project, features_payload)
+    ai_suggestions = _derive_onboarding_ai_suggestions(project, runtime, features_payload, suggested_work_items)
 
     runtime_hint = runtime.get('run_command') if isinstance(runtime, dict) else None
     return {
@@ -8928,7 +11278,7 @@ def _derive_onboarding_summary(project: Project, runtime: dict | None, features_
         'recommended_start_tab': _recommended_start_tab(project),
         'next_steps': next_steps,
         'ai_suggestions': ai_suggestions,
-        'suggested_work_items': _suggested_work_items(project, features_payload),
+        'suggested_work_items': suggested_work_items,
         'runtime_hint': runtime_hint or 'Runtime command will appear once detected.',
         'existing_work_items': len(features_payload),
         'has_blueprint': bool(project.blueprint),
@@ -9268,10 +11618,28 @@ def create_project(request):
         except Exception:
             logger.exception("Failed to initialize project memory for project %s", project.id)
 
+        # Seed the first blueprint before returning so the project page never lands
+        # on an empty architecture screen while longer documentation work continues.
+        try:
+            if not project.blueprint:
+                logger.info("Generating initial blueprint seed for project %s", project.id)
+                generate_blueprint_sync(project)
+                project.refresh_from_db(fields=['blueprint'])
+        except MEMORY_DB_ERRORS:
+            logger.warning("Skipped initial blueprint seed for project %s because the database was busy.", project.id)
+        except Exception:
+            logger.exception("Failed to generate initial blueprint seed for project %s", project.id)
+
         _schedule_project_context_generation(
             project,
             include_documentation=bool(github_url or local_path or github_repository_full_name),
+            include_blueprint=not bool(project.blueprint),
         )
+
+        documentation_run = DocumentationRun.objects.filter(project=project).prefetch_related('sections').first()
+        documentation = _documentation_run_payload(documentation_run)
+        documentation_status = str(documentation.get('status') or '').lower()
+        context_initializing = (not bool(project.blueprint)) or documentation_status in {'pending', 'running'}
 
         return JsonResponse({
             'id': str(project.id),
@@ -9279,12 +11647,73 @@ def create_project(request):
             'description': project.description,
             'workspace_id': project.workspace_id,
             'status': 'ready',
-            'context_initializing': True,
+            'blueprint': project.blueprint,
+            'documentation': documentation,
+            'context_initializing': context_initializing,
             'github_integration': _github_integration_payload(project),
             'runtime': detect_runtime(Path(project.local_path)),
         }, status=201)
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=500)
+
+
+def _project_coder_customization_payload(project: Project) -> dict:
+    workspace_path = _project_workspace_path(project)
+    if not workspace_path:
+        return {
+            "available": False,
+            "meta_root": ".devhub",
+            "meta_path": "",
+            "summary": "",
+            "skills": [],
+            "prompt_overrides": [],
+            "slash_commands": [],
+            "suggested_files": suggested_project_customization_files(),
+            "can_bootstrap": False,
+        }
+
+    try:
+        raw_skills = list_project_skills(workspace_path, limit=24)
+        raw_prompts = list_project_prompt_overrides(workspace_path)
+        summary = build_project_customization_summary(workspace_path)
+    except Exception:
+        logger.exception("Failed to build coder customization payload for project %s", project.id)
+        raw_skills = []
+        raw_prompts = []
+        summary = ""
+
+    skills = [
+        {
+            "name": str(item.get("name") or "").strip(),
+            "slug": str(item.get("slug") or "").strip(),
+            "description": str(item.get("description") or "").strip(),
+            "path": str(item.get("path") or "").strip(),
+        }
+        for item in raw_skills
+        if str(item.get("name") or "").strip()
+    ]
+
+    prompt_overrides = [
+        {
+            "name": str(item.get("name") or "").strip(),
+            "path": str(item.get("path") or "").strip(),
+            "summary": str(item.get("summary") or "").strip(),
+        }
+        for item in raw_prompts
+        if str(item.get("name") or "").strip()
+    ]
+
+    return {
+        "available": bool(skills or prompt_overrides),
+        "meta_root": ".devhub",
+        "meta_path": str((workspace_path / ".devhub").resolve()),
+        "summary": summary[:4000],
+        "skills": skills,
+        "prompt_overrides": prompt_overrides,
+        "slash_commands": [f"/{item.get('slug') or item.get('name')}" for item in skills[:12]],
+        "suggested_files": suggested_project_customization_files(),
+        "can_bootstrap": True,
+    }
 
 
 def get_project(request, project_id):
@@ -9357,6 +11786,7 @@ def get_project(request, project_id):
         work_items_summary = _work_items_summary(project, features_payload)
         onboarding_summary = _derive_onboarding_summary(project, runtime, features_payload)
         project_flow = _project_flow_payload(project, runtime, features_payload)
+        coder_customization = _project_coder_customization_payload(project)
         blueprint_meta = {
             'available': bool(project.blueprint),
             'generated': bool(project.blueprint),
@@ -9389,12 +11819,42 @@ def get_project(request, project_id):
             'documentation': documentation,
             'context_initializing': context_initializing,
             'runtime': runtime,
+            'coder_customization': coder_customization,
         })
     except Project.DoesNotExist:
         return JsonResponse({'error': 'Project not found'}, status=404)
     except (ValidationError, ValueError):
         return JsonResponse({'error': 'Invalid project ID'}, status=400)
     except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=500)
+
+
+@csrf_exempt
+def project_coder_customization_bootstrap(request, project_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        project = Project.objects.get(id=project_id)
+    except (Project.DoesNotExist, ValidationError, ValueError):
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
+    workspace_path = _project_workspace_path(project)
+    if not workspace_path:
+        return JsonResponse({'error': 'Project has no editable local workspace.'}, status=400)
+
+    try:
+        bootstrap_result = bootstrap_project_customization(workspace_path)
+        return JsonResponse(
+            {
+                'status': 'ok',
+                'created': bootstrap_result.get('created') or [],
+                'existing': bootstrap_result.get('existing') or [],
+                'coder_customization': _project_coder_customization_payload(project),
+            }
+        )
+    except Exception as exc:
+        logger.exception("Failed to bootstrap coder customization for project %s", project.id)
         return JsonResponse({'error': str(exc)}, status=500)
 
 
@@ -9669,9 +12129,14 @@ def project_chat(request, project_id):
 
     if request.method == 'GET':
         requested_session_id = str(request.GET.get('session_id') or '').strip()
+        fresh_session = str(request.GET.get('fresh') or '').strip().lower() in {'1', 'true', 'yes'}
         grouped_sessions, sessions = _group_project_chat_sessions(project)
-        active_session_id = requested_session_id or (sessions[0]['session_id'] if sessions else '')
-        active_messages = [_serialize_chat_message(item) for item in grouped_sessions.get(active_session_id, [])]
+        if fresh_session:
+            active_session_id = ''
+            active_messages = []
+        else:
+            active_session_id = requested_session_id or (sessions[0]['session_id'] if sessions else '')
+            active_messages = [_serialize_chat_message(project, item) for item in grouped_sessions.get(active_session_id, [])]
         return JsonResponse(
             {
                 'messages': active_messages,
@@ -9683,16 +12148,23 @@ def project_chat(request, project_id):
     if request.method == 'POST':
         content = ''
         session_id = ''
+        chat_checkpoint = None
         try:
             body = _parse_json_body(request)
             content = str(body.get('content') or '').strip()
             selected_file = str(body.get('selected_file') or '').strip()
             selected_content = str(body.get('selected_content') or '')
             context_mentions = body.get('context_mentions') or []
+            try:
+                attachments = _normalize_chat_attachments(body.get('attachments'))
+            except ValueError as exc:
+                return JsonResponse({'error': str(exc)}, status=400)
             apply_changes = body.get('apply_changes')
+            explicit_chat_mode = _normalize_chat_mode(body.get('mode'))
             session_id = str(body.get('session_id') or '').strip() or str(uuid.uuid4())
-            if not content:
-                return JsonResponse({'error': 'Message is required'}, status=400)
+            if not content and not attachments:
+                return JsonResponse({'error': 'Message or image attachment is required'}, status=400)
+            request_text = _chat_request_text(content, attachments)
 
             user_trace = {
                 'context_mentions': _dedupe_chat_mentions(
@@ -9701,29 +12173,110 @@ def project_chat(request, project_id):
                 ),
                 'selected_file': selected_file or None,
                 'session_id': session_id,
+                'chat_mode': explicit_chat_mode or 'auto',
+                'attachments': attachments,
             }
             ChatMessage.objects.create(project=project, role='user', content=content, metadata=user_trace)
 
-            should_apply_changes = _looks_like_edit_request(content) if apply_changes is None else bool(apply_changes)
+            should_apply_changes = _should_apply_changes_for_chat_mode(explicit_chat_mode, request_text, apply_changes)
             applied_changes = None
             assistant_trace = {}
-            memory_context = build_memory_context(project, content, selected_file=selected_file)
+            workspace_actions = []
+            chat_checkpoint = None
+            memory_context = build_memory_context(project, request_text, selected_file=selected_file)
             resolved_context_text, context_trace = _resolve_chat_context(
                 project,
-                content,
+                request_text,
                 selected_file=selected_file,
                 selected_content=selected_content,
                 context_mentions=context_mentions,
                 session_id=session_id,
             )
+            chat_decision = _classify_chat_state(
+                project,
+                request_text,
+                selected_file,
+                context_mentions,
+                context_trace,
+                should_apply_changes,
+            )
+            chat_state = str(chat_decision.get('state') or CHAT_STATE_GROUNDED_ANSWER)
+            if explicit_chat_mode == CHAT_MODE_EDIT:
+                chat_state = CHAT_STATE_EDIT_REQUEST
+                chat_decision = {
+                    'state': CHAT_STATE_EDIT_REQUEST,
+                    'reason': 'Explicit edit mode was selected.',
+                    'response_contract': (
+                        "Apply the requested change directly to the codebase and summarize which files changed."
+                    ),
+                }
+            elif explicit_chat_mode == CHAT_MODE_AGENT:
+                if should_apply_changes and project.workspace_id:
+                    workspace_path = workspace_manager.get_workspace_path(project.workspace_id)
+                    chat_checkpoint = create_workspace_checkpoint(
+                        str(project.id),
+                        workspace_path,
+                        label=(content or request_text)[:160],
+                        source='chat_agent',
+                    )
+                agent_result = _handle_agent_chat_request(
+                    project,
+                    request_text,
+                    selected_file=selected_file,
+                    selected_content=selected_content,
+                    attachments=attachments,
+                    session_id=session_id,
+                    should_apply_changes=should_apply_changes,
+                    context_trace=context_trace,
+                    memory_context=memory_context,
+                    checkpoint=chat_checkpoint,
+                )
+                if agent_result.get('handled'):
+                    applied_changes = agent_result.get('applied_changes')
+                    workspace_actions = list(agent_result.get('workspace_actions') or [])
+                    ai_response = str(agent_result.get('assistant_message') or '')
+                    assistant_trace = dict(agent_result.get('assistant_trace') or {})
+                    assistant_trace['session_id'] = session_id
+                    assistant_trace['chat_mode'] = CHAT_MODE_AGENT
+                    if workspace_actions:
+                        assistant_trace['workspace_actions'] = workspace_actions
 
-            if should_apply_changes and project.workspace_id:
+                    try:
+                        assistant_metadata = dict(assistant_trace or {})
+                        assistant_metadata['session_id'] = session_id
+                        ChatMessage.objects.create(project=project, role='assistant', content=ai_response, metadata=assistant_metadata)
+                    except Exception:
+                        logger.exception("Failed to persist assistant chat message for project %s", project.id)
+                    _, sessions = _group_project_chat_sessions(project)
+                    return JsonResponse({
+                        'user_message': content,
+                        'assistant_message': ai_response,
+                        'applied_changes': applied_changes,
+                        'workspace_actions': workspace_actions,
+                        'trace': assistant_trace,
+                        'session_id': session_id,
+                        'sessions': sessions,
+                    })
+
+            if chat_state == CHAT_STATE_EDIT_REQUEST and project.workspace_id:
+                if should_apply_changes and not chat_checkpoint:
+                    workspace_path = workspace_manager.get_workspace_path(project.workspace_id)
+                    chat_checkpoint = create_workspace_checkpoint(
+                        str(project.id),
+                        workspace_path,
+                        label=(content or request_text)[:160],
+                        source='chat_edit',
+                    )
                 try:
                     applied_changes = apply_chat_changes(
                         project,
-                        content,
+                        request_text,
                         selected_file=selected_file,
                         selected_content=selected_content,
+                        request_attachments=attachments,
+                        checkpoint=chat_checkpoint,
+                        chat_mode=explicit_chat_mode or CHAT_MODE_EDIT,
+                        changeset_source='chat',
                     )
                     applied_list = applied_changes['applied_files']
                     ai_response = (
@@ -9733,11 +12286,20 @@ def project_chat(request, project_id):
                     )
                     assistant_trace = _build_chat_trace_from_changes(applied_changes, context_trace, memory_context)
                     assistant_trace['session_id'] = session_id
+                    assistant_trace['chat_state'] = chat_state
+                    assistant_trace['chat_mode'] = explicit_chat_mode or CHAT_MODE_EDIT
+                    assistant_trace['state_reason'] = chat_decision.get('reason')
                 except Exception as exc:
+                    if chat_checkpoint:
+                        delete_workspace_checkpoint(str(project.id), str(chat_checkpoint.get('id') or ''))
+                        chat_checkpoint = None
                     logger.exception("Chat code application failed for project %s", project.id)
                     ai_response = f"I understood this as a code-change request, but the edit failed: {str(exc)}"
                     assistant_trace = {
                         'approach': context_trace.get('approach') or 'Tried to apply a code change request.',
+                        'chat_state': chat_state,
+                        'chat_mode': explicit_chat_mode or CHAT_MODE_EDIT,
+                        'state_reason': chat_decision.get('reason'),
                         'session_id': session_id,
                         'context_mentions': context_trace.get('context_mentions') or [],
                         'context_sources': context_trace.get('context_sources') or [],
@@ -9748,72 +12310,100 @@ def project_chat(request, project_id):
                     }
             else:
                 try:
-                    from agents.base import BaseAgent
+                    if chat_state == CHAT_STATE_NEEDS_CLARIFICATION and chat_decision.get('response'):
+                        ai_response = str(chat_decision.get('response') or '')
+                        assistant_trace = {
+                            'approach': 'Paused for human clarification because the requested UI surface was ambiguous.',
+                            'chat_state': chat_state,
+                            'chat_mode': explicit_chat_mode or CHAT_MODE_ASK,
+                            'state_reason': chat_decision.get('reason'),
+                            'session_id': session_id,
+                            'context_mentions': context_trace.get('context_mentions') or [],
+                            'context_sources': list(context_trace.get('context_sources') or []) + [
+                                {'label': '@clarification-needed', 'detail': 'Asked the user to clarify which UI surface they want to change before suggesting edits.'}
+                            ],
+                            'files_accessed': context_trace.get('files_accessed') or [],
+                            'commands_ran': [],
+                            'awaiting_clarification': True,
+                            'semantic_hits': [
+                                {
+                                    'path': item.get('file_path'),
+                                    'symbol': item.get('symbol'),
+                                }
+                                for item in (memory_context.get('semantic_hits') or [])[:8]
+                            ],
+                        }
+                    elif chat_state == CHAT_STATE_GROUNDED_ANSWER and chat_decision.get('mode') == 'deterministic_ui_style' and chat_decision.get('response'):
+                        ai_response = str(chat_decision.get('response') or '')
+                        assistant_trace = {
+                            'approach': 'Answered directly from deterministic UI style evidence extracted from retrieved files.',
+                            'chat_state': chat_state,
+                            'chat_mode': explicit_chat_mode or CHAT_MODE_ASK,
+                            'state_reason': chat_decision.get('reason'),
+                            'session_id': session_id,
+                            'context_mentions': context_trace.get('context_mentions') or [],
+                            'context_sources': list(context_trace.get('context_sources') or []) + [
+                                {'label': '@ui-style-evidence', 'detail': 'Extracted exact class strings for the requested UI styling question.'}
+                            ],
+                            'files_accessed': context_trace.get('files_accessed') or [],
+                            'commands_ran': [],
+                            'semantic_hits': [
+                                {
+                                    'path': item.get('file_path'),
+                                    'symbol': item.get('symbol'),
+                                }
+                                for item in (memory_context.get('semantic_hits') or [])[:8]
+                            ],
+                        }
+                    else:
+                        from agents.base import BaseAgent
 
-                    blueprint = project.blueprint or {}
-                    arch = json.dumps(blueprint.get('architecture_overview', ''))[:800]
-                    tech = ", ".join(project.tech_stack) if project.tech_stack else "Unknown"
-
-                    grouped_sessions, _ = _group_project_chat_sessions(project)
-                    recent = grouped_sessions.get(session_id, [])[-10:]
-                    history_text = "\n".join([f"{message['role']}: {message['content']}" for message in recent])
-
-                    file_context = "No file selected."
-                    if selected_file:
-                        file_context = f"Active file: {selected_file}\n"
-                        if selected_content:
-                            file_context += selected_content[:4000]
-                        elif project.workspace_id:
-                            try:
-                                file_context += workspace_manager.read_file(project.workspace_id, selected_file)[:4000]
-                            except Exception:
-                                file_context += "(Unable to read file content.)"
-                    if resolved_context_text:
-                        file_context += f"\n\nExplicit context mentions:\n{resolved_context_text[:48000]}"
-
-                    agent = BaseAgent(
-                        role="DevHub AI Assistant",
-                        system_instruction=f"""You are the DevHub AI assistant for the project "{project.name}".
-Tech Stack: {tech}
-Architecture: {arch}
-Working Memory: {memory_context.get('working_summary', '')[:2000]}
-Cached Codebase Summary: {memory_context.get('blueprint_summary', '')[:3000]}
-Episodic Memory: {memory_context.get('episodic_summary', '')[:1200]}
-
-Help the developer understand, plan and implement features, debug issues, and reason about the current code.
-Default to depth, not brevity: unless the user explicitly asks for a short or compact answer, give a thorough answer.
-For implementation or architecture questions, explain the real code path step by step using the retrieved evidence, not generic possibilities.
-When the question is system-level or end-to-end, cover all relevant layers that appear in context, including backend and frontend pieces when both are involved.
-Prefer sections like overview, backend, frontend, flow, and files to change when that helps clarity.
-When @codebase is mentioned, provide thorough, evidence-based answers citing specific file paths, function names, and code patterns you can see in the context.
-When relevant, use the active file context and keep answers action-oriented and detailed.""",
-                        ai_config=_project_ai_config(project),
-                    )
-                    ai_response = agent.generate(
-                        f"Chat history:\n{history_text}\n\n"
-                        f"Semantic recall:\n{memory_context.get('semantic_summary', 'No semantic recall.')}\n\n"
-                        f"Active workspace context:\n{file_context}\n\nUser: {content}"
-                    )
-                    assistant_trace = {
-                        'approach': context_trace.get('approach') or 'Answered the question using project memory, semantic recall, and explicit workspace context.',
-                        'session_id': session_id,
-                        'context_mentions': context_trace.get('context_mentions') or [],
-                        'context_sources': context_trace.get('context_sources') or [],
-                        'files_accessed': context_trace.get('files_accessed') or [],
-                        'commands_ran': [],
-                        'semantic_hits': [
-                            {
-                                'path': item.get('file_path'),
-                                'symbol': item.get('symbol'),
-                            }
-                            for item in (memory_context.get('semantic_hits') or [])[:8]
-                        ],
-                    }
+                        system_instruction, prompt = _build_chat_llm_prompt(
+                            project,
+                            request_text,
+                            attachments,
+                            selected_file,
+                            selected_content,
+                            session_id,
+                            context_trace,
+                            memory_context,
+                            resolved_context_text,
+                            explicit_chat_mode,
+                            chat_state,
+                            str(chat_decision.get('response_contract') or ''),
+                        )
+                        agent = BaseAgent(
+                            role="DevHub AI Assistant",
+                            system_instruction=system_instruction,
+                            ai_config=_project_ai_config(project),
+                        )
+                        ai_response = agent.generate_with_attachments(prompt, attachments) if attachments else agent.generate(prompt)
+                        assistant_trace = {
+                            'approach': context_trace.get('approach') or 'Answered the question using project memory, semantic recall, and explicit workspace context.',
+                            'chat_state': chat_state,
+                            'chat_mode': explicit_chat_mode or CHAT_MODE_ASK,
+                            'state_reason': chat_decision.get('reason'),
+                            'session_id': session_id,
+                            'context_mentions': context_trace.get('context_mentions') or [],
+                            'context_sources': context_trace.get('context_sources') or [],
+                            'files_accessed': context_trace.get('files_accessed') or [],
+                            'commands_ran': [],
+                            'semantic_hits': [
+                                {
+                                    'path': item.get('file_path'),
+                                    'symbol': item.get('symbol'),
+                                }
+                                for item in (memory_context.get('semantic_hits') or [])[:8]
+                            ],
+                        }
                 except Exception as exc:
                     logger.exception("Chat assistant response failed for project %s", project.id)
                     ai_response = f"AI agent unavailable ({str(exc)}). Check the configured DevHub AI provider settings to enable chat."
                     assistant_trace = {
                         'approach': context_trace.get('approach') or 'Tried to answer using workspace context.',
+                        'chat_state': chat_state,
+                        'chat_mode': explicit_chat_mode or CHAT_MODE_ASK,
+                        'state_reason': chat_decision.get('reason'),
                         'session_id': session_id,
                         'context_mentions': context_trace.get('context_mentions') or [],
                         'context_sources': context_trace.get('context_sources') or [],
@@ -9833,11 +12423,14 @@ When relevant, use the active file context and keep answers action-oriented and 
                 'user_message': content,
                 'assistant_message': ai_response,
                 'applied_changes': applied_changes,
+                'workspace_actions': workspace_actions,
                 'trace': assistant_trace,
                 'session_id': session_id,
                 'sessions': sessions,
             })
         except Exception as exc:
+            if chat_checkpoint:
+                delete_workspace_checkpoint(str(project.id), str(chat_checkpoint.get('id') or ''))
             logger.exception("Unhandled project_chat failure for project %s", project.id)
             fallback = f"Chat request failed unexpectedly: {str(exc)}"
             if content:
@@ -9854,6 +12447,167 @@ When relevant, use the active file context and keep answers action-oriented and 
             })
 
     return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+@csrf_exempt
+def project_chat_undo(request, project_id):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        project = Project.objects.get(id=project_id)
+    except (Project.DoesNotExist, ValidationError, ValueError):
+        return JsonResponse({'error': 'Project not found'}, status=404)
+
+    if not project.workspace_id:
+        return JsonResponse({'error': 'Project has no active workspace'}, status=400)
+
+    checkpoint_to_cleanup = None
+    try:
+        body = _parse_json_body(request)
+        session_id = str(body.get('session_id') or '').strip() or str(uuid.uuid4())
+        changeset_id = str(body.get('changeset_id') or '').strip()
+        if not changeset_id:
+            return JsonResponse({'error': 'changeset_id is required'}, status=400)
+
+        target_changeset = _changeset_by_id(project, changeset_id)
+        if not target_changeset:
+            return JsonResponse({'error': 'Changeset not found'}, status=404)
+
+        target_source = str((target_changeset.ai_review or {}).get('source') or '')
+        if not target_source.startswith('chat'):
+            return JsonResponse({'error': 'Only chat-driven changes can be undone from workspace chat.'}, status=400)
+
+        undo_payload = _chat_undo_payload_from_review(str(target_changeset.id), target_changeset.ai_review)
+        if not undo_payload or not undo_payload.get('checkpoint_id'):
+            return JsonResponse({'error': 'This changeset does not have a stored checkpoint.'}, status=400)
+        if not undo_payload.get('available'):
+            return JsonResponse({'error': 'Undo is no longer available for this changeset.'}, status=400)
+
+        workspace_path = workspace_manager.get_workspace_path(project.workspace_id)
+        checkpoint_to_cleanup = create_workspace_checkpoint(
+            str(project.id),
+            workspace_path,
+            label=f"Undo restore for {target_changeset.title}"[:160],
+            source='chat_undo',
+        )
+        restore_result = restore_workspace_checkpoint(
+            str(project.id),
+            workspace_path,
+            str(undo_payload.get('checkpoint_id') or ''),
+        )
+        restored_files = list(restore_result.get('restored_files') or [])
+
+        workspace_actions = [
+            {
+                'type': 'undo_restore',
+                'status': 'completed',
+                'detail': (
+                    'Restored the workspace to the checkpoint captured before the selected chat execution.'
+                    if restored_files
+                    else 'The workspace already matched the selected checkpoint.'
+                ),
+            }
+        ]
+
+        if restored_files:
+            undo_changeset = _record_chat_changes(
+                project,
+                f"Undo chat execution: {target_changeset.title}",
+                workspace_path,
+                snapshot_previous_contents(str(project.id), str(checkpoint_to_cleanup.get('id') or ''), restored_files),
+                restored_files,
+                ai_review=_chat_checkpoint_review_payload(
+                    checkpoint_to_cleanup,
+                    source='chat_undo',
+                    chat_mode=str((target_changeset.ai_review or {}).get('chat_mode') or CHAT_MODE_EDIT),
+                    undo_label='Undo Restore',
+                ),
+            )
+            _mark_changeset_undone(target_changeset, undo_changeset)
+            _update_project_memory(project, workspace_path, f"Undo chat execution: {target_changeset.title}", restored_files, ['Restored the workspace to the pre-change checkpoint.'])
+            index_semantic_memory(project, workspace_path, changed_paths=restored_files)
+            record_episode(
+                project=project,
+                memory_type='implementation',
+                title='Undo workspace chat execution',
+                summary=f"Restored the workspace to the checkpoint for '{target_changeset.title}'. Files: {', '.join(restored_files)}.",
+                related_files=restored_files,
+                metadata={'source': 'chat_undo', 'target_changeset_id': str(target_changeset.id)},
+            )
+            upsert_working_memory(
+                project,
+                'implementation',
+                (
+                    f"Latest implementation request: Undo chat execution: {target_changeset.title}\n"
+                    f"Files touched: {', '.join(restored_files)}\n"
+                    "Validation summary:\nRestored from a stored workspace checkpoint.\n"
+                    "Reviewer summary: Undo completed successfully."
+                ),
+                {'latest_request': f"Undo chat execution: {target_changeset.title}", 'files': restored_files, 'source': 'chat_undo'},
+            )
+            applied_changes = {
+                'applied_files': restored_files,
+                'count': len(restored_files),
+                'changeset_id': str(undo_changeset.id) if undo_changeset else None,
+                'undo': _chat_changeset_trace_metadata(undo_changeset).get('undo') if undo_changeset else None,
+            }
+            assistant_trace = {
+                'approach': 'Restored the workspace to the checkpoint captured immediately before the selected chat execution.',
+                'chat_state': 'undo_restore',
+                'chat_mode': str((target_changeset.ai_review or {}).get('chat_mode') or CHAT_MODE_EDIT),
+                'state_reason': 'Undo restored the workspace from the pre-change checkpoint.',
+                'session_id': session_id,
+                'context_mentions': [],
+                'context_sources': [],
+                'files_accessed': [{'path': item, 'reason': 'Restored from checkpoint'} for item in restored_files[:12]],
+                'commands_ran': [],
+                'workspace_actions': workspace_actions,
+                'applied_files': restored_files,
+            }
+            if undo_changeset:
+                assistant_trace.update(_chat_changeset_trace_metadata(undo_changeset))
+            assistant_message = (
+                f"Restored the workspace to the checkpoint before that chat change, reverting {len(restored_files)} file(s): "
+                f"{', '.join(restored_files[:6])}."
+            )
+        else:
+            _mark_changeset_undone(target_changeset, None)
+            delete_workspace_checkpoint(str(project.id), str(checkpoint_to_cleanup.get('id') or ''))
+            checkpoint_to_cleanup = None
+            applied_changes = None
+            assistant_trace = {
+                'approach': 'Compared the current workspace against the stored pre-change checkpoint and found no differences to restore.',
+                'chat_state': 'undo_restore',
+                'chat_mode': str((target_changeset.ai_review or {}).get('chat_mode') or CHAT_MODE_EDIT),
+                'state_reason': 'Undo checkpoint matched the current workspace already.',
+                'session_id': session_id,
+                'context_mentions': [],
+                'context_sources': [],
+                'files_accessed': [],
+                'commands_ran': [],
+                'workspace_actions': workspace_actions,
+                'applied_files': [],
+            }
+            assistant_message = 'The workspace already matches that checkpoint, so there was nothing to restore.'
+
+        assistant_metadata = dict(assistant_trace or {})
+        assistant_metadata['session_id'] = session_id
+        ChatMessage.objects.create(project=project, role='assistant', content=assistant_message, metadata=assistant_metadata)
+        _, sessions = _group_project_chat_sessions(project)
+        return JsonResponse({
+            'assistant_message': assistant_message,
+            'applied_changes': applied_changes,
+            'workspace_actions': workspace_actions,
+            'trace': assistant_trace,
+            'session_id': session_id,
+            'sessions': sessions,
+        })
+    except Exception as exc:
+        if checkpoint_to_cleanup:
+            delete_workspace_checkpoint(str(project.id), str(checkpoint_to_cleanup.get('id') or ''))
+        logger.exception("Chat undo failed for project %s", project.id)
+        return JsonResponse({'error': str(exc)}, status=500)
 
 
 @csrf_exempt
@@ -10196,8 +12950,8 @@ def workspace_spawn(request, workspace_id):
             return JsonResponse({'error': 'Command is required'}, status=400)
         workspace_path = workspace_manager.get_workspace_path(workspace_id)
         process_id = f"{workspace_id}_{command.split()[0]}"
-        sandbox.run_command(process_id, command, str(workspace_path))
-        return JsonResponse({'status': 'success', 'process_id': process_id})
+        sandbox.run_command(process_id, command, str(workspace_path), kind='terminal')
+        return JsonResponse({'status': 'success', 'process_id': process_id, 'sandbox': sandbox.details()})
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=500)
 
@@ -10251,10 +13005,15 @@ def workspace_runtime(request, workspace_id):
                     unhealthy_preview = not healthy
                 if command_changed or unhealthy_preview:
                     sandbox.kill_process(process_id)
-            sandbox.run_command(process_id, command, str(workspace_path))
+            sandbox.run_command(
+                process_id,
+                command,
+                str(workspace_path),
+                kind='runtime',
+                preview_url=runtime.get('preview_url'),
+            )
             payload = _runtime_response_payload(runtime, process_id, sandbox, wait_for_preview=True)
-            status_code = 200 if payload.get('ready') or not runtime.get('preview_url') else 502
-            return JsonResponse(payload, status=status_code)
+            return JsonResponse(payload, status=200)
 
         if request.method == 'DELETE':
             sandbox.kill_process(process_id)
@@ -10275,15 +13034,25 @@ def workspace_setup(request, workspace_id):
         process_id = setup_process_id(workspace_id)
 
         if request.method == 'GET':
-            return JsonResponse({'process_id': process_id, 'command': runtime.get('setup_command'), 'status': sandbox.get_status(process_id)})
+            return JsonResponse({
+                'process_id': process_id,
+                'command': runtime.get('setup_command'),
+                'status': sandbox.get_status(process_id),
+                'sandbox': sandbox.details(),
+            })
 
         if request.method == 'POST':
             body = _parse_json_body(request)
             command = body.get('command') or runtime.get('setup_command')
             if not command:
                 return JsonResponse({'error': 'No setup command detected for this project'}, status=400)
-            sandbox.run_command(process_id, command, str(workspace_path))
-            return JsonResponse({'process_id': process_id, 'command': command, 'status': sandbox.get_status(process_id)})
+            sandbox.run_command(process_id, command, str(workspace_path), kind='setup')
+            return JsonResponse({
+                'process_id': process_id,
+                'command': command,
+                'status': sandbox.get_status(process_id),
+                'sandbox': sandbox.details(),
+            })
 
         if request.method == 'DELETE':
             sandbox.kill_process(process_id)

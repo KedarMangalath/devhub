@@ -12,34 +12,154 @@ from agents.workspace import SKIP_DIRS
 from django.db import OperationalError, ProgrammingError
 from core.models import Changeset, ChatMessage, EpisodicMemory, Project, SemanticMemory, WorkingMemory
 
-INDEXABLE_EXTENSIONS = {'.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.json', '.md'}
-BLUEPRINT_CACHE_VERSION = 9
+INDEXABLE_EXTENSIONS = {
+    # Web / JavaScript ecosystem
+    '.py', '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.json', '.md',
+    '.vue', '.svelte', '.astro',
+    # Go
+    '.go',
+    # Rust
+    '.rs',
+    # Java / Kotlin / Scala / Groovy
+    '.java', '.kt', '.kts', '.scala', '.groovy',
+    # C# / F# / VB.NET
+    '.cs', '.fs', '.vb',
+    # Ruby
+    '.rb', '.erb', '.rake',
+    # PHP
+    '.php',
+    # Elixir / Erlang
+    '.ex', '.exs', '.erl', '.hrl',
+    # Swift / Dart / Objective-C
+    '.swift', '.dart', '.m', '.mm',
+    # C / C++
+    '.c', '.cpp', '.cc', '.cxx', '.h', '.hpp', '.hxx',
+    # Shell / scripting
+    '.sh', '.bash', '.zsh', '.fish', '.ps1',
+    # Config / infra / data
+    '.yaml', '.yml', '.toml', '.ini', '.env', '.conf',
+    '.sql', '.graphql', '.gql', '.proto',
+    # Styling
+    '.scss', '.sass', '.less',
+    # Docs / templates
+    '.rst', '.txt', '.jinja', '.jinja2', '.j2', '.tmpl',
+    # Lua / R / Julia
+    '.lua', '.r', '.jl',
+    # Terraform / Pulumi / Nix
+    '.tf', '.tfvars', '.nix',
+    # Misc
+    '.xml', '.gradle',
+}
+BLUEPRINT_CACHE_VERSION = 11  # bumped: universal language support + adaptive exploration
 BLUEPRINT_CONFIG_FILES = {
-    'package.json', 'requirements.txt', 'pyproject.toml', 'manage.py',
-    'vite.config.js', 'vite.config.ts', 'next.config.js', 'next.config.mjs', 'docker-compose.yml',
-    'dockerfile', 'readme.md', 'README.md', '.env.example', 'tsconfig.json',
+    # JavaScript / Node
+    'package.json', 'tsconfig.json',
+    'vite.config.js', 'vite.config.ts', 'next.config.js', 'next.config.mjs',
+    'nuxt.config.ts', 'nuxt.config.js', 'svelte.config.js', 'astro.config.mjs',
+    'webpack.config.js', 'rollup.config.js', 'esbuild.config.js',
+    'jest.config.js', 'jest.config.ts', 'vitest.config.ts',
+    'eslint.config.js', '.eslintrc.json', 'prettier.config.js', '.prettierrc',
+    # Python
+    'requirements.txt', 'pyproject.toml', 'setup.py', 'setup.cfg',
+    'pipfile', 'tox.ini', 'pytest.ini', 'manage.py',
+    # Go
+    'go.mod', 'go.sum',
+    # Rust
+    'cargo.toml',
+    # Java / Kotlin / Scala
+    'pom.xml', 'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts',
+    'gradlew', 'mvnw', 'build.sbt',
+    # Ruby
+    'gemfile', 'rakefile', 'config.ru', '.ruby-version',
+    # PHP
+    'composer.json', 'artisan', 'index.php',
+    # Elixir / Erlang
+    'mix.exs', 'rebar.config', 'rebar3',
+    # .NET
+    'global.json', 'nuget.config', 'directory.build.props',
+    # Swift / iOS
+    'package.swift', 'podfile',
+    # Infra / DevOps
+    'dockerfile', 'docker-compose.yml', 'docker-compose.yaml',
+    '.env.example', '.env.sample',
+    'makefile', 'justfile', 'taskfile.yml', 'taskfile.yaml',
+    'ansible.cfg', 'vagrantfile',
+    # Docs / project
+    'readme.md', 'readme.rst', 'readme.txt', 'readme',
+    'contributing.md', 'changelog.md', 'license', 'license.md',
 }
 BLUEPRINT_MAX_FILE_BYTES = 256 * 1024
 BLUEPRINT_MAX_JSON_BYTES = 96 * 1024
 BLUEPRINT_EXCERPT_CHARS = 1400
 BLUEPRINT_SKIP_FILE_NAMES = {
     'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb',
-    'cargo.lock', 'poetry.lock', 'composer.lock',
+    'cargo.lock', 'poetry.lock', 'composer.lock', 'gemfile.lock',
+    'packages.lock.json', 'pubspec.lock',
 }
-BLUEPRINT_SKIP_DIRS = {'dist', 'build', '.next', 'coverage', 'vendor', 'out', 'tmp', 'temp'}
+BLUEPRINT_SKIP_DIRS = {
+    # JS build artifacts
+    'dist', 'build', '.next', 'out',
+    # Test coverage
+    'coverage', '.nyc_output',
+    # Dependencies (language-agnostic)
+    'vendor', 'node_modules',
+    # Temp / generated
+    'tmp', 'temp', '.tmp',
+    # Java / Kotlin / Scala / Gradle build output
+    'target', '.gradle', '__pycache__',
+    # Elixir / Erlang build output
+    '_build', 'deps',
+    # Python virtual envs
+    '.venv', 'venv', 'env', '.env',
+    # .NET build output
+    'bin', 'obj',
+    # iOS / macOS
+    'pods', 'derived_data', '.build',
+    # Misc generated
+    'generated', 'gen', '.cache', '.parcel-cache',
+}
 BLUEPRINT_CACHE_FILE = 'blueprint-context.json'
 BLUEPRINT_MANIFEST_FILE = 'manifest.json'
 BLUEPRINT_DEPENDENCY_GRAPH_FILE = 'dependency-graph.json'
 REPO_MAP_FILE = 'repo-map.md'
 BLUEPRINT_TIER_1_NAMES = {
-    'readme.md', 'contributing.md', 'security.md', '.env.example',
-    'package.json', 'requirements.txt', 'pyproject.toml', 'manage.py',
-    'main.py', 'app.py', 'main.ts', 'main.tsx', 'main.js', 'main.jsx',
-    'index.ts', 'index.tsx', 'index.js', 'index.jsx',
+    # Docs
+    'readme.md', 'readme.rst', 'readme.txt', 'readme',
+    'contributing.md', 'security.md', 'changelog.md',
+    '.env.example', '.env.sample',
+    # JavaScript / TypeScript
+    'package.json', 'tsconfig.json',
     'vite.config.ts', 'vite.config.js', 'next.config.js', 'next.config.mjs',
-    'dockerfile', 'docker-compose.yml', 'tsconfig.json', 'urls.py',
+    'main.ts', 'main.tsx', 'main.js', 'main.jsx',
+    'index.ts', 'index.tsx', 'index.js', 'index.jsx',
+    'app.ts', 'app.tsx', 'app.js', 'app.jsx',
+    'server.ts', 'server.js',
+    # Python
+    'requirements.txt', 'pyproject.toml', 'setup.py', 'manage.py',
+    'main.py', 'app.py', 'wsgi.py', 'asgi.py',
+    # Go
+    'go.mod', 'main.go',
+    # Rust
+    'cargo.toml', 'main.rs', 'lib.rs',
+    # Java / Kotlin / Scala
+    'pom.xml', 'build.gradle', 'build.gradle.kts', 'build.sbt',
+    'application.java', 'main.java',
+    'application.kt', 'main.kt',
+    # Ruby
+    'gemfile', 'config.ru', 'application.rb', 'routes.rb',
+    # PHP
+    'composer.json', 'index.php',
+    # Elixir
+    'mix.exs', 'application.ex', 'router.ex', 'endpoint.ex',
+    # .NET
+    'program.cs', 'startup.cs', 'appsettings.json',
+    # Infra
+    'dockerfile', 'docker-compose.yml', 'docker-compose.yaml',
+    'makefile', 'justfile',
+    # Django-specific
+    'urls.py', 'settings.py',
 }
-BLUEPRINT_TIER_1_TOKENS = ('router', 'routes', 'urls', 'config', 'settings')
+BLUEPRINT_TIER_1_TOKENS = ('router', 'routes', 'urls', 'config', 'settings', 'application', 'startup')
 BLUEPRINT_SUMMARY_SIZE_THRESHOLD = 20 * 1024
 BLUEPRINT_LARGE_FILE_CHUNK_LINES = 120
 BLUEPRINT_LARGE_FILE_CHUNK_OVERLAP = 20
@@ -102,9 +222,15 @@ def _extract_symbol(content: str) -> str:
     patterns = [
         r'^\s*class\s+([A-Za-z0-9_]+)',
         r'^\s*def\s+([A-Za-z0-9_]+)',
+        r'^\s*func\s+(?:\([^)]+\)\s*)?([A-Za-z0-9_]+)\s*\(',
+        r'^\s*(?:pub\s+)?(?:struct|enum|trait|fn)\s+([A-Za-z0-9_]+)',
+        r'^\s*type\s+([A-Za-z0-9_]+)\s+struct\s*\{',
+        r'^\s*(?:public\s+)?(?:class|interface|record|enum)\s+([A-Za-z0-9_]+)',
         r'^\s*function\s+([A-Za-z0-9_]+)',
         r'^\s*const\s+([A-Za-z0-9_]+)\s*=',
         r'^\s*export\s+default\s+function\s+([A-Za-z0-9_]+)',
+        r'^\s*defmodule\s+([A-Za-z0-9_.]+)',
+        r'^\s*class\s+([A-Za-z0-9_:]+)\s*<',
     ]
     for line in (content or '').splitlines()[:80]:
         for pattern in patterns:
@@ -115,16 +241,124 @@ def _extract_symbol(content: str) -> str:
 
 
 def _detect_language(file_path: Path) -> str:
+    file_name = file_path.name.lower()
+    special_names = {
+        'dockerfile': 'docker',
+        'docker-compose.yml': 'docker-compose',
+        'docker-compose.yaml': 'docker-compose',
+        'compose.yml': 'docker-compose',
+        'compose.yaml': 'docker-compose',
+        'makefile': 'makefile',
+        'justfile': 'just',
+        'taskfile.yml': 'yaml',
+        'taskfile.yaml': 'yaml',
+        'jenkinsfile': 'groovy',
+        'procfile': 'procfile',
+        'gemfile': 'ruby',
+        'rakefile': 'ruby',
+        'podfile': 'ruby',
+        'config.ru': 'ruby',
+        '.env': 'env',
+        '.env.example': 'env',
+        '.env.sample': 'env',
+        'go.mod': 'go-module',
+        'go.sum': 'go-module',
+        'cargo.toml': 'rust-manifest',
+        'mix.exs': 'elixir',
+        'package.swift': 'swift',
+    }
+    if file_name in special_names:
+        return special_names[file_name]
+
     mapping = {
+        # Web / JS ecosystem
         '.py': 'python',
         '.js': 'javascript',
         '.jsx': 'javascript-react',
         '.ts': 'typescript',
         '.tsx': 'typescript-react',
+        '.vue': 'vue',
+        '.svelte': 'svelte',
+        '.astro': 'astro',
         '.html': 'html',
         '.css': 'css',
+        '.scss': 'scss',
+        '.sass': 'sass',
+        '.less': 'less',
         '.json': 'json',
         '.md': 'markdown',
+        '.rst': 'rst',
+        # Go
+        '.go': 'go',
+        # Rust
+        '.rs': 'rust',
+        # Java / JVM
+        '.java': 'java',
+        '.kt': 'kotlin',
+        '.kts': 'kotlin',
+        '.scala': 'scala',
+        '.groovy': 'groovy',
+        # .NET
+        '.cs': 'csharp',
+        '.fs': 'fsharp',
+        '.vb': 'vb',
+        # Ruby
+        '.rb': 'ruby',
+        '.erb': 'ruby-erb',
+        '.rake': 'ruby',
+        # PHP
+        '.php': 'php',
+        # Elixir / Erlang
+        '.ex': 'elixir',
+        '.exs': 'elixir',
+        '.erl': 'erlang',
+        '.hrl': 'erlang',
+        # Swift / Dart / ObjC
+        '.swift': 'swift',
+        '.dart': 'dart',
+        '.m': 'objc',
+        '.mm': 'objc',
+        # C / C++
+        '.c': 'c',
+        '.cpp': 'cpp',
+        '.cc': 'cpp',
+        '.cxx': 'cpp',
+        '.h': 'c',
+        '.hpp': 'cpp',
+        '.hxx': 'cpp',
+        # Shell
+        '.sh': 'shell',
+        '.bash': 'shell',
+        '.zsh': 'shell',
+        '.fish': 'shell',
+        '.ps1': 'powershell',
+        # Config / infra
+        '.yaml': 'yaml',
+        '.yml': 'yaml',
+        '.toml': 'toml',
+        '.ini': 'ini',
+        '.conf': 'conf',
+        '.env': 'env',
+        '.tf': 'terraform',
+        '.tfvars': 'terraform',
+        '.nix': 'nix',
+        # Data / query
+        '.sql': 'sql',
+        '.graphql': 'graphql',
+        '.gql': 'graphql',
+        '.proto': 'protobuf',
+        # Templates
+        '.jinja': 'jinja',
+        '.jinja2': 'jinja',
+        '.j2': 'jinja',
+        '.tmpl': 'template',
+        # Misc
+        '.xml': 'xml',
+        '.gradle': 'groovy',
+        '.lua': 'lua',
+        '.r': 'r',
+        '.jl': 'julia',
+        '.txt': 'text',
     }
     return mapping.get(file_path.suffix.lower(), file_path.suffix.lower().lstrip('.') or 'text')
 
@@ -150,64 +384,156 @@ def _manifest_fingerprint(entries: list[dict]) -> str:
 
 def _extract_imports(content: str, language: str) -> list[str]:
     imports: list[str] = []
-    for line in (content or '').splitlines()[:120]:
+    for line in (content or '').splitlines()[:150]:
         stripped = line.strip()
-        if language.startswith('python') and (stripped.startswith('import ') or stripped.startswith('from ')):
+        if not stripped:
+            continue
+        if language == 'python' and (stripped.startswith('import ') or stripped.startswith('from ')):
             imports.append(stripped[:160])
-        elif language in {'javascript', 'javascript-react', 'typescript', 'typescript-react'} and (
+        elif language in {'javascript', 'javascript-react', 'typescript', 'typescript-react', 'vue', 'svelte'} and (
             stripped.startswith('import ') or 'require(' in stripped
         ):
             imports.append(stripped[:160])
-    return imports[:12]
+        elif language == 'go' and (stripped.startswith('import ') or (stripped.startswith('"') and '/' in stripped)):
+            imports.append(stripped[:160])
+        elif language == 'rust' and (stripped.startswith('use ') or stripped.startswith('extern crate ')):
+            imports.append(stripped[:160])
+        elif language in {'java', 'kotlin', 'scala', 'groovy'} and stripped.startswith('import '):
+            imports.append(stripped[:160])
+        elif language == 'csharp' and (stripped.startswith('using ') or stripped.startswith('namespace ')):
+            imports.append(stripped[:160])
+        elif language == 'ruby' and (stripped.startswith('require ') or stripped.startswith('require_relative ')):
+            imports.append(stripped[:160])
+        elif language == 'php' and (stripped.startswith('use ') or stripped.startswith('require') or stripped.startswith('namespace ')):
+            imports.append(stripped[:160])
+        elif language == 'elixir' and (stripped.startswith('alias ') or stripped.startswith('import ') or stripped.startswith('use ') or stripped.startswith('require ')):
+            imports.append(stripped[:160])
+        elif language == 'swift' and stripped.startswith('import '):
+            imports.append(stripped[:160])
+        elif language == 'dart' and stripped.startswith('import '):
+            imports.append(stripped[:160])
+    return imports[:15]
 
 
 def _extract_routes(content: str, language: str) -> list[str]:
     routes = []
-    if language.startswith('python'):
+    if language == 'python':
         patterns = [
             r'path\(\s*[\'"]([^\'"]+)',
             r're_path\(\s*[\'"]([^\'"]+)',
-            r'@app\.(get|post|put|delete|patch)\(\s*[\'"]([^\'"]+)',
-            r'@router\.(get|post|put|delete|patch)\(\s*[\'"]([^\'"]+)',
+            r'@(?:app|router|blueprint)\.(get|post|put|delete|patch)\(\s*[\'"]([^\'"]+)',
         ]
-    elif language in {'javascript', 'javascript-react', 'typescript', 'typescript-react'}:
+    elif language in {'javascript', 'javascript-react', 'typescript', 'typescript-react', 'vue', 'svelte'}:
         patterns = [
-            r'router\.(get|post|put|delete|patch)\(\s*[\'"]([^\'"]+)',
-            r'app\.(get|post|put|delete|patch)\(\s*[\'"]([^\'"]+)',
-            r'path:\s*[\'"]([^\'"]+)',
+            r'(?:router|app|fastify|server|hono)\.(get|post|put|delete|patch)\(\s*[\'"`]([^\'"` ]+)',
+            r'path:\s*[\'"`]([^\'"` ]+)',
             r'Route\s+path=[{]?[\'"]([^\'"]+)',
+            r'\{[\'"]?path[\'"]?\s*:\s*[\'"]([^\'"]+)',
+        ]
+    elif language == 'go':
+        patterns = [
+            r'(?:r|router|mux|e|g)\.\w+\(\s*[\'"`]([^\'"` ]+)',
+            r'http\.Handle\s*\(\s*[\'"`]([^\'"` ]+)',
+            r'HandleFunc\s*\(\s*[\'"`]([^\'"` ]+)',
+        ]
+    elif language == 'ruby':
+        patterns = [
+            r'(?:get|post|put|patch|delete|resources?)\s+[\'"]([^\'"]+)',
+            r'(?:get|post|put|patch|delete)\s+:?(\w+)',
+        ]
+    elif language == 'java':
+        patterns = [
+            r'@(?:GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*\(\s*[\'"]?([^\'")\s]+)',
+        ]
+    elif language in {'kotlin', 'scala'}:
+        patterns = [
+            r'@(?:GetMapping|PostMapping|PutMapping|DeleteMapping|RequestMapping)\s*\(\s*[\'"]?([^\'")\s]+)',
+        ]
+    elif language == 'csharp':
+        patterns = [
+            r'\[(?:HttpGet|HttpPost|HttpPut|HttpDelete|Route)\s*\(\s*[\'"]([^\'"]+)',
+            r'MapGet\s*\(\s*[\'"]([^\'"]+)',
+            r'MapPost\s*\(\s*[\'"]([^\'"]+)',
+        ]
+    elif language == 'elixir':
+        patterns = [
+            r'(?:get|post|put|patch|delete|resources|scope)\s+[\'"]([^\'"]+)',
+        ]
+    elif language == 'php':
+        patterns = [
+            r'Route::(?:get|post|put|patch|delete)\s*\(\s*[\'"]([^\'"]+)',
+            r'\$(?:app|router)->(?:get|post|put|patch|delete)\s*\(\s*[\'"]([^\'"]+)',
         ]
     else:
         return []
+
     for line in (content or '').splitlines():
         for pattern in patterns:
             match = re.search(pattern, line)
             if not match:
                 continue
             route = match.group(match.lastindex or 1)
-            if route and route not in routes:
+            if route and len(route) > 1 and route not in routes:
                 routes.append(route)
     return routes[:16]
 
 
 def _extract_data_models(content: str, language: str) -> list[str]:
-    if language not in {'python', 'javascript', 'javascript-react', 'typescript', 'typescript-react'}:
-        return []
     models = []
-    patterns = [
-        r'class\s+([A-Za-z0-9_]+)\((?:models\.Model|BaseModel|Model)\)',
-        r'interface\s+([A-Za-z0-9_]+)',
-        r'type\s+([A-Za-z0-9_]+)\s*=',
-        r'const\s+([A-Za-z0-9_]+Schema)\s*=',
-    ]
-    for line in (content or '').splitlines()[:200]:
+    if language == 'python':
+        patterns = [
+            r'class\s+([A-Za-z0-9_]+)\s*\((?:models\.Model|Base|BaseModel|db\.Model|Schema)\)',
+            r'@dataclass\s*\nclass\s+([A-Za-z0-9_]+)',
+        ]
+    elif language in {'javascript', 'javascript-react', 'typescript', 'typescript-react', 'vue', 'svelte'}:
+        patterns = [
+            r'interface\s+([A-Za-z0-9_]+)',
+            r'type\s+([A-Za-z0-9_]+)\s*[={]',
+            r'const\s+([A-Za-z0-9_]+Schema)\s*=',
+            r'class\s+([A-Za-z0-9_]+)\s+(?:extends|implements)',
+        ]
+    elif language == 'go':
+        patterns = [r'type\s+([A-Za-z0-9_]+)\s+struct\s*\{']
+    elif language == 'rust':
+        patterns = [
+            r'^(?:pub\s+)?struct\s+([A-Za-z0-9_]+)',
+            r'^(?:pub\s+)?enum\s+([A-Za-z0-9_]+)',
+        ]
+    elif language in {'java', 'kotlin'}:
+        patterns = [
+            r'@Entity',  # marker — capture class name on next line via multiline approach below
+            r'(?:class|data class|record)\s+([A-Za-z0-9_]+)',
+        ]
+    elif language == 'csharp':
+        patterns = [
+            r'(?:public\s+)?(?:class|record|struct)\s+([A-Za-z0-9_]+)',
+        ]
+    elif language == 'ruby':
+        patterns = [
+            r'class\s+([A-Za-z0-9:]+)\s*<\s*(?:ApplicationRecord|ActiveRecord::Base|ActiveModel)',
+        ]
+    elif language == 'elixir':
+        patterns = [r'schema\s+[\'"]([^\'"]+)']
+    elif language == 'php':
+        patterns = [r'class\s+([A-Za-z0-9_]+)\s+extends\s+(?:Model|Eloquent)']
+    elif language in {'protobuf', 'graphql'}:
+        patterns = [r'(?:message|type)\s+([A-Za-z0-9_]+)']
+    elif language == 'sql':
+        patterns = [r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"\[]?([A-Za-z0-9_]+)']
+    elif language in {'yaml', 'json'}:
+        # Prisma-style or OpenAPI schemas
+        patterns = [r'\b([A-Za-z0-9_]+):\s*\n\s+type:']
+    else:
+        return []
+
+    for line in (content or '').splitlines()[:300]:
         for pattern in patterns:
             match = re.search(pattern, line)
-            if match:
+            if match and match.lastindex:
                 symbol = match.group(1)
-                if symbol not in models:
+                if symbol and symbol not in models and len(symbol) > 1:
                     models.append(symbol)
-    return models[:10]
+    return models[:12]
 
 
 def _safe_source_text(source: str, node: ast.AST | None) -> str:
@@ -653,13 +979,15 @@ def _infer_file_kind(rel_path: str, language: str, role_hints: list[str], headin
         return "typescript-config"
     if "vite.config" in file_name or "next.config" in file_name or "webpack" in file_name or "rollup" in file_name or "tsdown.config" in file_name:
         return "build-config"
-    if file_name in {"dockerfile", "docker-compose.yml"}:
+    if file_name in {"dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}:
         return "container-config"
     if lowered_path.endswith(".env.example"):
         return "env-template"
     if "/prompts/" in lowered_path and language == "markdown":
         return "prompt-doc"
-    if "/scripts/" in lowered_path or language == "sh":
+    if file_name in {"makefile", "justfile", "taskfile.yml", "taskfile.yaml"}:
+        return "script"
+    if "/scripts/" in lowered_path or language in {"shell", "powershell"}:
         return "script"
     if language == "markdown":
         if headings:
@@ -910,18 +1238,91 @@ def _score_blueprint_file(summary: dict) -> int:
     score = 0
     path = str(summary.get('path') or '').lower()
     file_name = Path(path).name
-    if file_name in BLUEPRINT_CONFIG_FILES:
+    config_names_lower = {name.lower() for name in BLUEPRINT_CONFIG_FILES}
+
+    # Config / manifest files are always high value
+    if file_name in config_names_lower:
         score += 12
+
+    # Files with extracted routes/endpoints are high signal
     if summary.get('routes'):
         score += 10
+
+    # Files with data models/types are high signal
     if summary.get('data_models'):
         score += 9
+
+    # Role-hint boosts (language-agnostic, derived by _file_summary)
+    if any(hint in (summary.get('role_hints') or []) for hint in ('api', 'data-model', 'routing')):
+        score += 6
+    if 'ui' in (summary.get('role_hints') or []):
+        score += 4
+
+    # Defined symbol (class / function / struct / module) → architectural file
     if summary.get('symbol'):
         score += 3
-    if any(hint in (summary.get('role_hints') or []) for hint in ('ui', 'api', 'data-model', 'routing')):
-        score += 6
-    if any(token in path for token in ('app', 'main', 'index', 'views', 'urls', 'router', 'models', 'components', 'pages')):
+
+    # Universal entry-point name patterns (any language)
+    ENTRY_POINT_TOKENS = (
+        'main', 'app', 'index', 'server', 'application',
+        'startup', 'bootstrap', 'init', 'run', 'entrypoint',
+    )
+    if any(token == file_name.split('.')[0] for token in ENTRY_POINT_TOKENS):
+        score += 5
+
+    # Universal routing/URL/config path tokens
+    ROUTING_TOKENS = (
+        'router', 'routes', 'routing', 'urls', 'endpoints',
+        'views', 'controllers', 'handlers', 'actions',
+    )
+    if any(token in path for token in ROUTING_TOKENS):
         score += 4
+
+    # Universal model/schema path tokens
+    MODEL_TOKENS = (
+        'models', 'model', 'schema', 'schemas', 'entities',
+        'domain', 'types', 'structs', 'proto',
+    )
+    if any(token in path for token in MODEL_TOKENS):
+        score += 4
+
+    # Service/business logic orchestration files (language-agnostic)
+    SERVICE_TOKENS = (
+        'service', 'services', 'usecase', 'usecases', 'business',
+        'agent', 'agents', 'coordinator', 'worker', 'executor',
+        'pipeline', 'workflow', 'orchestrat',
+    )
+    if any(token in path for token in SERVICE_TOKENS):
+        score += 6
+
+    # UI components / pages / screens
+    UI_TOKENS = ('component', 'components', 'pages', 'page', 'screen', 'screens', 'views', 'templates')
+    if any(token in path for token in UI_TOKENS):
+        score += 3
+
+    # Infrastructure / integration files
+    INFRA_TOKENS = (
+        'integrations', 'integration', 'providers', 'provider',
+        'clients', 'client', 'adapters', 'adapter',
+        'middleware', 'interceptors', 'filters',
+        'auth', 'security', 'oauth',
+        'database', 'db', 'migrations', 'repositories', 'repository',
+    )
+    if any(token in path for token in INFRA_TOKENS):
+        score += 5
+
+    # Config / settings / environment files
+    CONFIG_TOKENS = ('config', 'settings', 'configuration', 'environment', 'env')
+    if any(token in path for token in CONFIG_TOKENS):
+        score += 4
+
+    # Files with many imports → likely an orchestration/wiring hub
+    num_imports = len(summary.get('imports') or [])
+    if num_imports >= 8:
+        score += 5
+    elif num_imports >= 5:
+        score += 2
+
     return score
 
 
@@ -960,7 +1361,17 @@ def _classify_manifest_tier(rel_path: str, size: int, language: str, config_name
         return 3, 'generated-dir'
     if lowered_path.endswith('.map'):
         return 3, 'sourcemap'
-    if '/migrations/' in lowered_path and file_name != '__init__.py':
+    # Skip generated migration files for any framework (Django, Alembic, Flyway, Liquibase, Active Record, Ecto, EF)
+    _MIGRATION_DIR_MARKERS = ('/migrations/', '/db/migrate/', '/db/schema/', '/flyway/', '/liquibase/', '/changesets/')
+    _MIGRATION_FILE_PATTERNS = (
+        re.compile(r'^\d{4,}_.+\.(py|rb|sql|xml|yaml|yml)$'),  # Django/Alembic/Flyway/Liquibase
+        re.compile(r'^v\d+__.+\.sql$'),                          # Flyway versioned
+        re.compile(r'^\d{14}_.+\.rb$'),                          # Active Record
+        re.compile(r'^\d{8,}_\d{6}_.+\.exs?$'),                  # Ecto
+    )
+    is_in_migration_dir = any(marker in lowered_path for marker in _MIGRATION_DIR_MARKERS)
+    is_migration_file = any(pat.match(file_name) for pat in _MIGRATION_FILE_PATTERNS)
+    if (is_in_migration_dir or is_migration_file) and file_name not in ('__init__.py', 'schema.rb', 'structure.sql'):
         return 3, 'migration'
     if file_name in BLUEPRINT_TIER_1_NAMES or file_name in config_names:
         return 1, 'critical-config'
@@ -1924,7 +2335,7 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
     for directory, count in sorted(directory_counts.items(), key=lambda item: (-item[1], item[0]))[:12]:
         compact_lines.append(f"- {directory}: {count} files")
     compact_lines.append("Important files:")
-    for item in important_files[:20]:
+    for item in important_files[:60]:
         compact_lines.append(f"- {item['path']}: {item['summary']}")
     if routes:
         compact_lines.append("Detected routes/endpoints:")
@@ -1985,6 +2396,33 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
         'repo_map_path': str(_repo_map_path(workspace_path)),
     })
     return cache
+
+
+def slim_context_for_llm(context: dict, important_files_limit: int = 60) -> dict:
+    """Return a compact, LLM-safe slice of a codebase_context dict.
+
+    The full context can contain 6 000+ manifest entries and 500 file summaries
+    that bloat json.dumps() to several MB before the caller truncates.  This
+    function pre-selects the high-signal fields so serialisation stays fast and
+    the resulting JSON fits in a model context window without wasted truncation.
+    """
+    if not isinstance(context, dict):
+        return {}
+    important = context.get('important_files') or []
+    return {
+        'compact_summary': context.get('compact_summary') or '',
+        'file_count': context.get('file_count') or 0,
+        'manifest_file_count': context.get('manifest_file_count') or 0,
+        'important_files': important[:important_files_limit],
+        'routes': (context.get('routes') or [])[:24],
+        'data_models': (context.get('data_models') or [])[:24],
+        'database_schema': (context.get('database_schema') or [])[:20],
+        'database_model_names': (context.get('database_model_names') or [])[:30],
+        'readme_excerpt': (context.get('readme_excerpt') or '')[:3000],
+        'instruction_files': context.get('instruction_files') or [],
+        'repo_tree': (context.get('repo_tree') or '')[:6000],
+        'directory_counts': context.get('directory_counts') or {},
+    }
 
 
 def _read_text_excerpt(file_path: Path, limit: int = 4000) -> str:

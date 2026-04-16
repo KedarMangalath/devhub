@@ -256,3 +256,11 @@ Desktop.ini
 # Temporary folders
 tmp/
 temp/
+# Added by code-review-graph
+.code-review-graph/
+
+# Embedded Repos
+claude-code-main/
+gemini-cli/
+opencode/
+caveman/

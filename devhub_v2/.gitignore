@@ -8,3 +8,8 @@ backend/db.sqlite3
 
 __pycache__/
 *.py[cod]
+
+claude code main/
+geminicli/
+opencode/
+caveman/

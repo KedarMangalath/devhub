@@ -2,6 +2,7 @@ import json
 import os
 
 from agents.base import BaseAgent
+from agents.memory import slim_context_for_llm
 
 
 class ArchitectAgent(BaseAgent):
@@ -31,7 +32,7 @@ class ArchitectAgent(BaseAgent):
         repo_map: str = "",
     ) -> dict:
         tech_joined = ", ".join(tech_stack) if tech_stack else "Not specified"
-        context_json = json.dumps(codebase_context or {}, indent=2)[:36000]
+        context_json = json.dumps(slim_context_for_llm(codebase_context or {}), indent=2)[:36000]
         exploration_json = json.dumps(exploration_report or {}, indent=2)[:30000]
 
         prompt = f"""Analyze this project and generate a COMPLETE engineering blueprint as a single JSON object.

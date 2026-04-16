@@ -69,7 +69,6 @@ export const Terminal = React.forwardRef<{ write: (data: string) => void }, Term
       <div 
         ref={terminalRef} 
         className="w-full h-full rounded-lg overflow-hidden bg-[#08060d] p-2"
-        style={{ minHeight: '300px' }}
       />
     );
   }

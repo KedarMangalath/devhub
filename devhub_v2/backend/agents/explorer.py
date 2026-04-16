@@ -2,6 +2,7 @@ import json
 import os
 
 from agents.base import BaseAgent
+from agents.memory import slim_context_for_llm
 
 
 class CodebaseExplorerAgent(BaseAgent):
@@ -29,7 +30,7 @@ Project: {project_name}
 Declared tech stack: {", ".join(tech_stack or []) or "Not specified"}
 
 Codebase context JSON:
-{json.dumps(codebase_context, indent=2)[:60000]}
+{json.dumps(slim_context_for_llm(codebase_context), indent=2)[:60000]}
 
 Return ONLY this JSON shape:
 {{

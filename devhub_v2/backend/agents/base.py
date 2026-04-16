@@ -59,6 +59,130 @@ def _string_value(value) -> str:
     return str(value).strip()
 
 
+def _parse_data_url_image(data_url: str) -> tuple[str, str]:
+    value = _string_value(data_url)
+    if not value.startswith("data:") or ";base64," not in value:
+        return "", ""
+    header, encoded = value.split(",", 1)
+    mime_type = _string_value(header[5:].replace(";base64", "")).lower()
+    encoded = "".join(encoded.split())
+    if not mime_type or not encoded:
+        return "", ""
+    return mime_type, encoded
+
+
+def _normalize_image_attachment(attachment: dict | None) -> dict | None:
+    if not isinstance(attachment, dict):
+        return None
+
+    mime_type = _string_value(attachment.get("mime_type") or attachment.get("mimeType")).lower()
+    data_url = _string_value(attachment.get("data_url") or attachment.get("dataUrl"))
+    base64_data = _string_value(attachment.get("base64_data") or attachment.get("base64Data"))
+
+    if data_url:
+        parsed_mime, parsed_data = _parse_data_url_image(data_url)
+        if parsed_mime:
+            mime_type = parsed_mime
+        if parsed_data:
+            base64_data = parsed_data
+
+    if not mime_type and base64_data:
+        mime_type = _string_value(attachment.get("media_type") or attachment.get("mediaType")).lower()
+
+    if not mime_type or not base64_data:
+        return None
+
+    return {
+        "type": "image",
+        "name": _string_value(attachment.get("name")) or "image",
+        "mime_type": mime_type,
+        "base64_data": base64_data,
+        "data_url": data_url or f"data:{mime_type};base64,{base64_data}",
+        "size_bytes": attachment.get("size_bytes") or attachment.get("sizeBytes"),
+    }
+
+
+def _message_content_blocks(content) -> list[dict]:
+    if isinstance(content, list):
+        blocks: list[dict] = []
+        for part in content:
+            if not isinstance(part, dict):
+                text = _string_value(part)
+                if text:
+                    blocks.append({"type": "text", "text": text})
+                continue
+
+            part_type = _string_value(part.get("type")).lower()
+            if part_type == "text":
+                text = _string_value(part.get("text"))
+                if text:
+                    blocks.append({"type": "text", "text": text})
+                continue
+
+            image_block = _normalize_image_attachment(part)
+            if image_block:
+                blocks.append(image_block)
+        return blocks
+
+    text = _string_value(content)
+    return [{"type": "text", "text": text}] if text else []
+
+
+def _content_text(content, *, include_image_placeholders: bool = False) -> str:
+    lines: list[str] = []
+    for block in _message_content_blocks(content):
+        if block.get("type") == "text":
+            text = _string_value(block.get("text"))
+            if text:
+                lines.append(text)
+            continue
+
+        if include_image_placeholders and block.get("type") == "image":
+            name = _string_value(block.get("name")) or "image"
+            mime_type = _string_value(block.get("mime_type"))
+            detail = f" ({mime_type})" if mime_type else ""
+            lines.append(f"[Attached image: {name}{detail}]")
+    return "\n".join(line for line in lines if line).strip()
+
+
+def describe_image_attachments(attachments: list[dict] | None) -> str:
+    normalized = [_normalize_image_attachment(item) for item in list(attachments or [])]
+    images = [item for item in normalized if item]
+    if not images:
+        return ""
+
+    lines = ["Attached image context:"]
+    for image in images:
+        detail_parts = []
+        mime_type = _string_value(image.get("mime_type"))
+        if mime_type:
+            detail_parts.append(mime_type)
+        size_bytes = image.get("size_bytes")
+        if isinstance(size_bytes, int) and size_bytes > 0:
+            detail_parts.append(f"{size_bytes} bytes")
+        detail = f" ({', '.join(detail_parts)})" if detail_parts else ""
+        lines.append(f"- {_string_value(image.get('name')) or 'image'}{detail}")
+    return "\n".join(lines)
+
+
+def build_multimodal_message_content(text: str, attachments: list[dict] | None = None):
+    attachment_blocks = []
+    for attachment in list(attachments or []):
+        image_block = _normalize_image_attachment(attachment)
+        if image_block:
+            attachment_blocks.append(image_block)
+
+    prompt_text = _string_value(text)
+    if not attachment_blocks:
+        return prompt_text
+
+    blocks: list[dict] = []
+    if prompt_text:
+        blocks.append({"type": "text", "text": prompt_text})
+    blocks.extend(attachment_blocks)
+    return blocks
+
+
 def _gemini_cli_command_available(command_text: str) -> bool:
     command_text = _string_value(command_text)
     if not command_text:
@@ -206,6 +330,13 @@ class BaseAgent:
         ]
         return self._complete(messages, response_schema=response_schema)
 
+    def generate_with_attachments(self, prompt: str, attachments: list[dict] | None = None, tools=None, response_schema=None) -> str:
+        messages = [
+            {"role": "system", "content": self.system_instruction},
+            {"role": "user", "content": build_multimodal_message_content(prompt, attachments)},
+        ]
+        return self._complete(messages, response_schema=response_schema)
+
     def start_chat(self, history=None):
         self.chat_history = history if history else []
         return self
@@ -276,9 +407,10 @@ class BaseAgent:
         return self.client
 
     def _openai_compatible_completion(self, messages: list[dict], response_schema: bool = False) -> str:
+        serialized_messages = [self._openai_message(message) for message in messages]
         kwargs = {
             "model": self.model,
-            "messages": messages,
+            "messages": serialized_messages,
             "temperature": 0.2,
         }
         if response_schema:
@@ -292,16 +424,17 @@ class BaseAgent:
         if not api_key:
             raise ValueError("No API key configured for Claude.")
 
-        system_text = "\n\n".join(str(msg.get("content") or "") for msg in messages if msg.get("role") == "system").strip()
+        system_text = "\n\n".join(_content_text(msg.get("content")) for msg in messages if msg.get("role") == "system").strip()
         anthropic_messages = []
         for msg in messages:
             role = msg.get("role")
             if role == "system":
                 continue
+            content_blocks = self._claude_content(msg.get("content"))
             anthropic_messages.append(
                 {
-                    "role": "assistant" if role == "assistant" else "user",
-                    "content": [{"type": "text", "text": str(msg.get("content") or "")}],
+                    "role": "assistant" if role in {"assistant", "model"} else "user",
+                    "content": content_blocks or [{"type": "text", "text": "No prompt provided."}],
                 }
             )
 
@@ -492,16 +625,19 @@ class BaseAgent:
         return result.stdout.strip()
 
     def _gemini_payload(self, messages: list[dict]) -> tuple[str, list[dict]]:
-        system_text = "\n\n".join(str(msg.get("content") or "") for msg in messages if msg.get("role") == "system").strip()
+        system_text = "\n\n".join(_content_text(msg.get("content")) for msg in messages if msg.get("role") == "system").strip()
         contents = []
         for msg in messages:
             role = msg.get("role")
             if role == "system":
                 continue
+            parts = self._gemini_parts(msg.get("content"))
+            if not parts:
+                continue
             contents.append(
                 {
-                    "role": "model" if role == "assistant" else "user",
-                    "parts": [{"text": str(msg.get("content") or "")}],
+                    "role": "model" if role in {"assistant", "model"} else "user",
+                    "parts": parts,
                 }
             )
         return system_text, contents
@@ -516,9 +652,157 @@ class BaseAgent:
                     texts.append(text)
         return "\n".join(texts).strip()
 
+    # ------------------------------------------------------------------
+    # Tool-calling support (Gemini function-calling)
+    # ------------------------------------------------------------------
+
+    def complete_with_tools(self, messages: list[dict], tools_payload: list[dict]) -> dict:
+        """
+        Send messages with Gemini function declarations.
+
+        Args:
+            messages: Conversation in the internal format (role: system/user/model,
+                      content: str, tool_calls: [...], tool_results: [...]).
+            tools_payload: Gemini tools list, e.g. [{"functionDeclarations": [...]}].
+
+        Returns:
+            dict with:
+                "text": str — text response (may be empty if tool calls are returned)
+                "tool_calls": list[dict] — each has "name" and "args"
+                "raw": dict — the raw API response
+        """
+        gemini_mode = self.ai_config.get("gemini_mode", "api_key")
+        if gemini_mode == "vertexai":
+            return self._vertexai_tool_completion(messages, tools_payload)
+        return self._gemini_api_tool_completion(messages, tools_payload)
+
+    def _build_gemini_tool_messages(self, messages: list[dict]) -> tuple[str, list[dict]]:
+        """
+        Convert internal message format to Gemini ``contents`` format,
+        handling tool_call and tool_result parts properly.
+        """
+        system_parts: list[str] = []
+        contents: list[dict] = []
+
+        for msg in messages:
+            role = msg.get("role", "user")
+
+            if role == "system":
+                system_parts.append(_content_text(msg.get("content")))
+                continue
+
+            gemini_role = "model" if role in ("assistant", "model") else "user"
+            parts: list[dict] = list(self._gemini_parts(msg.get("content")))
+
+            # Tool calls (model asking to call functions)
+            for tc in msg.get("tool_calls", []):
+                parts.append({
+                    "functionCall": {
+                        "name": tc.get("name", ""),
+                        "args": tc.get("args", {}),
+                    }
+                })
+
+            # Tool results (user feeding back function results)
+            for tr in msg.get("tool_results", []):
+                parts.append({
+                    "functionResponse": {
+                        "name": tr.get("name", ""),
+                        "response": {"result": tr.get("output", "")},
+                    }
+                })
+
+            if parts:
+                contents.append({"role": gemini_role, "parts": parts})
+
+        system_text = "\n\n".join(s for s in system_parts if s).strip()
+        return system_text, contents
+
+    def _gemini_api_tool_completion(self, messages: list[dict], tools_payload: list[dict]) -> dict:
+        """Gemini API (api_key mode) with function calling."""
+        api_key = self._resolve_api_key()
+        if not api_key:
+            raise ValueError("No API key configured for Gemini.")
+
+        system_text, contents = self._build_gemini_tool_messages(messages)
+        payload: dict = {
+            "contents": contents or [{"role": "user", "parts": [{"text": "No prompt provided."}]}],
+            "generationConfig": {"temperature": 0.2},
+        }
+        if system_text:
+            payload["systemInstruction"] = {"parts": [{"text": system_text}]}
+        if tools_payload:
+            payload["tools"] = tools_payload
+
+        base_url = self._resolve_base_url().rstrip("/")
+        url = f"{base_url}/models/{quote(self.model)}:generateContent?key={quote(api_key)}"
+        response = self._http_json(url, payload=payload)
+        return self._parse_gemini_tool_response(response)
+
+    def _vertexai_tool_completion(self, messages: list[dict], tools_payload: list[dict]) -> dict:
+        """Vertex AI with function calling."""
+        project = self.ai_config.get("vertex_project") or os.environ.get("VERTEX_PROJECT_ID") or os.environ.get("GOOGLE_CLOUD_PROJECT") or DEFAULT_VERTEX_PROJECT
+        location = self.ai_config.get("vertex_location") or os.environ.get("DEVHUB_VERTEX_LOCATION") or os.environ.get("GOOGLE_CLOUD_LOCATION") or DEFAULT_VERTEX_LOCATION
+        if not project:
+            raise ValueError("Vertex AI requires a Google Cloud project ID.")
+
+        access_token = self._resolve_vertex_access_token()
+        system_text, contents = self._build_gemini_tool_messages(messages)
+        payload: dict = {
+            "contents": contents or [{"role": "user", "parts": [{"text": "No prompt provided."}]}],
+            "generationConfig": {"temperature": 0.2},
+        }
+        if system_text:
+            payload["systemInstruction"] = {"parts": [{"text": system_text}]}
+        if tools_payload:
+            payload["tools"] = tools_payload
+
+        custom_base = _string_value(self.ai_config.get("base_url"))
+        if custom_base:
+            base_url = custom_base.rstrip("/")
+        else:
+            base_url = _vertexai_base_url_for_location(location, api_version="v1")
+
+        url = f"{base_url}/projects/{quote(project)}/locations/{quote(location)}/publishers/google/models/{quote(self.model)}:generateContent"
+        response = self._http_json(
+            url,
+            headers={
+                "content-type": "application/json",
+                "authorization": f"Bearer {access_token}",
+            },
+            payload=payload,
+        )
+        return self._parse_gemini_tool_response(response)
+
+    def _parse_gemini_tool_response(self, response: dict) -> dict:
+        """
+        Parse a Gemini generateContent response that may contain
+        text parts and/or functionCall parts.
+        """
+        texts: list[str] = []
+        tool_calls: list[dict] = []
+
+        for candidate in response.get("candidates", []):
+            content = candidate.get("content") or {}
+            for part in content.get("parts", []):
+                if "text" in part:
+                    texts.append(part["text"])
+                if "functionCall" in part:
+                    fc = part["functionCall"]
+                    tool_calls.append({
+                        "name": fc.get("name", ""),
+                        "args": fc.get("args", {}),
+                    })
+
+        return {
+            "text": "\n".join(texts).strip(),
+            "tool_calls": tool_calls,
+            "raw": response,
+        }
+
     def _cli_prompt(self, messages: list[dict], response_schema: bool = False) -> str:
         lines = []
-        system_chunks = [str(msg.get("content") or "") for msg in messages if msg.get("role") == "system"]
+        system_chunks = [_content_text(msg.get("content"), include_image_placeholders=True) for msg in messages if msg.get("role") == "system"]
         if system_chunks:
             lines.append("System instruction:")
             lines.append("\n\n".join(system_chunks).strip())
@@ -527,14 +811,70 @@ class BaseAgent:
             role = msg.get("role")
             if role == "system":
                 continue
-            label = "Assistant" if role == "assistant" else "User"
+            label = "Assistant" if role in {"assistant", "model"} else "User"
             lines.append(f"{label}:")
-            lines.append(str(msg.get("content") or ""))
+            lines.append(_content_text(msg.get("content"), include_image_placeholders=True))
 
         if response_schema:
             lines.append("Return only valid JSON.")
 
         return "\n\n".join(line for line in lines if line).strip()
+
+    def _openai_message(self, message: dict) -> dict:
+        role = _string_value(message.get("role")) or "user"
+        if role == "model":
+            role = "assistant"
+
+        if role == "system":
+            return {"role": role, "content": _content_text(message.get("content"))}
+
+        blocks = _message_content_blocks(message.get("content"))
+        if not blocks:
+            return {"role": role, "content": ""}
+        if len(blocks) == 1 and blocks[0].get("type") == "text":
+            return {"role": role, "content": blocks[0].get("text") or ""}
+
+        content = []
+        for block in blocks:
+            if block.get("type") == "text":
+                content.append({"type": "text", "text": block.get("text") or ""})
+            elif block.get("type") == "image":
+                content.append({"type": "image_url", "image_url": {"url": block.get("data_url") or ""}})
+        return {"role": role, "content": content}
+
+    def _claude_content(self, content) -> list[dict]:
+        blocks = []
+        for block in _message_content_blocks(content):
+            if block.get("type") == "text":
+                blocks.append({"type": "text", "text": block.get("text") or ""})
+            elif block.get("type") == "image":
+                blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": block.get("mime_type") or "image/png",
+                            "data": block.get("base64_data") or "",
+                        },
+                    }
+                )
+        return blocks
+
+    def _gemini_parts(self, content) -> list[dict]:
+        parts = []
+        for block in _message_content_blocks(content):
+            if block.get("type") == "text":
+                parts.append({"text": block.get("text") or ""})
+            elif block.get("type") == "image":
+                parts.append(
+                    {
+                        "inlineData": {
+                            "mimeType": block.get("mime_type") or "image/png",
+                            "data": block.get("base64_data") or "",
+                        }
+                    }
+                )
+        return parts
 
     def _http_json(self, url: str, headers: dict | None = None, payload: dict | None = None) -> dict:
         data = json.dumps(payload or {}).encode("utf-8")

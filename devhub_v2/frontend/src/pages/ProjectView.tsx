@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
-import { Check, ChevronDown, ChevronRight, Code2, FileCode, Loader2, PencilLine, Play, Plus, Sparkles, X, XCircle, Trash2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Code2, FileCode, Loader2, PanelLeftClose, PanelLeftOpen, PencilLine, Play, Plus, Sparkles, X, XCircle, Trash2 } from 'lucide-react';
 
 import BlueprintPanel from '../components/BlueprintPanel';
 import CodeWorkspace from '../components/CodeWorkspace';
@@ -23,6 +23,8 @@ export default function ProjectView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [workspaceFullscreen, setWorkspaceFullscreen] = useState(false);
   const [workItemsView, setWorkItemsView] = useState<'list' | 'board'>('list');
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -64,7 +66,7 @@ export default function ProjectView() {
   ];
 
   const fetchProject = () => {
-    fetch(`${API}/projects/${id}/`)
+    fetch(`${API}/projects/${id}/`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((data) => {
         if (!data.error) {
@@ -106,6 +108,32 @@ export default function ProjectView() {
       setActiveTab('blueprint');
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem('devhub.project.sidebar.collapsed');
+    setSidebarCollapsed(stored === '1');
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('devhub.project.sidebar.collapsed', sidebarCollapsed ? '1' : '0');
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (activeTab !== 'code') {
+      setWorkspaceFullscreen(false);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!workspaceFullscreen) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setWorkspaceFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [workspaceFullscreen]);
 
   useEffect(() => {
     return () => {
@@ -497,6 +525,7 @@ export default function ProjectView() {
   const bp = project?.blueprint;
   const sourceType = project?.source_type || 'starter';
   const onboardingSummary = project?.onboarding_summary || {};
+  const hideProjectChrome = workspaceFullscreen && activeTab === 'code';
 
   return (
     <div className="h-[var(--app-vh)] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,246,248,0.98)_42%,_#eef1f4_100%)] text-slate-900 font-sans flex flex-col">
@@ -526,6 +555,7 @@ export default function ProjectView() {
           if (toastId === 'action-feedback') setActionFeedback(null);
         }}
       />
+      {!hideProjectChrome && (
       <header className="sticky top-0 z-50 w-full border-b border-white/70 bg-white/65 backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <div className="flex h-14 items-center px-6 justify-between max-w-[2000px] mx-auto">
           <div className="flex items-center gap-3">
@@ -567,8 +597,9 @@ export default function ProjectView() {
           </div>
         </div>
       </header>
+      )}
 
-      {project?.context_initializing && (
+      {!hideProjectChrome && project?.context_initializing && (
         <div className="max-w-[2000px] mx-auto w-full px-6 mt-2">
           <div className="p-3 rounded-2xl text-sm flex items-center justify-between border border-blue-100 bg-white/80 text-slate-700 backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
             <span>
@@ -582,7 +613,7 @@ export default function ProjectView() {
         </div>
       )}
 
-      {implementationRun && (
+      {!hideProjectChrome && implementationRun && (
         <div className="max-w-[2000px] mx-auto w-full px-6 mt-2">
           <div className="rounded-[28px] border border-white/70 bg-white/68 backdrop-blur-2xl shadow-[0_28px_80px_rgba(15,23,42,0.14)] px-5 py-4">
             <div className="flex items-start justify-between gap-4">
@@ -612,20 +643,33 @@ export default function ProjectView() {
         </div>
       )}
 
-      <main className="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row max-w-[2000px] w-full mx-auto px-4 sm:px-6 py-4 gap-4 overflow-hidden">
-        <nav className="w-full lg:w-60 shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 lg:pr-3 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(var(--app-vh)-8rem)]">
-          <div className="hidden lg:block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">Views</div>
+      <main className={`flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row w-full overflow-hidden ${hideProjectChrome ? 'fixed inset-0 z-[110] max-w-none bg-[#111111] px-0 py-0 gap-0' : 'max-w-[2000px] mx-auto px-4 sm:px-6 py-4 gap-4'}`}>
+        {!hideProjectChrome && (
+        <nav className={`w-full shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(var(--app-vh)-8rem)] transition-[width,padding] duration-200 ${sidebarCollapsed ? 'lg:w-[84px] lg:pr-2' : 'lg:w-60 lg:pr-3'}`}>
+          <div className={`hidden lg:flex items-center justify-between mb-2 ${sidebarCollapsed ? 'px-1' : 'px-3'}`}>
+            <div className={`text-[10px] font-bold uppercase tracking-wider text-slate-400 ${sidebarCollapsed ? 'sr-only' : ''}`}>Views</div>
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-black/5 bg-white/80 text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-colors hover:bg-white hover:text-slate-800"
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+          </div>
           {tabs.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`shrink-0 lg:w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-black text-white shadow-[0_18px_38px_rgba(15,23,42,0.18)]' : 'border border-transparent text-slate-600 hover:bg-white hover:border-black/5'}`}>
+              title={sidebarCollapsed ? tab.label : undefined}
+              className={`shrink-0 lg:w-full flex items-center gap-3 py-3 rounded-2xl text-left transition-all whitespace-nowrap ${sidebarCollapsed ? 'lg:justify-center lg:px-0' : 'px-3'} ${activeTab === tab.id ? 'bg-black text-white shadow-[0_18px_38px_rgba(15,23,42,0.18)]' : 'border border-transparent text-slate-600 hover:bg-white hover:border-black/5'}`}>
               <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold ${activeTab === tab.id ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}>{tab.icon}</span>
-              <span className="min-w-0">
+              <span className={`min-w-0 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
                 <span className="block text-xs font-semibold">{tab.label}</span>
                 <span className={`hidden lg:block truncate text-[10px] ${activeTab === tab.id ? 'text-white/70' : 'text-slate-400'}`}>{tab.helper}</span>
               </span>
             </button>
           ))}
         </nav>
+        )}
 
         <section
           className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col bg-transparent"
@@ -647,7 +691,12 @@ export default function ProjectView() {
                 workspaceId={project?.workspace_id ?? null}
                 projectId={id ?? ''}
                 projectPath={project?.local_path}
+                coderCustomization={project?.coder_customization}
                 onProjectChanged={fetchProject}
+                projectSidebarCollapsed={sidebarCollapsed}
+                onToggleProjectSidebar={() => setSidebarCollapsed((current) => !current)}
+                isFullscreen={workspaceFullscreen}
+                onToggleFullscreen={() => setWorkspaceFullscreen((current) => !current)}
               />
             )}
 
@@ -659,7 +708,9 @@ export default function ProjectView() {
                   selectedFile={null}
                   fileContent={""}
                   treeNodes={[]}
+                  coderCustomization={project?.coder_customization}
                   onCodeApplied={fetchProject}
+                  onCustomizationChanged={fetchProject}
                 />
               </div>
             )}

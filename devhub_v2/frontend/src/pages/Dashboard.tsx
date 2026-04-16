@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  ChevronLeft,
   FolderOpen,
   Github,
   Loader2,
@@ -19,6 +20,7 @@ import ToastStack from '../components/ToastStack';
 const API = 'http://localhost:8000/api';
 
 type SourceType = 'starter' | 'github' | 'github_connect' | 'folder';
+type CreateStep = 'source' | 'details';
 
 type Project = {
   id: string;
@@ -191,18 +193,23 @@ function isValidGitHubRepoUrl(value: string) {
   return /^https?:\/\/(www\.)?github\.com\/[^/\s]+\/[^/\s]+(?:\.git)?\/?$/i.test(value.trim());
 }
 
-function getFlowSteps(sourceType: SourceType, form: ProjectForm, inspection: ProjectInspection | null): FlowStep[] {
+function getFlowSteps(
+  sourceType: SourceType,
+  form: ProjectForm,
+  inspection: ProjectInspection | null,
+  githubSelection?: { github_connection_id: number | null; github_repository_full_name: string }
+): FlowStep[] {
   if (sourceType === 'github_connect') {
     return [
       {
         title: 'Connect your GitHub account',
         detail: 'Open the browser auth flow and let DevHub read the repositories available to your signed-in account.',
-        complete: Boolean(inspection?.github_connection_id),
+        complete: Boolean(githubSelection?.github_connection_id),
       },
       {
         title: 'Select a repository',
         detail: 'Choose one repository from the connected account and let DevHub inspect it before import.',
-        complete: Boolean(inspection?.github_repository_full_name),
+        complete: Boolean(githubSelection?.github_repository_full_name),
       },
       {
         title: 'Import with GitHub metadata attached',
@@ -271,11 +278,19 @@ function getFlowSteps(sourceType: SourceType, form: ProjectForm, inspection: Pro
   ];
 }
 
-function getFlowSummary(sourceType: SourceType, inspection: ProjectInspection | null) {
+function getFlowSummary(
+  sourceType: SourceType,
+  inspection: ProjectInspection | null,
+  githubSelection?: { github_connection_id: number | null; github_repository_full_name: string }
+) {
   if (sourceType === 'github_connect') {
     return inspection
       ? 'Connected GitHub repository detected. DevHub is ready to import it with repo metadata attached.'
-      : 'Connect GitHub in the browser, then choose the repository you want DevHub to inspect.';
+      : githubSelection?.github_connection_id
+        ? githubSelection.github_repository_full_name
+          ? 'Repository selected. DevHub is preparing the connected import details.'
+          : 'GitHub is already connected. Choose the repository you want DevHub to inspect next.'
+        : 'Connect GitHub in the browser, then choose the repository you want DevHub to inspect.';
   }
 
   if (sourceType === 'github') {
@@ -293,11 +308,18 @@ function getFlowSummary(sourceType: SourceType, inspection: ProjectInspection | 
   return 'Start with an idea, then let DevHub suggest a runnable starter scaffold.';
 }
 
+function getSourceIcon(sourceType: SourceType) {
+  if (sourceType === 'starter') return Sparkles;
+  if (sourceType === 'folder') return FolderOpen;
+  return Github;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [createStep, setCreateStep] = useState<CreateStep>('source');
   const [sourceType, setSourceType] = useState<SourceType>('starter');
   const [form, setForm] = useState<ProjectForm>(DEFAULT_FORM);
   const [creating, setCreating] = useState(false);
@@ -319,15 +341,16 @@ export default function Dashboard() {
   const [success, setSuccess] = useState('');
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [savingAiSettings, setSavingAiSettings] = useState(false);
+  const [createHeaderCompact, setCreateHeaderCompact] = useState(false);
   const [aiConfig, setAiConfig] = useState({ ...DEFAULT_AI_CONFIG });
   const lastGithubInspectionKey = useRef('');
   const lastFolderInspectionKey = useRef('');
+  const createBodyRef = useRef<HTMLDivElement | null>(null);
 
-  const currentSource = useMemo(
-    () => SOURCE_OPTIONS.find((option) => option.id === sourceType) ?? SOURCE_OPTIONS[0],
-    [sourceType]
+  const flowSteps = useMemo(
+    () => getFlowSteps(sourceType, form, inspection, githubAppSelection),
+    [form, githubAppSelection, inspection, sourceType]
   );
-  const flowSteps = useMemo(() => getFlowSteps(sourceType, form, inspection), [form, inspection, sourceType]);
   const flowProgress = useMemo(() => {
     const completeCount = flowSteps.filter((step) => step.complete).length;
     return Math.round((completeCount / Math.max(flowSteps.length, 1)) * 100);
@@ -403,7 +426,7 @@ export default function Dashboard() {
         requestedSource === 'github' || requestedSource === 'github_connect' || requestedSource === 'folder'
           ? requestedSource
           : 'starter';
-      openCreateModal(nextSource);
+      openCreateModal(nextSource, 'details');
     }
 
     if (shouldOpenCreate || githubState) {
@@ -429,8 +452,10 @@ export default function Dashboard() {
     return () => window.clearTimeout(timeout);
   }, [success]);
 
-  const openCreateModal = (nextSource: SourceType = 'starter') => {
-    setSourceType(nextSource);
+  const openCreateModal = (nextSource?: SourceType, nextStep: CreateStep = 'source') => {
+    setSourceType(nextSource ?? 'starter');
+    setCreateStep(nextStep);
+    setCreateHeaderCompact(false);
     setForm(DEFAULT_FORM);
     setInspection(null);
     setGitHubAppSelection({ github_connection_id: null, github_repository_full_name: '', github_url: '' });
@@ -442,6 +467,17 @@ export default function Dashboard() {
   const closeCreateModal = () => {
     if (creating || generating || inspecting || pickingFolder) return;
     setShowCreate(false);
+    setCreateStep('source');
+    setCreateHeaderCompact(false);
+    setError('');
+  };
+
+  const beginCreateSetup = (nextSource: SourceType) => {
+    setSourceType(nextSource);
+    setCreateStep('details');
+    setCreateHeaderCompact(false);
+    setInspection(null);
+    setGitHubAppSelection({ github_connection_id: null, github_repository_full_name: '', github_url: '' });
     setError('');
   };
 
@@ -796,7 +832,7 @@ export default function Dashboard() {
             key={stack}
             type="button"
             onClick={() => toggleStack(stack)}
-            className={`rounded-full border px-3 py-2 text-sm transition ${
+            className={`rounded-full border px-3.5 py-2.5 text-[14px] font-medium transition ${
               active
                 ? 'border-slate-900 bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.15)]'
                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
@@ -810,100 +846,134 @@ export default function Dashboard() {
   );
 
   const renderFlowStrip = () => (
-    <section className="rounded-[30px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,250,252,0.9))] p-5 shadow-[0_18px_48px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-      <div className="grid gap-4 xl:grid-cols-[minmax(250px,320px)_minmax(0,1fr)]">
-        <div className="rounded-[24px] border border-slate-200/80 bg-white/88 p-5 shadow-[0_12px_28px_rgba(15,23,42,0.05)]">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Flow</p>
-              <h3 className="mt-2 text-xl font-semibold text-slate-950">{currentSource.title}</h3>
-            </div>
-            <div className="rounded-full border border-slate-200 bg-[#fbfcfe] px-3 py-1.5 text-xs font-medium text-slate-500">
-              {flowSteps.filter((step) => step.complete).length} of {flowSteps.length} ready
-            </div>
-          </div>
-          <p className="mt-3 text-sm leading-6 text-slate-500">{getFlowSummary(sourceType, inspection)}</p>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#0f172a_0%,#334155_100%)] transition-[width] duration-500 ease-out"
-              style={{ width: `${flowProgress}%` }}
-            />
-          </div>
+    <section className="setup-plum-surface smooth-panel-enter rounded-[30px] border p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Flow</p>
+          <p className="mt-2 text-[15px] leading-7 text-slate-700">{getFlowSummary(sourceType, inspection, githubAppSelection)}</p>
         </div>
+        <div className="setup-plum-chip rounded-full border px-3 py-1.5 text-[13px] font-semibold text-slate-700">
+          {flowSteps.filter((step) => step.complete).length} of {flowSteps.length} ready
+        </div>
+      </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          {flowSteps.map((step, index) => (
-            <div
-              key={`${sourceType}-${step.title}`}
-              className={`rounded-[22px] border p-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)] transition ${
-                step.complete
-                  ? 'border-emerald-100 bg-emerald-50/70'
-                  : index === 0 || (!flowSteps[index - 1]?.complete && index > 0)
-                    ? 'border-slate-200 bg-white'
-                    : 'border-slate-200 bg-[#fbfcfe]'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-[11px] font-semibold text-white shadow-[0_10px_20px_rgba(15,23,42,0.18)]">
-                  {index + 1}
-                </span>
-                <span className={`text-[11px] font-medium ${step.complete ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {step.complete ? 'Ready' : 'Next'}
-                </span>
-              </div>
-              <h4 className="mt-3 text-sm font-semibold text-slate-900">{step.title}</h4>
-              <p className="mt-1.5 text-xs leading-5 text-slate-500">{step.detail}</p>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className="setup-plum-progress h-full rounded-full transition-[width] duration-500 ease-out"
+          style={{ width: `${flowProgress}%` }}
+        />
+      </div>
+
+      <div className="mt-5 grid gap-3 xl:grid-cols-3">
+        {flowSteps.map((step, index) => (
+          <div
+            key={`${sourceType}-${step.title}`}
+            className={`smooth-card-enter rounded-[22px] border bg-white p-4 shadow-[0_14px_30px_rgba(112,67,79,0.07)] ${
+              step.complete
+                ? 'border-[rgba(112,67,79,0.10)] shadow-[0_18px_34px_rgba(112,67,79,0.09)]'
+                : index === 0 || (!flowSteps[index - 1]?.complete && index > 0)
+                  ? 'border-[rgba(112,67,79,0.08)] shadow-[0_16px_30px_rgba(112,67,79,0.06)]'
+                  : 'border-[rgba(112,67,79,0.06)] shadow-[0_14px_28px_rgba(112,67,79,0.05)]'
+            }`}
+            style={{ animationDelay: `${index * 45}ms` }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-[#70434f] text-[12px] font-semibold text-white shadow-[0_10px_20px_rgba(112,67,79,0.18)]">
+                {index + 1}
+              </span>
+              <span className={`text-[12px] font-semibold ${step.complete ? 'text-[#70434f]' : 'text-slate-500'}`}>
+                {step.complete ? 'Ready' : 'Next'}
+              </span>
             </div>
-          ))}
-        </div>
+            <h4 className="mt-3 text-[15px] font-semibold leading-6 text-slate-950">{step.title}</h4>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+
+  const renderFlowSidebar = () => (
+    <section className="setup-plum-surface smooth-panel-enter rounded-[30px] border p-5 xl:sticky xl:top-0">
+      <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Flow</p>
+      <p className="mt-3 text-[15px] leading-8 text-slate-700">{getFlowSummary(sourceType, inspection, githubAppSelection)}</p>
+      <div className="setup-plum-chip mt-4 inline-flex rounded-full border px-3 py-1.5 text-[13px] font-semibold text-slate-700">
+        {flowSteps.filter((step) => step.complete).length} of {flowSteps.length} ready
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {flowSteps.map((step, index) => (
+          <div
+            key={`sidebar-${sourceType}-${step.title}`}
+            className={`smooth-card-enter rounded-[22px] border bg-white p-4 shadow-[0_14px_30px_rgba(112,67,79,0.07)] ${
+              step.complete
+                ? 'border-[rgba(112,67,79,0.10)] shadow-[0_18px_34px_rgba(112,67,79,0.09)]'
+                : index === 0 || (!flowSteps[index - 1]?.complete && index > 0)
+                  ? 'border-[rgba(112,67,79,0.08)] shadow-[0_16px_30px_rgba(112,67,79,0.06)]'
+                  : 'border-[rgba(112,67,79,0.06)] shadow-[0_14px_28px_rgba(112,67,79,0.05)]'
+            }`}
+            style={{ animationDelay: `${index * 45}ms` }}
+          >
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#70434f] text-[12px] font-semibold text-white shadow-[0_10px_20px_rgba(112,67,79,0.18)]">
+                {index + 1}
+              </span>
+              <div className="min-w-0">
+                <p className={`text-[12px] font-semibold uppercase tracking-[0.18em] ${step.complete ? 'text-[#70434f]' : 'text-slate-500'}`}>
+                  {step.complete ? 'Ready' : 'Next'}
+                </p>
+                <h4 className="mt-1 text-[15px] font-semibold leading-6 text-slate-950">{step.title}</h4>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
 
   const renderInspectionCard = (title: string, emptyTitle: string, emptyBody: string) => (
-    <section className="rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(248,252,255,0.92))] p-6 shadow-[0_18px_48px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+    <section className="setup-plum-surface rounded-[28px] border p-6">
       <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{title}</p>
       {inspection ? (
         <div className="mt-5 space-y-5">
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-[22px] border border-slate-200/80 bg-white/90 p-4">
+            <div className="setup-plum-card rounded-[22px] border p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Detected Root</p>
-              <p className="mt-3 break-words text-sm font-medium text-slate-800">{inspection.resolved_path || inspection.root_name || 'Unknown root'}</p>
+              <p className="mt-3 break-words text-[15px] font-medium leading-7 text-slate-900">{inspection.resolved_path || inspection.root_name || 'Unknown root'}</p>
             </div>
-            <div className="rounded-[22px] border border-slate-200/80 bg-white/90 p-4">
+            <div className="setup-plum-card rounded-[22px] border p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Runtime</p>
-              <p className="mt-3 text-sm font-medium text-slate-800">
+              <p className="mt-3 text-[15px] font-medium leading-7 text-slate-900">
                 {inspection.runtime?.runtime_type || 'unknown'}
                 {inspection.runtime?.preview_url ? ` · ${inspection.runtime.preview_url}` : ''}
               </p>
             </div>
           </div>
 
-          <div className="rounded-[22px] border border-slate-200/80 bg-white/90 p-4">
+          <div className="setup-plum-card rounded-[22px] border p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Detected Stack</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {(inspection.detected_stack?.length ? inspection.detected_stack : form.tech_stack).map((stack) => (
-                <span key={stack} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                <span key={stack} className="setup-plum-chip rounded-full border px-3 py-1.5 text-[13px] font-semibold text-slate-900">
                   {stack}
                 </span>
               ))}
             </div>
           </div>
 
-          <div className="rounded-[22px] border border-slate-200/80 bg-slate-50/80 p-4">
+          <div className="setup-plum-card rounded-[22px] border p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Structure Preview</p>
-            <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap break-words text-xs leading-6 text-slate-600">
+            <pre className="mt-3 max-h-52 overflow-auto whitespace-pre-wrap break-words text-[13px] leading-7 text-slate-700">
               {inspection.structure_preview || inspection.source_summary || 'Inspection completed.'}
             </pre>
           </div>
         </div>
       ) : inspecting ? (
-        <div className="mt-5 flex items-center gap-3 rounded-[22px] border border-slate-200 bg-white/80 px-5 py-5 text-sm text-slate-500">
+        <div className="setup-plum-card mt-5 flex items-center gap-3 rounded-[22px] border px-5 py-5 text-sm text-slate-500">
           <Loader2 className="h-4 w-4 animate-spin" />
           Detecting repository structure, stack, and runtime...
         </div>
       ) : (
-        <div className="mt-5 rounded-[22px] border border-dashed border-slate-200 bg-white/70 p-5 text-sm leading-7 text-slate-500">
+        <div className="setup-plum-card mt-5 rounded-[22px] border border-dashed p-5 text-[15px] leading-8 text-slate-700">
           <p className="font-semibold text-slate-800">{emptyTitle}</p>
           <p className="mt-2">{emptyBody}</p>
         </div>
@@ -915,12 +985,12 @@ export default function Dashboard() {
     if (sourceType === 'github') {
       return (
         <div className="space-y-5">
-          <section className="rounded-[30px] border border-slate-200/80 bg-white/88 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+          <section className="setup-plum-surface rounded-[30px] border p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Repository</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-900">Import from GitHub</h3>
-                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-500">
+                <h3 className="font-display-serif mt-2 text-[1.75rem] font-semibold leading-none text-slate-950">Import from GitHub</h3>
+                <p className="mt-2 max-w-2xl text-[15px] leading-8 text-slate-700">
                   Paste a GitHub repository URL and DevHub will auto-detect the codebase, runtime, and project details before import.
                 </p>
               </div>
@@ -939,12 +1009,12 @@ export default function Dashboard() {
 
             <div className="mt-6 grid gap-4">
               <label className="grid gap-2">
-                <span className="text-sm font-medium text-slate-700">GitHub URL</span>
+                <span className="text-[15px] font-semibold text-slate-800">GitHub URL</span>
                 <input
                   value={form.github_url}
                   onChange={(event) => updateForm('github_url', event.target.value)}
                   placeholder="https://github.com/owner/repo"
-                  className="w-full rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition focus:border-slate-400"
+                  className="setup-plum-input w-full rounded-2xl border px-4 py-3 text-[15px] text-slate-900 outline-none transition focus:border-[rgba(112,67,79,0.16)]"
                 />
               </label>
             </div>
@@ -997,12 +1067,12 @@ export default function Dashboard() {
     if (sourceType === 'folder') {
       return (
         <div className="space-y-5">
-          <section className="rounded-[30px] border border-slate-200/80 bg-white/88 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+          <section className="setup-plum-surface rounded-[30px] border p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Local Workspace</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-900">Connect an existing folder</h3>
-                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-500">
+                <h3 className="font-display-serif mt-2 text-[1.75rem] font-semibold leading-none text-slate-950">Connect an existing folder</h3>
+                <p className="mt-2 max-w-2xl text-[15px] leading-8 text-slate-700">
                   Choose a real folder on this machine or paste its path and DevHub will auto-detect the codebase, runtime, and project details.
                 </p>
               </div>
@@ -1030,16 +1100,16 @@ export default function Dashboard() {
 
             <div className="mt-6 grid gap-4">
               <label className="grid gap-2">
-                <span className="text-sm font-medium text-slate-700">Local Folder Path</span>
+                <span className="text-[15px] font-semibold text-slate-800">Local Folder Path</span>
                 <input
                   value={form.local_path}
                   onChange={(event) => updateForm('local_path', event.target.value)}
                   placeholder="C:\\Users\\USER\\Desktop\\my-project"
-                  className="w-full rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition focus:border-slate-400"
+                  className="setup-plum-input w-full rounded-2xl border px-4 py-3 text-[15px] text-slate-900 outline-none transition focus:border-[rgba(112,67,79,0.16)]"
                 />
               </label>
 
-              <p className="rounded-[22px] border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-sm leading-7 text-slate-500">
+              <p className="setup-plum-card rounded-[22px] border px-4 py-3 text-[15px] leading-8 text-slate-700">
                 DevHub can open a native folder picker because the backend is running locally on this machine. You can still paste a path manually if you prefer.
               </p>
             </div>
@@ -1058,43 +1128,57 @@ export default function Dashboard() {
 
     return (
       <div className="space-y-5">
-        <section className="rounded-[30px] border border-slate-200/80 bg-white/88 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl">
+        <section className="setup-plum-surface rounded-[30px] border p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Start Fresh</p>
-          <h3 className="mt-2 text-xl font-semibold text-slate-900">Describe the app you want to build</h3>
-          <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">
+          <h3 className="font-display-serif mt-2 text-[1.9rem] font-semibold leading-none text-slate-950">Describe the app you want to build</h3>
+          <p className="mt-2 max-w-3xl text-[15px] leading-8 text-slate-700">
             DevHub will infer the project name, stack, and starter type automatically from your idea, then create a runnable mini app you can keep evolving.
           </p>
 
-          <label className="mt-6 grid gap-2">
-            <span className="text-sm font-medium text-slate-700">What are you building?</span>
-            <textarea
-              value={form.idea}
-              onChange={(event) => updateForm('idea', event.target.value)}
-              rows={6}
-              placeholder="Example: A white-dominant AI coding workspace that imports GitHub repos, plans features, and shows live implementation progress."
-              className="w-full rounded-[28px] border border-slate-200 bg-white/95 px-4 py-4 text-sm leading-7 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] outline-none transition focus:border-slate-400"
-            />
-          </label>
+          <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.28fr)_minmax(320px,0.72fr)] xl:items-start">
+            <label className="grid gap-3">
+              <span className="text-[15px] font-semibold text-slate-800">What are you building?</span>
+              <textarea
+                value={form.idea}
+                onChange={(event) => updateForm('idea', event.target.value)}
+                rows={4}
+                placeholder="Example: A white-dominant AI coding workspace that imports GitHub repos, plans features, and shows live implementation progress."
+                className="setup-plum-input min-h-[182px] w-full rounded-[24px] border px-4 py-4 text-[15px] leading-8 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[rgba(112,67,79,0.16)]"
+              />
+            </label>
+
+            <div className="setup-plum-card rounded-[24px] border p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">What DevHub Will Shape</p>
+              <div className="mt-4 space-y-3 text-[15px] leading-7 text-slate-700">
+                <p>Project name and summary from your prompt.</p>
+                <p>Starter stack and runnable first version.</p>
+                <p>Initial context for blueprint, planning, and implementation.</p>
+              </div>
+            </div>
+          </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <label className="grid gap-2">
-              <span className="text-sm font-medium text-slate-700">Project Name</span>
+              <span className="text-[15px] font-semibold text-slate-800">Project Name</span>
               <input
                 value={form.name}
                 onChange={(event) => updateForm('name', event.target.value)}
                 placeholder="My Project"
-                className="w-full rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                className="setup-plum-input w-full rounded-2xl border px-4 py-3 text-[15px] text-slate-900 outline-none transition focus:border-[rgba(112,67,79,0.16)]"
               />
             </label>
 
-            <div className="rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,250,252,0.9),rgba(255,255,255,0.94))] p-4 text-sm leading-7 text-slate-600">
-              DevHub will infer the description and generate a working starter from your idea.
+            <div className="setup-plum-card rounded-[24px] border p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Starter Output</p>
+              <p className="mt-3 text-[15px] leading-7 text-slate-700">
+                DevHub will infer the description and generate a working starter from your idea.
+              </p>
             </div>
           </div>
 
-          <div className="mt-5">
-            <p className="text-sm font-medium text-slate-700">Tech Stack</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">Pick the stack if you know it, or leave it minimal and DevHub will infer the rest.</p>
+          <div className="mt-6">
+            <p className="text-[15px] font-semibold text-slate-800">Tech Stack</p>
+            <p className="mt-2 text-[15px] leading-7 text-slate-700">Pick the stack if you know it, or leave it minimal and DevHub will infer the rest.</p>
             {renderStackSelector()}
           </div>
         </section>
@@ -1103,7 +1187,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-[var(--app-vh)] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.98),rgba(245,247,251,0.96)_55%,rgba(236,241,247,0.9))] text-slate-900">
+    <div className="min-h-[var(--app-vh)] bg-[linear-gradient(180deg,#ffffff_0%,#ffffff_74%,rgba(140,84,98,0.035)_100%)] text-slate-900">
       <ToastStack
         items={[
           ...(error ? [{ id: 'dashboard-error', type: 'error' as const, text: error }] : []),
@@ -1114,9 +1198,9 @@ export default function Dashboard() {
           if (toastId === 'dashboard-success') setSuccess('');
         }}
       />
-      <div className="mx-auto flex min-h-[var(--app-vh)] max-w-[1440px] flex-col px-6 py-8 lg:px-10">
-        <header className="rounded-[32px] border border-white/70 bg-white/78 px-7 py-6 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto flex min-h-[var(--app-vh)] max-w-[1680px] flex-col px-6 py-8 lg:px-10">
+        <header className="setup-plum-surface rounded-[28px] border px-7 py-6">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.36em] text-slate-400">DevHub</p>
               <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">
@@ -1127,33 +1211,33 @@ export default function Dashboard() {
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              {SOURCE_OPTIONS.map((option) => {
-                const Icon = option.id === 'starter' ? Sparkles : option.id === 'github' ? Github : FolderOpen;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => openCreateModal(option.id)}
-                    className="group rounded-[24px] border border-slate-200/90 bg-white/90 p-4 text-left shadow-[0_16px_36px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:shadow-[0_24px_48px_rgba(15,23,42,0.12)]"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="rounded-2xl bg-slate-950 p-2 text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)]">
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:text-slate-700" />
-                    </div>
-                    <h2 className="mt-5 text-lg font-semibold text-slate-950">{option.title}</h2>
-                    <p className="mt-2 text-sm leading-7 text-slate-500">{option.eyebrow}</p>
-                  </button>
-                );
-              })}
+            <div className="flex w-full max-w-[420px] items-stretch">
+              <button
+                type="button"
+                onClick={() => openCreateModal()}
+                className="smooth-hover-lift group w-full rounded-[26px] border border-slate-950/10 bg-[linear-gradient(145deg,#111827,#70434f)] p-6 text-left text-white shadow-[0_24px_60px_rgba(112,67,79,0.16),0_12px_28px_rgba(15,23,42,0.1)] hover:-translate-y-1.5 hover:shadow-[0_30px_72px_rgba(112,67,79,0.2),0_16px_34px_rgba(15,23,42,0.12)]"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="rounded-[16px] bg-white p-3 text-slate-950 shadow-[0_12px_24px_rgba(15,23,42,0.16)]">
+                    <Plus className="h-5 w-5" />
+                  </div>
+                  <ArrowRight className="h-5 w-5 text-slate-300 transition duration-300 group-hover:translate-x-1 group-hover:text-white" />
+                </div>
+                <h2 className="mt-8 text-[clamp(1.45rem,2vw,2rem)] font-semibold tracking-tight">New Project</h2>
+                <p className="mt-3 text-sm leading-7 text-slate-300">
+                  Start fresh, import GitHub, connect private repos, or attach a local folder from one clean setup flow.
+                </p>
+                <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 shadow-[0_10px_20px_rgba(15,23,42,0.16)]">
+                  Open Setup
+                  <ArrowRight className="h-4 w-4 transition duration-300 group-hover:translate-x-1" />
+                </div>
+              </button>
             </div>
           </div>
         </header>
 
         <section className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1fr)_21rem]">
-          <div className="rounded-[32px] border border-white/70 bg-white/80 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.1)] backdrop-blur-xl">
+          <div className="setup-plum-surface rounded-[28px] border p-6">
             <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Projects</p>
@@ -1170,7 +1254,7 @@ export default function Dashboard() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => openCreateModal('starter')}
+                  onClick={() => openCreateModal()}
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_32px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5"
                 >
                   <Plus className="h-4 w-4" />
@@ -1180,12 +1264,12 @@ export default function Dashboard() {
             </div>
 
             {loading ? (
-              <div className="mt-8 flex items-center gap-3 rounded-[28px] border border-slate-200/80 bg-slate-50/80 px-5 py-6 text-sm text-slate-500">
+              <div className="setup-plum-card mt-8 flex items-center gap-3 rounded-[24px] border px-5 py-6 text-sm text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading projects...
               </div>
             ) : projects.length === 0 ? (
-              <div className="mt-8 rounded-[28px] border border-dashed border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.92))] p-10 text-center">
+              <div className="setup-plum-card mt-8 rounded-[24px] border border-dashed p-10 text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-[0_18px_36px_rgba(15,23,42,0.16)]">
                   <Workflow className="h-6 w-6" />
                 </div>
@@ -1218,11 +1302,11 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : (
-              <div className="mt-8 grid gap-4 xl:grid-cols-2">
+              <div className="mt-8 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                 {projects.map((project) => (
                   <article
                     key={project.id}
-                    className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.96))] p-5 shadow-[0_18px_44px_rgba(15,23,42,0.08)] transition hover:-translate-y-1 hover:shadow-[0_26px_54px_rgba(15,23,42,0.12)]"
+                    className="setup-plum-card overflow-hidden rounded-[24px] border p-4 transition hover:-translate-y-1 hover:shadow-[0_26px_54px_rgba(112,67,79,0.12),0_14px_30px_rgba(15,23,42,0.06)]"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
@@ -1234,15 +1318,17 @@ export default function Dashboard() {
                             {project.status || 'active'}
                           </span>
                         </div>
-                        <h3 className="mt-4 break-words text-xl font-semibold text-slate-950">{project.name}</h3>
-                        <p className="mt-3 line-clamp-3 break-words text-sm leading-7 text-slate-500">{project.description}</p>
+                        <h3 className="mt-3 break-words text-lg font-semibold text-slate-950">{project.name}</h3>
+                        <p className="mt-2 line-clamp-2 break-words text-sm leading-6 text-slate-500">
+                          {project.description || 'Workspace ready for blueprint, pipeline, and implementation.'}
+                        </p>
                       </div>
 
                       <button
                         type="button"
                         onClick={() => deleteProject(project.id)}
                         disabled={deletingId === project.id}
-                        className="rounded-2xl border border-rose-200 bg-white/90 p-2 text-rose-500 transition hover:bg-rose-50 disabled:opacity-60"
+                        className="rounded-2xl border border-rose-200 bg-white p-2 text-rose-500 transition hover:bg-rose-50 disabled:opacity-60"
                         aria-label={`Delete ${project.name}`}
                       >
                         {deletingId === project.id ? (
@@ -1253,17 +1339,22 @@ export default function Dashboard() {
                       </button>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      {(project.tech_stack || []).slice(0, 5).map((stack) => (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {(project.tech_stack || []).slice(0, 3).map((stack) => (
                         <span key={stack} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
                           {stack}
                         </span>
                       ))}
+                      {(project.tech_stack || []).length > 3 ? (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                          +{(project.tech_stack || []).length - 3} more
+                        </span>
+                      ) : null}
                     </div>
 
-                    <div className="mt-6 flex items-center justify-between gap-4">
-                      <div className="min-w-0 flex-1 overflow-hidden text-xs text-slate-400">
-                        <span className="block truncate">{getProjectLocation(project)}</span>
+                    <div className="mt-4 flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <span className="block truncate text-xs text-slate-400">{getProjectLocation(project)}</span>
                       </div>
                       <Link
                         to={`/project/${project.id}`}
@@ -1280,7 +1371,7 @@ export default function Dashboard() {
           </div>
 
           <aside className="grid gap-5">
-            <div className="rounded-[30px] border border-white/70 bg-white/78 p-6 shadow-[0_20px_56px_rgba(15,23,42,0.1)] backdrop-blur-xl">
+            <div className="setup-plum-surface rounded-[24px] border p-6">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">How it connects</p>
               <h3 className="mt-3 text-xl font-semibold text-slate-950">One project, one shared system.</h3>
               <ul className="mt-5 space-y-4 text-sm leading-7 text-slate-600">
@@ -1290,7 +1381,7 @@ export default function Dashboard() {
               </ul>
             </div>
 
-            <div className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(247,248,251,0.92))] p-6 shadow-[0_20px_56px_rgba(15,23,42,0.1)] backdrop-blur-xl">
+            <div className="setup-plum-surface rounded-[24px] border p-6">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Recommended first step</p>
               <h3 className="mt-3 text-xl font-semibold text-slate-950">Use the right setup path.</h3>
               <p className="mt-3 text-sm leading-7 text-slate-600">
@@ -1302,8 +1393,8 @@ export default function Dashboard() {
       </div>
 
       {showAiSettings ? (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-[rgba(15,23,42,0.18)] px-4 py-4 backdrop-blur-sm">
-          <div className="max-h-[calc(var(--app-vh)-2rem)] w-full max-w-3xl overflow-y-auto rounded-[36px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.98))] shadow-[0_36px_120px_rgba(15,23,42,0.18)]">
+        <div className="setup-plum-overlay smooth-overlay-enter fixed inset-0 z-[55] flex items-center justify-center px-4 py-4">
+          <div className="setup-plum-modal smooth-panel-enter max-h-[calc(var(--app-vh)-2rem)] w-full max-w-3xl overflow-y-auto rounded-[28px] border">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-6 lg:px-8 lg:py-7">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">DevHub Settings</p>
@@ -1315,7 +1406,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => setShowAiSettings(false)}
-                className="rounded-2xl border border-slate-200 bg-white/90 p-2 text-slate-500 transition hover:text-slate-900"
+                className="setup-plum-button smooth-hover-lift rounded-2xl border p-2 text-slate-500 hover:-translate-y-0.5 hover:text-slate-900"
                 aria-label="Close AI settings"
               >
                 <X className="h-5 w-5" />
@@ -1502,100 +1593,200 @@ export default function Dashboard() {
       ) : null}
 
       {showCreate ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-[rgba(15,23,42,0.18)] px-4 py-4 backdrop-blur-sm lg:items-center">
-          <div className="max-h-[calc(var(--app-vh)-2rem)] w-full max-w-[1180px] overflow-hidden rounded-[36px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.98))] shadow-[0_36px_120px_rgba(15,23,42,0.18)]">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-6 lg:px-8 lg:py-7">
+        <div className="setup-plum-overlay smooth-overlay-enter fixed inset-0 z-50 flex items-start justify-center px-4 py-4 lg:items-center">
+          <div data-create-modal-surface="true" className={`setup-plum-modal smooth-panel-enter font-sans flex max-h-[calc(var(--app-vh)-2rem)] w-full flex-col overflow-hidden rounded-[22px] border ${createStep === 'source' ? 'max-w-[1280px]' : 'max-w-[1540px]'}`}>
+            <div className={`flex items-start justify-between gap-4 border-b border-slate-950/6 transition-all duration-500 ${createHeaderCompact ? 'px-6 py-3 lg:px-8 lg:py-3.5' : 'px-6 py-6 lg:px-8 lg:py-7'}`}>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.32em] text-slate-400">Project Setup</p>
-                <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 lg:text-3xl">Create a project the clean way</h2>
+                <p className={`text-xs font-semibold uppercase tracking-[0.32em] text-slate-400 transition-all duration-500 ${createHeaderCompact ? 'opacity-80' : ''}`}>Project Setup</p>
+                <h2 className={`font-display-serif font-semibold tracking-tight text-slate-950 transition-all duration-500 ${createHeaderCompact ? 'mt-1 text-lg lg:text-xl' : 'mt-3 text-2xl lg:text-3xl'}`}>
+                  {createStep === 'source' ? 'Choose how you want to start' : 'Create a project the clean way'}
+                </h2>
+                {createStep !== 'source' ? (
+                  <button
+                    type="button"
+                    onClick={() => setCreateStep('source')}
+                    className={`setup-plum-button smooth-hover-lift inline-flex items-center gap-2 rounded-[10px] border px-4 text-sm font-semibold text-slate-700 transition-all duration-500 hover:-translate-y-0.5 ${
+                      createHeaderCompact ? 'mt-2 py-1.5 opacity-0 pointer-events-none h-0 overflow-hidden border-transparent px-0' : 'mt-4 py-2 opacity-100'
+                    }`}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Back To Source Picker
+                  </button>
+                ) : null}
               </div>
-              <button
-                type="button"
-                onClick={closeCreateModal}
-                className="rounded-2xl border border-slate-200 bg-white/90 p-2 text-slate-500 transition hover:text-slate-900"
-                aria-label="Close project setup"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-3">
+                {createStep !== 'source' ? (
+                  <button
+                    type="button"
+                    onClick={() => setCreateStep('source')}
+                    className="setup-plum-button smooth-hover-lift inline-flex items-center gap-2 rounded-[10px] border px-4 py-2 text-sm font-semibold text-slate-700 hover:-translate-y-0.5 lg:hidden"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Sources
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  className="setup-plum-button smooth-hover-lift rounded-[10px] border p-2 text-slate-500 hover:-translate-y-0.5 hover:text-slate-900"
+                  aria-label="Close project setup"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="max-h-[calc(var(--app-vh)-8rem)] min-h-0 overflow-y-auto">
-              <div className="border-b border-slate-100 bg-white/72 px-5 py-5 lg:px-7">
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Source</p>
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  {SOURCE_OPTIONS.map((option) => {
-                    const selected = option.id === sourceType;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => setSourceType(option.id)}
-                        className={`rounded-[24px] border px-4 py-4 text-left transition ${
-                          selected
-                            ? 'border-slate-900 bg-slate-950 text-white shadow-[0_22px_40px_rgba(15,23,42,0.16)]'
-                            : 'border-slate-200/90 bg-white/90 text-slate-700 shadow-[0_14px_32px_rgba(15,23,42,0.06)] hover:-translate-y-0.5'
-                        }`}
-                      >
-                        <h3 className="text-base font-semibold lg:text-lg">{option.title}</h3>
-                        <p className={`mt-2 text-sm leading-6 ${selected ? 'text-slate-200' : 'text-slate-500'}`}>
-                          {option.eyebrow}
+            <div
+              ref={createBodyRef}
+              onScroll={(event) => setCreateHeaderCompact(event.currentTarget.scrollTop > 40)}
+              className="min-h-0 flex-1 overflow-y-auto scroll-smooth"
+            >
+              {createStep === 'source' ? (
+                <div key="create-step-source" className="smooth-step-enter px-6 py-6 lg:px-8 lg:py-8">
+                  <div className="setup-plum-surface rounded-[16px] border px-6 py-5">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Choose Source</p>
+                        <p className="mt-2 text-[15px] leading-8 text-slate-700">
+                          Pick a starting point and DevHub will open the deeper setup flow for that source.
                         </p>
-                        <p className={`mt-2 text-sm leading-6 ${selected ? 'text-slate-300' : 'text-slate-400'}`}>
-                          {option.detail}
-                        </p>
-                      </button>
-                    );
-                  })}
+                      </div>
+                      <div className="setup-plum-chip inline-flex items-center gap-2 self-start rounded-[10px] border px-4 py-2 text-[14px] font-semibold text-slate-700">
+                        4 ways to begin
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                    {SOURCE_OPTIONS.map((option, index) => {
+                      const Icon = getSourceIcon(option.id);
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => beginCreateSetup(option.id)}
+                          className="setup-plum-card smooth-card-enter smooth-hover-lift group relative flex min-h-[276px] flex-col overflow-hidden rounded-[16px] border p-6 text-left hover:-translate-y-1.5 hover:shadow-[0_30px_58px_rgba(112,67,79,0.14)]"
+                          style={{ animationDelay: `${index * 55}ms` }}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="setup-plum-chip rounded-[10px] border p-3 text-slate-900 transition duration-300 group-hover:scale-105 group-hover:shadow-[0_18px_30px_rgba(112,67,79,0.12)]">
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div className="setup-plum-chip rounded-[10px] border p-2 text-slate-400 transition duration-300 group-hover:text-slate-900 group-hover:translate-x-1">
+                              <ArrowRight className="h-4 w-4" />
+                            </div>
+                          </div>
+                          <h3 className="font-display-serif mt-7 text-[1.55rem] font-semibold tracking-tight text-slate-950">{option.title}</h3>
+                          <p className="mt-2 text-[15px] font-semibold leading-7 text-slate-800">{option.eyebrow}</p>
+                          <p className="mt-4 text-[15px] leading-8 text-slate-700">{option.summary}</p>
+                          <div className="mt-auto pt-6">
+                            <div className="flex items-center justify-between">
+                              <span className="rounded-[8px] bg-slate-100 px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                              {option.id === 'github_connect' ? 'Private Friendly' : option.id === 'starter' ? 'Scaffold' : option.id === 'github' ? 'Import' : 'Local'}
+                              </span>
+                              <span className="text-[15px] font-semibold text-slate-950 transition duration-300 group-hover:translate-x-1">
+                                Continue
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div key={`create-step-details-${sourceType}`} className="smooth-step-enter px-5 py-5 lg:px-7 lg:py-7">
+                  {sourceType === 'github_connect' ? (
+                    <div className="grid gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
+                      <div>{renderFlowSidebar()}</div>
+                      <div>
+                        <div className="setup-plum-surface flex items-center justify-between gap-3 rounded-[12px] border px-5 py-4">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Selected Source</p>
+                            <p className="mt-1 text-[15px] font-semibold text-slate-950">{getSourceLabel(sourceType)}</p>
+                            <p className="mt-1 text-[15px] leading-7 text-slate-700">You can switch back and choose another setup path at any time.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCreateStep('source')}
+                            className="setup-plum-button smooth-hover-lift rounded-[10px] border px-4 py-2 text-[15px] font-semibold text-slate-700 hover:-translate-y-0.5"
+                          >
+                            Change Source
+                          </button>
+                        </div>
 
-              <div className="px-5 py-5 lg:px-7 lg:py-7">
-                {renderFlowStrip()}
+                        <div className="mt-5">
+                          {renderSourceFields()}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {renderFlowStrip()}
 
-                {renderSourceFields()}
+                      <div className="setup-plum-surface mt-6 flex items-center justify-between gap-3 rounded-[24px] border px-5 py-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Selected Source</p>
+                          <p className="mt-1 text-[15px] font-semibold text-slate-950">{getSourceLabel(sourceType)}</p>
+                          <p className="mt-1 text-[15px] leading-7 text-slate-700">You can switch back and choose another setup path at any time.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCreateStep('source')}
+                          className="setup-plum-button smooth-hover-lift rounded-full border px-4 py-2 text-[15px] font-semibold text-slate-700 hover:-translate-y-0.5"
+                        >
+                          Change Source
+                        </button>
+                      </div>
 
-                <div className="mt-7 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-slate-500">
-                    {sourceType === 'starter'
-                      ? 'A managed project folder and a working starter app will be created from your input.'
-                      : sourceType === 'github'
-                        ? inspection
-                          ? 'Repository detected. Import will clone it into a managed DevHub workspace.'
-                          : 'Paste a valid repository URL and DevHub will detect the project details automatically.'
-                        : sourceType === 'github_connect'
+                      <div className="mt-6">
+                        {renderSourceFields()}
+                      </div>
+                    </>
+                  )}
+
+                  <div className="mt-7 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-[15px] leading-7 text-slate-700">
+                      {sourceType === 'starter'
+                        ? 'A managed project folder and a working starter app will be created from your input.'
+                        : sourceType === 'github'
                           ? inspection
-                            ? 'Connected repository detected. Import will clone it with linked GitHub access and keep repo metadata connected.'
-                            : 'Connect GitHub and select a repository to detect the project details automatically.'
-                        : inspection
-                          ? 'Folder detected. DevHub is ready to connect it as a local workspace.'
-                          : 'Choose or paste a local folder path and DevHub will detect the project details automatically.'}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={closeCreateModal}
-                      className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCreate}
-                      disabled={creating || inspecting}
-                      className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_32px_rgba(15,23,42,0.18)] disabled:opacity-60"
-                    >
-                      {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                            ? 'Repository detected. Import will clone it into a managed DevHub workspace.'
+                            : 'Paste a valid repository URL and DevHub will detect the project details automatically.'
+                          : sourceType === 'github_connect'
+                            ? inspection
+                              ? 'Connected repository detected. Import will clone it with linked GitHub access and keep repo metadata connected.'
+                              : 'Connect GitHub and select a repository to detect the project details automatically.'
+                            : inspection
+                              ? 'Folder detected. DevHub is ready to connect it as a local workspace.'
+                              : 'Choose or paste a local folder path and DevHub will detect the project details automatically.'}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={closeCreateModal}
+                        className="rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCreate}
+                        disabled={creating || inspecting}
+                        className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_32px_rgba(15,23,42,0.18)] disabled:opacity-60"
+                      >
+                        {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                         {sourceType === 'starter'
                           ? 'Create Working Starter'
                           : sourceType === 'github'
                             ? 'Import GitHub Project'
                             : sourceType === 'github_connect'
                               ? 'Import Connected GitHub Project'
-                            : 'Connect Folder Project'}
+                              : 'Connect Folder Project'}
                       </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
