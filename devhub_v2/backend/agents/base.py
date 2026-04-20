@@ -1,10 +1,13 @@
 import copy
 import json
 import os
+import random
 import shlex
 import shutil
+import socket
 import subprocess
 import tempfile
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -17,6 +20,10 @@ SUPPORTED_GEMINI_MODES = {"api_key", "gemini_cli", "vertexai"}
 DEFAULT_GEMINI_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_VERTEX_PROJECT = "noted-computing-459609-n2"
 DEFAULT_VERTEX_LOCATION = "global"
+DEFAULT_HTTP_TIMEOUT_SECONDS = 240
+DEFAULT_HTTP_MAX_RETRIES = 3
+MAX_HTTP_BACKOFF_SECONDS = 12.0
+RETRYABLE_HTTP_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
 
 def default_model_for_provider(provider: str, gemini_mode: str = "api_key") -> str:
@@ -51,6 +58,9 @@ def default_ai_config() -> dict:
         "vertex_project": os.environ.get("VERTEX_PROJECT_ID", os.environ.get("GOOGLE_CLOUD_PROJECT", DEFAULT_VERTEX_PROJECT)),
         "vertex_location": os.environ.get("DEVHUB_VERTEX_LOCATION", os.environ.get("GOOGLE_CLOUD_LOCATION", DEFAULT_VERTEX_LOCATION)),
         "vertex_access_token": "",
+        "fallback_model": os.environ.get("DEVHUB_GEMINI_FALLBACK_MODEL", ""),
+        "request_timeout_seconds": DEFAULT_HTTP_TIMEOUT_SECONDS,
+        "max_retries": DEFAULT_HTTP_MAX_RETRIES,
     }
 
 
@@ -58,6 +68,36 @@ def _string_value(value) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _int_value(value, default: int) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError, AttributeError):
+        return default
+
+
+class AIRequestError(ValueError):
+    """Provider request failure with retryability metadata."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider: str,
+        retriable: bool = False,
+        status_code: int | None = None,
+        body: str = "",
+        reason: str = "",
+        url: str = "",
+    ):
+        super().__init__(message)
+        self.provider = provider
+        self.retriable = retriable
+        self.status_code = status_code
+        self.body = body
+        self.reason = reason
+        self.url = url
 
 
 def _parse_data_url_image(data_url: str) -> tuple[str, str]:
@@ -226,8 +266,25 @@ def normalize_ai_config(config: dict | None) -> dict:
     if normalized["gemini_mode"] not in SUPPORTED_GEMINI_MODES:
         normalized["gemini_mode"] = "api_key"
 
-    for key in ("model", "api_key", "base_url", "gemini_cli_command", "vertex_project", "vertex_location", "vertex_access_token"):
+    for key in (
+        "model",
+        "api_key",
+        "base_url",
+        "gemini_cli_command",
+        "vertex_project",
+        "vertex_location",
+        "vertex_access_token",
+        "fallback_model",
+    ):
         normalized[key] = _string_value(raw.get(key) or normalized.get(key))
+    normalized["request_timeout_seconds"] = max(
+        30,
+        _int_value(raw.get("request_timeout_seconds"), _int_value(normalized.get("request_timeout_seconds"), DEFAULT_HTTP_TIMEOUT_SECONDS)),
+    )
+    normalized["max_retries"] = max(
+        0,
+        _int_value(raw.get("max_retries"), _int_value(normalized.get("max_retries"), DEFAULT_HTTP_MAX_RETRIES)),
+    )
 
     if normalized["provider"] == "gemini":
         if normalized["model"] in {"", "gemini-2.5-pro"}:
@@ -468,24 +525,41 @@ class BaseAgent:
 
     def _gemini_completion(self, messages: list[dict], response_schema: bool = False) -> str:
         gemini_mode = self.ai_config.get("gemini_mode", "api_key")
-        if gemini_mode == "gemini_cli":
+        try:
+            if gemini_mode == "gemini_cli":
+                try:
+                    return self._gemini_cli_completion(messages, response_schema=response_schema)
+                except ValueError as exc:
+                    if "not installed" not in str(exc).lower():
+                        raise
+                    fallback_config = dict(self.ai_config)
+                    fallback_config["gemini_mode"] = "vertexai"
+                    fallback_agent = BaseAgent(
+                        role=self.role,
+                        system_instruction=self.system_instruction,
+                        model=self.model,
+                        ai_config=fallback_config,
+                    )
+                    return fallback_agent._vertexai_completion(messages, response_schema=response_schema)
+            if gemini_mode == "vertexai":
+                return self._vertexai_completion(messages, response_schema=response_schema)
+            return self._gemini_api_completion(messages, response_schema=response_schema)
+        except AIRequestError as exc:
+            fallback_model = self._gemini_fallback_model()
+            if not self._should_try_gemini_fallback(exc, fallback_model):
+                raise
+            original_model = self.model
+            self.model = fallback_model
+            self.ai_config["model"] = fallback_model
             try:
-                return self._gemini_cli_completion(messages, response_schema=response_schema)
-            except ValueError as exc:
-                if "not installed" not in str(exc).lower():
-                    raise
-                fallback_config = dict(self.ai_config)
-                fallback_config["gemini_mode"] = "vertexai"
-                fallback_agent = BaseAgent(
-                    role=self.role,
-                    system_instruction=self.system_instruction,
-                    model=self.model,
-                    ai_config=fallback_config,
-                )
-                return fallback_agent._vertexai_completion(messages, response_schema=response_schema)
-        if gemini_mode == "vertexai":
-            return self._vertexai_completion(messages, response_schema=response_schema)
-        return self._gemini_api_completion(messages, response_schema=response_schema)
+                if gemini_mode == "vertexai":
+                    return self._vertexai_completion(messages, response_schema=response_schema)
+                if gemini_mode == "api_key":
+                    return self._gemini_api_completion(messages, response_schema=response_schema)
+                raise
+            finally:
+                self.model = original_model
+                self.ai_config["model"] = original_model
 
     def _gemini_api_completion(self, messages: list[dict], response_schema: bool = False) -> str:
         api_key = self._resolve_api_key()
@@ -535,24 +609,28 @@ class BaseAgent:
             base_url = _vertexai_base_url_for_location(location, api_version="v1")
 
         url = f"{base_url}/projects/{quote(project)}/locations/{quote(location)}/publishers/google/models/{quote(self.model)}:generateContent"
-        response = self._http_json(
-            url,
-            headers={
-                "content-type": "application/json",
-                "authorization": f"Bearer {access_token}",
-            },
-            payload=payload,
-        )
+        headers = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {access_token}",
+        }
+        try:
+            response = self._http_json(url, headers=headers, payload=payload)
+        except AIRequestError as exc:
+            if exc.status_code not in {401, 403} or self.ai_config.get("vertex_access_token"):
+                raise
+            refreshed_headers = dict(headers)
+            refreshed_headers["authorization"] = f"Bearer {self._resolve_vertex_access_token(force_refresh=True)}"
+            response = self._http_json(url, headers=refreshed_headers, payload=payload)
         return self._gemini_text_from_response(response)
 
-    def _resolve_vertex_access_token(self) -> str:
+    def _resolve_vertex_access_token(self, force_refresh: bool = False) -> str:
         explicit = _string_value(self.ai_config.get("vertex_access_token"))
-        if explicit:
+        if explicit and not force_refresh:
             return explicit
 
         for key in ("VERTEX_AI_ACCESS_TOKEN", "GOOGLE_CLOUD_ACCESS_TOKEN"):
             value = _string_value(os.environ.get(key))
-            if value:
+            if value and not force_refresh:
                 return value
 
         try:
@@ -901,18 +979,79 @@ class BaseAgent:
                 )
         return parts
 
+    def _request_timeout_seconds(self) -> int:
+        return max(30, _int_value(self.ai_config.get("request_timeout_seconds"), DEFAULT_HTTP_TIMEOUT_SECONDS))
+
+    def _max_request_retries(self) -> int:
+        return max(0, _int_value(self.ai_config.get("max_retries"), DEFAULT_HTTP_MAX_RETRIES))
+
+    def _retry_delay_seconds(self, attempt_index: int, retry_after: str = "") -> float:
+        retry_after_seconds = _int_value(retry_after, 0)
+        if retry_after_seconds > 0:
+            return float(min(retry_after_seconds, int(MAX_HTTP_BACKOFF_SECONDS)))
+        base_delay = min(MAX_HTTP_BACKOFF_SECONDS, 2 ** attempt_index)
+        jitter = random.uniform(0.0, min(1.0, base_delay / 2))
+        return min(MAX_HTTP_BACKOFF_SECONDS, base_delay + jitter)
+
+    def _gemini_fallback_model(self) -> str:
+        return _string_value(self.ai_config.get("fallback_model") or os.environ.get("DEVHUB_GEMINI_FALLBACK_MODEL"))
+
+    def _should_try_gemini_fallback(self, exc: Exception, fallback_model: str) -> bool:
+        return (
+            isinstance(exc, AIRequestError)
+            and exc.retriable
+            and bool(fallback_model)
+            and fallback_model != self.model
+        )
+
     def _http_json(self, url: str, headers: dict | None = None, payload: dict | None = None) -> dict:
         data = json.dumps(payload or {}).encode("utf-8")
         request = Request(url, data=data, headers=headers or {}, method="POST")
+        timeout_seconds = self._request_timeout_seconds()
+        max_retries = self._max_request_retries()
+        provider = self.ai_config["provider"]
 
-        try:
-            with urlopen(request, timeout=240) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise ValueError(f"{self.ai_config['provider']} request failed ({exc.code}): {body}") from exc
-        except URLError as exc:
-            raise ValueError(f"{self.ai_config['provider']} request failed: {exc.reason}") from exc
+        for attempt in range(max_retries + 1):
+            try:
+                with urlopen(request, timeout=timeout_seconds) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                retriable = exc.code in RETRYABLE_HTTP_STATUS_CODES
+                if retriable and attempt < max_retries:
+                    time.sleep(self._retry_delay_seconds(attempt, exc.headers.get("Retry-After", "")))
+                    continue
+                raise AIRequestError(
+                    f"{provider} request failed ({exc.code}): {body}",
+                    provider=provider,
+                    retriable=retriable,
+                    status_code=exc.code,
+                    body=body,
+                    url=url,
+                ) from exc
+            except (TimeoutError, socket.timeout) as exc:
+                if attempt < max_retries:
+                    time.sleep(self._retry_delay_seconds(attempt))
+                    continue
+                raise AIRequestError(
+                    f"{provider} request timed out after {timeout_seconds}s: {exc}",
+                    provider=provider,
+                    retriable=True,
+                    reason=str(exc),
+                    url=url,
+                ) from exc
+            except URLError as exc:
+                reason = str(getattr(exc, "reason", exc))
+                if attempt < max_retries:
+                    time.sleep(self._retry_delay_seconds(attempt))
+                    continue
+                raise AIRequestError(
+                    f"{provider} request failed: {reason}",
+                    provider=provider,
+                    retriable=True,
+                    reason=reason,
+                    url=url,
+                ) from exc
 
     def parse_json(self, response_text: str) -> dict:
         if not response_text:

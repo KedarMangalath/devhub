@@ -50,7 +50,7 @@ INDEXABLE_EXTENSIONS = {
     # Misc
     '.xml', '.gradle',
 }
-BLUEPRINT_CACHE_VERSION = 15  # bumped: shared finalization + root dir visibility
+BLUEPRINT_CACHE_VERSION = 24  # bumped: deterministic fact extractors, quality/css/ws/integration injection
 BLUEPRINT_CONFIG_FILES = {
     # JavaScript / Node
     'package.json', 'tsconfig.json',
@@ -180,6 +180,47 @@ INSTRUCTION_FILES = [
     'CLAUDE.md',
     '.devhub/DEVHUB.md',
 ]
+INSTRUCTION_DOC_NAME_TOKENS = (
+    'readme',
+    'documentation',
+    'document',
+    'design',
+    'guide',
+    'overview',
+    'flow',
+    'workflow',
+    'architecture',
+    'reference',
+    'manual',
+    'roadmap',
+    'plan',
+    'proposal',
+    'integration',
+    'setup',
+    'faq',
+    'concept',
+    'permission',
+    'role',
+)
+INSTRUCTION_DOC_DIR_TOKENS = {
+    'docs',
+    'doc',
+    'documentation',
+    'guides',
+    'guide',
+    'design',
+    'plans',
+}
+SECTION_FILE_KIND_SCORES = {
+    'services': {
+        'source-file': 8.0,
+        'api-module': 8.0,
+        'routing-module': 8.0,
+        'config': 4.0,
+        'package-manifest': 4.0,
+        'script': 4.0,
+    },
+}
 STOPWORDS = {
     'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'your', 'have', 'will',
     'were', 'been', 'http', 'https', 'file', 'files', 'code', 'user', 'using', 'used',
@@ -2005,7 +2046,7 @@ def _summary_pool(cache: dict, limit: int = 400) -> list[dict]:
             continue
         seen.add(path)
         items.append(item)
-        if len(items) >= limit:
+        if limit and len(items) >= limit:
             break
     return items
 
@@ -2301,6 +2342,8 @@ def _frontend_ui_priority_score(path: str, haystack: str, lowered_query: str) ->
 def _score_summary_for_query(item: dict, query: str, section_key: str = '') -> float:
     path = str(item.get('path') or '')
     tier = int(item.get('tier') or 2)
+    path_lower = path.lower()
+    file_kind = str(item.get('file_kind') or '').strip().lower()
     score = 0.0
     if tier == 1:
         score += 5.0
@@ -2350,13 +2393,26 @@ def _score_summary_for_query(item: dict, query: str, section_key: str = '') -> f
     for concept, keywords in QUERY_INTENT_ALIASES.items():
         if not any(keyword in lowered_query for keyword in keywords):
             continue
-        path_lower = path.lower()
         keyword_overlap = sum(1 for keyword in keywords if keyword in haystack or keyword in path_lower)
         if keyword_overlap:
             score += keyword_overlap * (3.0 if concept == 'sandbox' else 1.8)
         if concept == 'sandbox' and any(token in path_lower for token in ('sandbox/', 'sandbox\\', 'executor.py', 'workspace.py', 'workspace_', 'runtime', 'process')):
             score += 8.0
     score += _frontend_ui_priority_score(path, haystack, lowered_query)
+    score += SECTION_FILE_KIND_SCORES.get(section_key, {}).get(file_kind, 0.0)
+
+    if section_key == 'services':
+        if path_lower.startswith('services/') or '/services/' in f'/{path_lower}':
+            score += 6.0
+        service_name_patterns = (
+            r'(^|[_-])(service|services|client|utils|utility|worker|builder|manager|processor|gateway|adapter)([_-]|$)',
+            r'(^|[_-])job[_-]',
+        )
+        if any(re.search(pattern, path_lower) for pattern in service_name_patterns):
+            score += 4.0
+        if any(token in path_lower for token in ('entrypoint', 'daemon', 'scheduler', 'orchestr', 'resume_builder', 'clientapi', 'paymentapi')):
+            score += 2.5
+
     section_tokens = {
         'services': {'service', 'worker', 'main', 'server', 'app', 'component'},
         'api': {'api', 'route', 'router', 'view', 'controller', 'endpoint', 'urls'},
@@ -2503,17 +2559,152 @@ def retrieve_relevant_files(
     }
 
 
+def _instruction_doc_score(rel_path: str) -> float:
+    normalized = str(rel_path or '').replace('\\', '/').strip('/')
+    if not normalized:
+        return float('-inf')
+
+    lowered = normalized.lower()
+    parts = [part for part in lowered.split('/') if part]
+    file_name = parts[-1] if parts else lowered
+    suffix = Path(file_name).suffix.lower()
+
+    if any(part in {'.git', '.devhub', '.code-review-graph', '__pycache__', 'node_modules'} for part in parts[:-1]):
+        return float('-inf')
+    if file_name in {'license', 'license.md', 'license.txt'}:
+        return float('-inf')
+    if suffix not in {'.md', '.rst', '.txt'}:
+        return float('-inf')
+
+    token_hits = sum(1 for token in INSTRUCTION_DOC_NAME_TOKENS if token in file_name)
+    dir_hits = sum(1 for part in parts[:-1] if part in INSTRUCTION_DOC_DIR_TOKENS)
+    doc_like_txt = suffix == '.txt' and (token_hits > 0 or dir_hits > 0)
+    if suffix == '.txt' and not doc_like_txt:
+        return float('-inf')
+
+    score = 0.0
+    if len(parts) == 1:
+        score += 18.0
+    if file_name.startswith('readme'):
+        score += 18.0
+    if file_name in {'documentation.md', 'project_detail.md', 'project_readme.md', 'project_flow_documentation.txt'}:
+        score += 16.0
+    score += token_hits * 4.0
+    score += dir_hits * 5.0
+    if lowered.startswith('backend/docs/'):
+        score += 10.0
+    if lowered.startswith('frontend/docs/'):
+        score += 8.0
+    if lowered.startswith('docs/'):
+        score += 8.0
+    if '/docs/' in lowered:
+        score += 4.0
+    if any(part.startswith('.') for part in parts[:-1]):
+        score -= 20.0
+    if file_name.endswith('.txt'):
+        score -= 1.0
+    return score
+
+
+def _service_candidate_score(item: dict) -> float:
+    path = str(item.get('path') or '').replace('\\', '/').strip().lower()
+    if not path:
+        return 0.0
+
+    file_kind = str(item.get('file_kind') or '').strip().lower()
+    file_name = Path(path).name
+    stem = Path(path).stem
+    score = 0.0
+
+    if file_kind in {'documentation', 'notes', 'readme', 'security-doc', 'contributing-doc'}:
+        return 0.0
+
+    if path.startswith('frontend/src/services/'):
+        score += 14.0
+    if path.startswith('backend/services/') or '/services/' in f'/{path}':
+        score += 12.0
+    if '/jobs/' in path or '/workers/' in path or '/worker/' in path:
+        score += 10.0
+    if any(path.endswith(suffix) for suffix in ('/urls.py', '/app.py', '/server.py', '/main.py', '/wsgi.py', '/asgi.py')):
+        score += 6.0
+    if any(re.search(pattern, stem) for pattern in (
+        r'(^|[_-])(service|services|client|worker|builder|manager|processor|gateway|adapter)([_-]|$)',
+        r'(^|[_-])job[_-]',
+        r'(^|[_-])(utils|utility|api)([_-]|$)',
+    )):
+        score += 8.0
+    if any(token in path for token in ('resume_builder', 'retell', 'gemini', 'payment', 'interview', 'aggregator', 'consumer', 'counsumer', 'websocket', 'ws_', 'chat_', 'notify')):
+        score += 4.0
+    if file_kind in {'source-file', 'api-module', 'routing-module', 'script', 'config', 'package-manifest'}:
+        score += 3.0
+    if path.startswith('backend/'):
+        score += 2.0
+    if file_kind in {'ui-component', 'page-component'} and '/services/' not in f'/{path}':
+        score -= 12.0
+    if '/components/' in path or '/pages/' in path:
+        score -= 8.0
+
+    return max(0.0, score)
+
+
 def _instruction_context(workspace_path: Path) -> list[dict]:
-    entries = []
+    entries_by_path: dict[str, dict] = {}
+
+    def register(rel_path: str, score: float) -> None:
+        normalized = str(rel_path or '').replace('\\', '/').strip('/')
+        if not normalized:
+            return
+        excerpt = _read_text_excerpt(workspace_path / normalized, limit=3000)
+        if not excerpt:
+            return
+        current = entries_by_path.get(normalized)
+        if current and float(current.get('score') or 0.0) >= score:
+            return
+        entries_by_path[normalized] = {
+            'path': normalized,
+            'content': excerpt,
+            'score': score,
+        }
+
     for rel_path in INSTRUCTION_FILES:
-        path = workspace_path / rel_path
-        excerpt = _read_text_excerpt(path, limit=3000)
-        if excerpt:
-            entries.append({
-                'path': rel_path.replace('\\', '/'),
-                'content': excerpt,
-            })
-    return entries
+        normalized = str(rel_path or '').replace('\\', '/').strip('/')
+        if not normalized:
+            continue
+        explicit_score = 40.0 if not normalized.startswith('.devhub/') else 6.0
+        register(normalized, explicit_score)
+
+    for file_path in workspace_path.rglob('*'):
+        if not file_path.is_file():
+            continue
+        try:
+            rel_path = str(file_path.relative_to(workspace_path)).replace('\\', '/')
+        except ValueError:
+            continue
+        if not rel_path:
+            continue
+        parts = [part for part in rel_path.split('/') if part]
+        if any(part in SKIP_DIRS for part in parts[:-1]):
+            continue
+        score = _instruction_doc_score(rel_path)
+        if score == float('-inf'):
+            continue
+        register(rel_path, score)
+
+    ranked = sorted(
+        entries_by_path.values(),
+        key=lambda item: (
+            -float(item.get('score') or 0.0),
+            len(str(item.get('path') or '')),
+            str(item.get('path') or ''),
+        ),
+    )
+    return [
+        {
+            'path': str(item.get('path') or ''),
+            'content': str(item.get('content') or ''),
+        }
+        for item in ranked[:24]
+    ]
 
 
 def _render_repo_map(project: Project, cache: dict) -> str:
@@ -2828,6 +3019,18 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
     database_analysis = _extract_universal_schema(workspace_path, manifest_entries, graph_data=graph_data)
     api_reference = build_api_reference_catalog(workspace_path)
 
+    # Deterministic fact extraction — results injected into prompts so LLM
+    # synthesizes prose around verified facts, not hallucinated lists.
+    from agents.fact_extractors import (
+        detect_css_frameworks, detect_test_frameworks,
+        detect_lint_tools, detect_websocket_services, detect_integration_clients,
+    )
+    detected_css_frameworks = detect_css_frameworks(workspace_path)
+    detected_test_frameworks = detect_test_frameworks(workspace_path)
+    detected_lint_tools = detect_lint_tools(workspace_path)
+    detected_websocket_services = detect_websocket_services(workspace_path)
+    detected_integration_clients = detect_integration_clients(workspace_path)
+
     readme_excerpt = ''
     for candidate in ('README.md', 'readme.md'):
         readme_excerpt = _read_text_excerpt(workspace_path / candidate)
@@ -2906,6 +3109,12 @@ def build_blueprint_context(project: Project, workspace_path: Path, force: bool 
         'repo_tree': repo_tree,
         'repo_tree_nodes': repo_tree_nodes,
         'compact_summary': compact_summary,
+        # Deterministic facts — injected into prompts to ground LLM output
+        'detected_css_frameworks': detected_css_frameworks,
+        'detected_test_frameworks': detected_test_frameworks,
+        'detected_lint_tools': detected_lint_tools,
+        'detected_websocket_services': detected_websocket_services,
+        'detected_integration_clients': detected_integration_clients,
     }
 
     cache_path.write_text(json.dumps(cache, indent=2), encoding='utf-8')
@@ -2970,7 +3179,7 @@ def select_files_for_section(cache: dict, section_key: str, workspace_path: Path
     Uses role hints and path-name heuristics to rank files by relevance.
     """
     section_queries = {
-        'services': 'find service entrypoints, major components, workers, servers, app shells, and runtime orchestration files',
+        'services': 'find service module business logic client utility worker entrypoint files, services directories, runtime services, servers, schedulers, builders, managers, adapters, and integration clients',
         'api': 'find API routes, router files, endpoint handlers, views, and request-processing modules',
         'database': 'find models, schemas, entities, migrations, and persistence layer files',
         'workflows': 'find workflow, agent, pipeline, task, sequence, and end-to-end execution files',
@@ -2979,25 +3188,71 @@ def select_files_for_section(cache: dict, section_key: str, workspace_path: Path
         'knowledge': 'find docs, architectural core files, concepts, FAQs, and newcomer-facing reference files',
     }
     if workspace_path:
+        if section_key == 'services':
+            summary_items = _summary_pool(cache, limit=0)
+            service_candidates: list[tuple[float, dict]] = []
+            for item in summary_items:
+                candidate_score = _service_candidate_score(item)
+                if candidate_score <= 0:
+                    continue
+                combined_score = candidate_score + _score_summary_for_query(item, section_queries['services'], section_key='services')
+                service_candidates.append((combined_score, item))
+            service_candidates.sort(key=lambda pair: (-pair[0], str(pair[1].get('path') or '')))
+            if service_candidates:
+                return [dict(item, path=str(item.get('path') or '')) for _, item in service_candidates[:20]]
         if section_key == 'database' and cache.get('database_source_files'):
-            summary_lookup = {str(item.get('path') or ''): item for item in _summary_pool(cache, limit=200)}
+            summary_lookup = {str(item.get('path') or ''): item for item in _summary_pool(cache, limit=0)}
             structured_files = [
                 summary_lookup[path]
                 for path in cache.get('database_source_files') or []
                 if path in summary_lookup
             ]
             if structured_files:
-                return structured_files[:12]
+                return structured_files[:16]
+        if section_key == 'quality':
+            # Deterministically inject lint/test config files first, then fill with retrieval
+            _LINT_STEMS = {'eslint', '.eslintrc', 'pylint', 'flake8', 'mypy', 'pyproject', 'tox', 'pytest',
+                           'jest.config', 'vitest.config', 'ruff', 'bandit', 'sonar', 'semgrep'}
+            manifest_map = _manifest_entry_map(cache)
+            summary_lookup = {str(item.get('path') or ''): item for item in _summary_pool(cache, limit=0)}
+            quality_extras: list[dict] = []
+            seen_extra: set[str] = set()
+            for path in manifest_map:
+                path_lower = path.lower()
+                stem = Path(path_lower).stem
+                # Lint/type-check config
+                if any(pat in path_lower for pat in _LINT_STEMS):
+                    if path not in seen_extra:
+                        seen_extra.add(path)
+                        quality_extras.append(summary_lookup.get(path) or {'path': path})
+                # Test files (up to 3)
+                elif (('test' in path_lower or 'spec' in path_lower) and
+                      path_lower.endswith(('.py', '.js', '.ts', '.jsx', '.tsx')) and
+                      len([e for e in quality_extras if 'test' in str(e.get('path', '')).lower()]) < 3):
+                    if path not in seen_extra:
+                        seen_extra.add(path)
+                        quality_extras.append(summary_lookup.get(path) or {'path': path})
+            retrieval = retrieve_relevant_files(
+                cache, workspace_path, section_queries['quality'],
+                section_key='quality', max_files=12, include_neighbors=True,
+            )
+            retrieval_files = retrieval.get('files') or []
+            combined: list[dict] = list(quality_extras)
+            for f in retrieval_files:
+                p = str(f.get('path') or '')
+                if p not in seen_extra:
+                    combined.append(f)
+            return combined[:20]
         retrieval = retrieve_relevant_files(
             cache,
             workspace_path,
             section_queries.get(section_key, section_key),
             section_key=section_key,
-            max_files=12,
+            max_files=16,
             include_neighbors=True,
         )
         if retrieval.get('files'):
-            return retrieval['files'][:12]
+            return retrieval['files'][:16]
     return _summary_pool(cache, limit=12)
 
 

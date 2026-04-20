@@ -48,6 +48,7 @@ export default function ProjectView() {
   const [implementationRun, setImplementationRun] = useState<{ featureId: string; featureTitle: string; baselineCount: number; startedSeen: boolean } | null>(null);
   const [implementationProgress, setImplementationProgress] = useState(0);
   const [completionPrompt, setCompletionPrompt] = useState<{ type: 'success' | 'error'; title: string; text: string } | null>(null);
+  const [agentEvents, setAgentEvents] = useState<any[]>([]);
   const implementationPollRef = useRef<number | null>(null);
   const implementationProgressRef = useRef<number | null>(null);
   const deepDocsPollRef = useRef<number | null>(null);
@@ -349,6 +350,7 @@ export default function ProjectView() {
     setAgentRunning(true);
     setBlueprintRunTarget(requestedSection || '__all__');
     setAgentResult(null);
+    setAgentEvents([]);
     setDeepDocsProgress({
       pct: 0,
       section: requestedSection ? `Preparing ${sectionLabels[requestedSection] || requestedSection}` : 'Initializing...',
@@ -404,6 +406,11 @@ export default function ProjectView() {
             if (!line.startsWith('data: ')) continue;
             try {
               const event = JSON.parse(line.slice(6));
+              // Live agent event (streaming during generation, not on section completion)
+              if (event.type === 'agent_event' && event.event) {
+                setAgentEvents((prev: any[]) => [...prev, event.event]);
+                continue;
+              }
               if (event.status === 'failed' && event.section_key === 'build_context') {
                 streamFailed = true;
                 setAgentResult({ error: event.error || 'Deep documentation generation failed.' });
@@ -411,6 +418,9 @@ export default function ProjectView() {
               } else {
                 const isStarted = event.status === 'started';
                 applyDeepDocsProgressEvent(event);
+                if (event.agent_events?.length) {
+                  setAgentEvents((prev: any[]) => [...prev, ...event.agent_events]);
+                }
                 if (!isStarted) {
                   // Update blueprint incrementally only when section data is available.
                   setProject((prev: any) => {
@@ -883,6 +893,7 @@ export default function ProjectView() {
                 documentation={project?.documentation}
                 scrollContainer={contentScrollRef.current}
                 deepDocsProgress={deepDocsProgress}
+                agentEvents={agentEvents}
                 onRegenerateSection={(section) => void startAgent(section)}
                 onGenerateDocumentation={generateDocumentation}
                 documentationGenerating={documentationRunning}

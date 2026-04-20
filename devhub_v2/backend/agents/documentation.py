@@ -173,14 +173,14 @@ def _api_surface_section(cache: dict) -> dict[str, Any]:
     lines = []
     if api_reference:
         lines.append("Detected API endpoints:")
-        for item in api_reference[:24]:
+        for item in api_reference:
             method = str(item.get('method') or 'UNKNOWN')
             path = str(item.get('path') or '/unknown')
             summary = str(item.get('summary') or item.get('description') or 'API endpoint detected from the routed handlers.')
             lines.append(f"- `{method} {path}`: {summary}")
     elif routes:
         lines.append("Detected routes and endpoints:")
-        for route in routes[:24]:
+        for route in routes[:200]:
             lines.append(f"- `{route}`")
     else:
         lines.append("No route patterns were clearly detected from the indexed files.")

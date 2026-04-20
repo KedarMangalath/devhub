@@ -1,15 +1,17 @@
 import json
 import tempfile
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from django.test import Client, TestCase, override_settings
 
 from api.views import _build_evidence_backed_workflows, _enrich_blueprint_document, _normalize_mermaid_chart, _stable_runtime_port, _write_deep_docs_progress, build_scaffold_files, detect_runtime
 from agents.api_reference import build_api_reference_catalog
 from agents.architect import ArchitectAgent
-from agents.base import BaseAgent, _vertexai_base_url_for_location, ai_config_is_usable, default_ai_config, normalize_ai_config
+from agents.base import AIRequestError, BaseAgent, _vertexai_base_url_for_location, ai_config_is_usable, default_ai_config, normalize_ai_config
 from agents.checkpoints import project_checkpoint_root
 from agents.compaction import ContextCompactor
 from agents.deep_documentation import DeepDocumentationAgent
@@ -95,6 +97,74 @@ class AiConfigDefaultsTests(TestCase):
             _vertexai_base_url_for_location("us-central1"),
             "https://us-central1-aiplatform.googleapis.com/v1",
         )
+
+
+class BaseAgentRetryTests(TestCase):
+    @patch("agents.base.time.sleep", return_value=None)
+    @patch("agents.base.urlopen")
+    def test_http_json_retries_429_then_succeeds(self, mock_urlopen, _mock_sleep):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"ok": true}'
+
+        mock_urlopen.side_effect = [
+            HTTPError(
+                "https://example.test",
+                429,
+                "Too Many Requests",
+                hdrs={"Retry-After": "1"},
+                fp=BytesIO(b'{"error":"quota"}'),
+            ),
+            FakeResponse(),
+        ]
+
+        agent = BaseAgent(
+            role="test",
+            system_instruction="test",
+            ai_config={"provider": "gemini", "gemini_mode": "api_key", "api_key": "test", "max_retries": 2},
+        )
+
+        result = agent._http_json("https://example.test", payload={"ping": True})
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(mock_urlopen.call_count, 2)
+
+    def test_gemini_completion_uses_fallback_model_after_retriable_failure(self):
+        agent = BaseAgent(
+            role="test",
+            system_instruction="test",
+            ai_config={
+                "provider": "gemini",
+                "gemini_mode": "api_key",
+                "model": "gemini-3.1-pro-preview",
+                "fallback_model": "gemini-2.5-flash",
+                "api_key": "test",
+            },
+        )
+        seen_models: list[str] = []
+
+        def fake_completion(_messages, response_schema=False):  # noqa: ARG001
+            seen_models.append(agent.model)
+            if len(seen_models) == 1:
+                raise AIRequestError(
+                    "gemini request failed (429): quota",
+                    provider="gemini",
+                    retriable=True,
+                    status_code=429,
+                )
+            return "ok"
+
+        with patch.object(agent, "_gemini_api_completion", side_effect=fake_completion):
+            result = agent._gemini_completion([{"role": "user", "content": "hello"}], response_schema=False)
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(seen_models, ["gemini-3.1-pro-preview", "gemini-2.5-flash"])
 
 
 @override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
@@ -253,6 +323,37 @@ class PromptNeutralityTests(TestCase):
         self.assertNotIn("Agent-based Architecture", combined)
         self.assertNotIn(".devhub/", combined)
         self.assertNotIn("workspace file editing", combined.lower())
+
+
+class DeepDocumentationRetryTests(TestCase):
+    def test_generate_section_retries_parse_error_and_recovers(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "README.md").write_text("# Sample\n", encoding="utf-8")
+
+            agent = DeepDocumentationAgent(
+                ai_config={
+                    "provider": "gemini",
+                    "gemini_mode": "api_key",
+                    "model": "gemini-3.1-pro-preview",
+                    "fallback_model": "gemini-2.5-flash",
+                    "api_key": "test",
+                }
+            )
+            seen_models: list[str] = []
+
+            def fake_services(project_name, cache, workspace_path):  # noqa: ARG001
+                seen_models.append(agent.model)
+                if len(seen_models) == 1:
+                    return {"_error": "Failed to parse JSON: bad payload"}
+                return {"services": [{"name": "API", "type": "backend"}]}
+
+            agent.generate_services = fake_services  # type: ignore[method-assign]
+
+            result = agent.generate_section("services", "Sample", {"important_files": []}, root)
+
+        self.assertIn("services", result)
+        self.assertEqual(len(seen_models), 2)
 
 
 class MermaidNormalizationTests(TestCase):
@@ -2226,6 +2327,21 @@ class ProjectCodebaseDocTests(TestCase):
         self.assertNotIn("gotchas_text", required_tools)
         self.assertNotIn("python_paths", required_tools)
 
+    def test_codebase_doc_hides_root_meta_directories(self):
+        for rel_path in (".devhub/DEVHUB.md", ".claude-backup2/session.md", ".code-review-graph/state.json", ".git/config"):
+            target = self.project_root / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("meta\n", encoding="utf-8")
+
+        root_response = self.client.get(f"/api/projects/{self.project.id}/codebase/doc/")
+        self.assertEqual(root_response.status_code, 200)
+        child_names = {item.get("name") for item in root_response.json()["doc"].get("children", []) if isinstance(item, dict)}
+
+        self.assertNotIn(".devhub", child_names)
+        self.assertNotIn(".claude-backup2", child_names)
+        self.assertNotIn(".code-review-graph", child_names)
+        self.assertNotIn(".git", child_names)
+
 
 @override_settings(ALLOWED_HOSTS=["localhost", "testserver"])
 class ProjectInitializationStateTests(TestCase):
@@ -3265,6 +3381,99 @@ class MemoryArchitectureTests(TestCase):
 
         self.assertIn("DEVHUB.md", instruction_paths)
         self.assertNotIn(".devhub/DEVHUB.md", instruction_paths)
+
+    def test_build_blueprint_context_instruction_files_include_repo_docs_and_docs_dir(self):
+        (self.project_root / "documentation.md").write_text("# Documentation\nRoot project overview.\n", encoding="utf-8")
+        (self.project_root / "project_detail.md").write_text("# Project Detail\nImplementation notes.\n", encoding="utf-8")
+        (self.project_root / "PROJECT_FLOW_DOCUMENTATION.txt").write_text("Flow notes.\n", encoding="utf-8")
+        (self.project_root / "backend" / "docs").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "backend" / "docs" / "API_DOCUMENTATION.md").write_text("# API\nRoute guide.\n", encoding="utf-8")
+        (self.project_root / ".devhub").mkdir(parents=True, exist_ok=True)
+        (self.project_root / ".devhub" / "DEVHUB.md").write_text("# Internal\nTemplate.\n", encoding="utf-8")
+
+        cache = build_blueprint_context(self.project, self.project_root, force=True)
+        instruction_paths = [item.get("path") for item in cache.get("instruction_files", [])]
+
+        self.assertIn("documentation.md", instruction_paths)
+        self.assertIn("project_detail.md", instruction_paths)
+        self.assertIn("PROJECT_FLOW_DOCUMENTATION.txt", instruction_paths)
+        self.assertIn("backend/docs/API_DOCUMENTATION.md", instruction_paths)
+
+    def test_services_section_selection_prefers_service_modules_and_job_helpers(self):
+        (self.project_root / "backend" / "jobs").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "backend" / "services").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "frontend" / "src" / "services").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "docs").mkdir(parents=True, exist_ok=True)
+
+        (self.project_root / "backend" / "jobs" / "job_utils.py").write_text(
+            "def enqueue_job(job_name):\n    return {'job': job_name}\n",
+            encoding="utf-8",
+        )
+        (self.project_root / "backend" / "services" / "payment_service.py").write_text(
+            "class PaymentService:\n    pass\n",
+            encoding="utf-8",
+        )
+        (self.project_root / "backend" / "resume_builder.py").write_text(
+            "def build_resume(data):\n    return data\n",
+            encoding="utf-8",
+        )
+        (self.project_root / "frontend" / "src" / "services" / "clientApi.js").write_text(
+            "export async function fetchClient() { return {}; }\n",
+            encoding="utf-8",
+        )
+        for index in range(14):
+            (self.project_root / "docs" / f"guide_{index}.md").write_text(f"# Guide {index}\n", encoding="utf-8")
+
+        cache = build_blueprint_context(self.project, self.project_root, force=True)
+        selected_paths = [item.get("path") for item in select_files_for_section(cache, "services", self.project_root)]
+
+        self.assertIn("backend/jobs/job_utils.py", selected_paths)
+        self.assertIn("backend/services/payment_service.py", selected_paths)
+        self.assertIn("frontend/src/services/clientApi.js", selected_paths)
+
+    def test_enrich_blueprint_overview_counts_docs_dirs_and_filters_speculative_gotchas(self):
+        (self.project_root / "backend" / "docs").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "backend" / "docs" / "API_DOCUMENTATION.md").write_text("# API\n", encoding="utf-8")
+
+        cache = build_blueprint_context(self.project, self.project_root, force=True)
+        enriched = _enrich_blueprint_document(
+            self.project,
+            {
+                "gotchas": [
+                    "backend/.env might be tracked in git by default.",
+                    "Redis must be running locally before background jobs succeed.",
+                ]
+            },
+            cache,
+            "",
+        )
+
+        docs_health = next(
+            item for item in enriched.get("overview_project_health", []) if isinstance(item, dict) and item.get("label") == "Docs"
+        )
+        self.assertIn("backend/docs/API_DOCUMENTATION.md", str(docs_health.get("detail") or ""))
+
+        risks_text = " ".join(str(item.get("detail") or "") for item in enriched.get("overview_current_risks", []) if isinstance(item, dict))
+        self.assertNotIn("might be tracked in git by default", risks_text)
+
+    def test_enrich_blueprint_design_doc_keeps_problem_and_goals_semantic(self):
+        cache = build_blueprint_context(self.project, self.project_root, force=True)
+        enriched = _enrich_blueprint_document(
+            self.project,
+            {
+                "project_summary": "OpenClaw coordinates gateway, extensions, and UI surfaces.",
+                "data_flow": "A user clicks a button and the request moves through the gateway.",
+                "feature_inventory": [{"title": "Workspace onboarding", "status": "development"}],
+                "gotchas": ["Run migrations after pulling new changes to avoid database inconsistencies."],
+            },
+            cache,
+            "",
+        )
+
+        sections = {item.get("id"): str(item.get("markdown") or "") for item in enriched.get("design_document_sections", []) if isinstance(item, dict)}
+        self.assertIn("Project for repo guidance enrichment tests", sections.get("problem-statement", ""))
+        self.assertIn("Workspace onboarding", sections.get("goals-non-goals", ""))
+        self.assertNotIn("database inconsistencies", sections.get("goals-non-goals", "").lower())
 
     def test_enrich_blueprint_design_doc_rerenders_and_filters_template_content(self):
         (self.project_root / "README.md").write_text(

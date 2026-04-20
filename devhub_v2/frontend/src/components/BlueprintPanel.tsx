@@ -8,6 +8,7 @@ interface Props {
   projectId?: string;
   scrollContainer?: HTMLDivElement | null;
   deepDocsProgress?: { pct: number; section: string; completed: number; total: number } | null;
+  agentEvents?: any[];
   onRegenerateSection?: (sectionKey: string) => void;
   onGenerateDocumentation?: () => void;
   documentationGenerating?: boolean;
@@ -200,6 +201,7 @@ export default function BlueprintPanel({
   projectId,
   scrollContainer,
   deepDocsProgress,
+  agentEvents,
   onRegenerateSection,
   onGenerateDocumentation,
   documentationGenerating,
@@ -520,6 +522,35 @@ export default function BlueprintPanel({
             />
           </div>
         </div>
+      )}
+
+      {deepDocsProgress && agentEvents && agentEvents.length > 0 && (
+        <details className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm">
+          <summary className="cursor-pointer select-none text-sm font-medium text-slate-700">
+            Agent Activity ({agentEvents.length} events)
+          </summary>
+          <div className="mt-3 max-h-64 overflow-y-auto space-y-0.5 font-mono text-xs">
+            {agentEvents.map((evt: any, i: number) => {
+              const icons: Record<string, string> = {
+                thinking: '🧠', file_access: '📄', extraction: '⚙️',
+                llm_call: '🤖', validation: '✅', section_done: '🏁',
+              };
+              const detail = evt.message || evt.details
+                || (evt.type === 'extraction' ? `${evt.extractor} → ${evt.count} items` : '')
+                || (evt.type === 'file_access' ? `${evt.path}` : '')
+                || (evt.type === 'llm_call' ? `model=${evt.model}` : '')
+                || (evt.type === 'section_done' ? `${evt.duration_s}s [${evt.status}]` : '')
+                || evt.type;
+              return (
+                <div key={i} className="flex items-start gap-2 py-0.5 text-slate-600">
+                  <span className="shrink-0">{icons[evt.type] || '•'}</span>
+                  <span className="shrink-0 w-16 text-slate-400 truncate">{evt.section_key}</span>
+                  <span className="truncate">{detail}</span>
+                </div>
+              );
+            })}
+          </div>
+        </details>
       )}
 
       {tab === 'design_doc' && (

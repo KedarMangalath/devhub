@@ -4734,6 +4734,12 @@ def _build_evidence_backed_workflows(workspace_path: Path | None) -> tuple[list[
     return sequence_flows, common_workflows
 
 
+_REPO_META_DIRS = frozenset({
+    '.devhub', '.claude', '.claude-backup2', '.code-review-graph', '.git',
+    'node_modules', '__pycache__', '.venv', 'venv', 'data',
+})
+
+
 def _build_repository_map_from_context(codebase_context: dict) -> list[dict]:
     indexed_paths = [str(path) for path in (codebase_context.get('indexed_paths') or []) if path]
     important_files = codebase_context.get('important_files') or []
@@ -4743,12 +4749,12 @@ def _build_repository_map_from_context(codebase_context: dict) -> list[dict]:
     normalized_counts: dict[str, int] = {}
     for area, count in raw_directory_counts.items():
         normalized_area = '.' if str(area or '').strip() in {'.', './'} else str(area or '').strip()
-        if not normalized_area:
+        if not normalized_area or normalized_area in _REPO_META_DIRS:
             continue
         normalized_counts[normalized_area] = normalized_counts.get(normalized_area, 0) + int(count or 0)
     for directory in root_directories:
         normalized_directory = '.' if str(directory or '').strip() in {'.', './'} else str(directory or '').strip().strip('/')
-        if normalized_directory:
+        if normalized_directory and normalized_directory not in _REPO_META_DIRS:
             normalized_counts.setdefault(normalized_directory, 0)
 
     for area, count in sorted(normalized_counts.items(), key=lambda item: (-item[1], item[0]))[:20]:
@@ -4821,12 +4827,12 @@ def _build_directory_guide_from_context(codebase_context: dict) -> list[dict]:
     normalized_counts: dict[str, int] = {}
     for area, count in raw_directory_counts.items():
         normalized_area = '.' if str(area or '').strip() in {'.', './'} else str(area or '').strip()
-        if not normalized_area:
+        if not normalized_area or normalized_area in _REPO_META_DIRS:
             continue
         normalized_counts[normalized_area] = normalized_counts.get(normalized_area, 0) + int(count or 0)
     for directory in root_directories:
         normalized_directory = '.' if str(directory or '').strip() in {'.', './'} else str(directory or '').strip().strip('/')
-        if normalized_directory:
+        if normalized_directory and normalized_directory not in _REPO_META_DIRS:
             normalized_counts.setdefault(normalized_directory, 0)
 
     for area, count in sorted(normalized_counts.items(), key=lambda item: (-item[1], item[0]))[:20]:
@@ -4861,7 +4867,9 @@ def _build_file_structure_visualizer(codebase_context: dict) -> list[dict]:
         if item.get('path')
     }
     visualizer = []
-    for area, count in sorted((codebase_context.get('directory_counts') or {}).items(), key=lambda item: (-item[1], item[0]))[:16]:
+    for area, count in sorted((codebase_context.get('directory_counts') or {}).items(), key=lambda item: (-item[1], item[0]))[:20]:
+        if str(area or '').strip() in _REPO_META_DIRS:
+            continue
         files_in_area = _sample_paths_for_area(indexed_paths, area, limit=10)
         area_files = _important_files_for_area(important_files, area)
         role_hints = sorted({hint for item in area_files for hint in (item.get('role_hints') or [])})
@@ -5589,6 +5597,15 @@ def _is_devhub_internal_path(path: str) -> bool:
     return normalized.startswith(f"{DEVHUB_META_DIR}/")
 
 
+def _is_reference_noise_child(parent_path: str, child_name: str) -> bool:
+    if str(parent_path or "").strip():
+        return False
+    lowered = str(child_name or "").strip().lower()
+    if not lowered:
+        return True
+    return lowered in {'.git', '.devhub', '.code-review-graph', '__pycache__'} or lowered.startswith('.claude')
+
+
 def _public_instruction_files(codebase_context: dict) -> list[dict]:
     visible: list[dict] = []
     for item in codebase_context.get("instruction_files") or []:
@@ -5603,7 +5620,7 @@ def _public_instruction_files(codebase_context: dict) -> list[dict]:
                 "content": str(item.get("content") or "")[:3000],
             }
         )
-    return visible[:8]
+    return visible[:24]
 
 
 def _is_setup_command_source(item: dict) -> bool:
@@ -5798,6 +5815,8 @@ def _build_directory_doc_payload(project, workspace_path: Path, rel_path: str, c
             child_name = remainder
             if not child_name:
                 continue
+            if _is_reference_noise_child(normalized, child_name):
+                continue
             direct_children.setdefault(
                 child_name,
                 {
@@ -5809,6 +5828,8 @@ def _build_directory_doc_payload(project, workspace_path: Path, rel_path: str, c
             )
         else:
             directory_name = remainder.split("/", 1)[0]
+            if _is_reference_noise_child(normalized, directory_name):
+                continue
             child_path = f"{normalized_prefix}{directory_name}".strip("/")
             bucket = direct_children.setdefault(
                 directory_name,
@@ -6014,7 +6035,7 @@ def _top_repository_areas(codebase_context: dict, limit: int = 5) -> list[str]:
     directories = []
     for directory, _count in sorted((codebase_context.get("directory_counts") or {}).items(), key=lambda item: (-item[1], item[0])):
         name = str(directory or "").strip()
-        if not name or name in {".", ".git", ".devhub"}:
+        if not name or name in {".", ".git", ".devhub", ".claude", ".claude-backup2", ".code-review-graph", "node_modules", "__pycache__", "data"}:
             continue
         directories.append(f"{name}/")
         if len(directories) >= limit:
@@ -7798,6 +7819,154 @@ def _finalize_blueprint_document(project: Project, blueprint: dict, codebase_con
     return finalized
 
 
+def _first_sentence(text: str, fallback: str = "") -> str:
+    normalized = " ".join(str(text or "").split()).strip()
+    if not normalized:
+        return fallback
+    parts = re.split(r"(?<=[.!?])\s+", normalized, maxsplit=1)
+    return (parts[0] or normalized).strip()
+
+
+def _confirmed_overview_doc_paths(blueprint: dict, codebase_context: dict, limit: int = 8) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+
+    def add(path: str) -> None:
+        normalized = str(path or "").replace("\\", "/").strip()
+        if not normalized or normalized in seen or _is_devhub_internal_path(normalized):
+            return
+        seen.add(normalized)
+        paths.append(normalized)
+
+    if str(blueprint.get('readme_excerpt') or '').strip():
+        add('README.md')
+    for item in _blueprint_list(blueprint.get('instruction_files')):
+        if isinstance(item, dict):
+            add(str(item.get('path') or ''))
+    for item in _blueprint_list(codebase_context.get('manifest')):
+        path = str(item.get('path') or '').replace("\\", "/").strip()
+        lower = path.lower()
+        if not path:
+            continue
+        if lower.startswith('docs/') or '/docs/' in lower:
+            add(path)
+            continue
+        if lower in {'readme.md', 'contributing.md', 'security.md', 'vision.md', 'agents.md'}:
+            add(path)
+    return paths[:limit]
+
+
+def _is_speculative_risk_text(text: str) -> bool:
+    lowered = str(text or '').strip().lower()
+    if not lowered:
+        return True
+    return any(token in lowered for token in ('not confirmed', 'might ', 'may ', 'could ', 'appears ', 'seems '))
+
+
+def _design_doc_problem_statement(project: Project, blueprint: dict) -> list[str]:
+    # Use the full project_summary (not just first sentence) for the opening description
+    full_summary = str(blueprint.get('project_summary') or '').strip()
+    description = str(project.description or '').strip()
+
+    # Prefer project description if it reads as a product description (not a workflow step)
+    # Heuristic: workflow text starts with verbs like "When", "After", "First", "Click"
+    workflow_starters = ('when ', 'after ', 'first ', 'click', 'submit', 'upload', 'navigate', 'go to', 'step')
+    desc_is_workflow = any(description.lower().startswith(s) for s in workflow_starters)
+
+    if description and not desc_is_workflow:
+        opening = description
+        if full_summary and full_summary.lower() not in description.lower() and len(full_summary) > 40:
+            opening = f"{description}\n\n{full_summary}"
+    else:
+        opening = full_summary or 'The blueprint does not yet contain a grounded product problem statement.'
+
+    services = [item for item in _blueprint_list(blueprint.get('services')) if isinstance(item, dict)]
+    endpoints = [item for item in _blueprint_list(blueprint.get('api_endpoints')) if isinstance(item, dict)]
+    schema = [item for item in _blueprint_list(blueprint.get('database_schema')) if isinstance(item, dict)]
+
+    bullets: list[str] = []
+    service_names = [str(item.get('name') or '').strip() for item in services if str(item.get('name') or '').strip()]
+    if service_names:
+        bullets.append(f"Implemented as: {', '.join(service_names[:4])}.")
+    if endpoints:
+        auth_count = sum(1 for ep in endpoints if ep.get('auth_required'))
+        bullets.append(f"Backend exposes {len(endpoints)} API endpoints, {auth_count} of which require authentication.")
+    if schema:
+        model_names = [str(item.get('name') or '').strip() for item in schema[:6] if str(item.get('name') or '').strip()]
+        if model_names:
+            bullets.append(f"Core data models include: {', '.join(model_names)}.")
+    return [opening, '', *(_markdown_bullets(bullets, 'No grounded problem signals were extracted beyond the repository structure.'))]
+
+
+def _design_doc_goal_lines(blueprint: dict) -> tuple[list[str], list[str]]:
+    goals: list[str] = []
+    non_goals: list[str] = []
+
+    # Goals derived from the architecture overview and services
+    arch = str(blueprint.get('architecture_overview') or '').strip()
+    if arch:
+        # Use up to two sentences from the architecture overview as the first goal
+        arch_sentences = [s.strip() for s in arch.replace('\n', ' ').split('.') if len(s.strip()) > 20]
+        if arch_sentences:
+            goals.append(arch_sentences[0] + '.')
+
+    services = [item for item in _blueprint_list(blueprint.get('services')) if isinstance(item, dict)]
+    for svc in services[:4]:
+        name = str(svc.get('name') or '').strip()
+        svc_type = str(svc.get('type') or '').strip()
+        desc_first = _first_sentence(svc.get('description'))
+        if name and desc_first:
+            goals.append(f"{name} ({svc_type}): {desc_first}")
+
+    endpoints = [item for item in _blueprint_list(blueprint.get('api_endpoints')) if isinstance(item, dict)]
+    if endpoints:
+        non_goals.append(
+            f"Complete response schema and status-code contracts are not yet authoritative for all {len(endpoints)} endpoints — "
+            "callers should verify against live responses until endpoint docs are fully annotated."
+        )
+
+    testing = blueprint.get('testing_strategy') if isinstance(blueprint.get('testing_strategy'), dict) else {}
+    run_command = str(testing.get('run_command') or '').strip()
+    if run_command:
+        goals.append(f"Local validation: `{run_command}`.")
+
+    non_goals.append('Features or endpoints with no repository evidence are out of scope for this design document.')
+    return goals[:6], non_goals[:3]
+
+
+def _api_design_summary_lines(endpoints: list[dict], routes: list[Any]) -> list[str]:
+    if not endpoints:
+        return _markdown_bullets(routes, 'No routes or endpoints were clearly detected.')
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for item in endpoints:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get('path') or '/').strip() or '/'
+        method = str(item.get('method') or 'GET').upper()
+        segments = [seg for seg in path.strip('/').split('/') if seg and not seg.startswith('<') and not seg.startswith('{')]
+        if segments and segments[0] == 'api':
+            segments = segments[1:]
+        if segments:
+            prefix = '/' + '/'.join(segments[:2])
+        else:
+            prefix = '/api' if path.startswith('/api') else '/'
+        bucket = grouped.setdefault(prefix, {'count': 0, 'methods': set(), 'auth': 0})
+        bucket['count'] += 1
+        bucket['methods'].add(method)
+        if item.get('auth_required'):
+            bucket['auth'] += 1
+
+    lines = [f"Detected {len(endpoints)} routed endpoints across the indexed backend.", '']
+    bullets = []
+    for prefix, bucket in sorted(grouped.items(), key=lambda entry: (-int(entry[1]['count']), entry[0]))[:10]:
+        methods = ', '.join(sorted(bucket['methods']))
+        auth_note = 'mostly authenticated' if bucket['auth'] >= max(1, bucket['count'] // 2) else 'mixed auth visibility'
+        bullets.append(f"`{prefix}/*`: {bucket['count']} endpoints across {methods}; {auth_note}.")
+    lines.extend(_markdown_bullets(bullets, 'No API groupings were available.'))
+    return lines
+
+
 def _render_blueprint_design_document(project: Project, blueprint: dict, codebase_context: dict, feature_summary: str) -> tuple[str, list[dict]]:
     generated_on = timezone.now().strftime('%Y-%m-%d')
     title = project.name or 'Project'
@@ -7839,32 +8008,19 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
     sections.append({
         'id': 'problem-statement',
         'title': 'Problem Statement',
-        'body': [
-            _blueprint_text(
-                blueprint.get('data_flow'),
-                'The core request/data flow was not clearly detected from the scanned codebase yet.',
-            ),
-            '',
-            'Known product and workflow signals:',
-            *_markdown_bullets([item.get('title') for item in feature_inventory if isinstance(item, dict)], 'No tracked feature inventory yet.'),
-        ],
+        'body': _design_doc_problem_statement(project, blueprint),
     })
 
+    goal_lines, non_goal_lines = _design_doc_goal_lines(blueprint)
     sections.append({
         'id': 'goals-non-goals',
         'title': 'Goals & Non-Goals',
         'body': [
-            'Goals inferred from the current blueprint and change guide:',
-            *_markdown_bullets(
-                [item.get('notes') for item in change_guide if isinstance(item, dict)],
-                'No explicit goals were captured in the blueprint yet.',
-            ),
+            'Goals inferred from the current repository evidence:',
+            *_markdown_bullets(goal_lines, 'No explicit goals were captured in the blueprint yet.'),
             '',
-            'Non-goals or unknowns:',
-            *_markdown_bullets(
-                gotchas[:6] if gotchas else ['Areas without evidence should be treated as unknown until verified in code.'],
-                'Non-goals were not clearly documented.',
-            ),
+            'Non-goals and boundaries:',
+            *_markdown_bullets(non_goal_lines, 'Non-goals were not clearly documented.'),
         ],
     })
 
@@ -7943,15 +8099,7 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
 
     api_body = []
     if endpoints:
-        api_body.extend(
-            _markdown_bullets(
-                [
-                    f"{item.get('method', 'UNKNOWN')} {item.get('path', '/unknown')}: {item.get('description') or 'No endpoint description available.'}"
-                    for item in endpoints if isinstance(item, dict)
-                ],
-                'No API endpoints were documented.',
-            )
-        )
+        api_body.extend(_api_design_summary_lines(endpoints, routes))
     else:
         api_body.extend(_markdown_bullets(routes, 'No routes or endpoints were clearly detected.'))
     sections.append({
@@ -8146,13 +8294,15 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
 def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_context: dict, feature_summary: str) -> dict:
     blueprint = dict(blueprint or {})
     workspace_path = Path(project.local_path) if project.local_path else None
-    llm_endpoints = blueprint.get('api_endpoints') or []
-    if llm_endpoints:
-        blueprint['api_endpoints'] = llm_endpoints
-    else:
-        indexed_endpoints = _blueprint_list(codebase_context.get('api_reference'))
-        if indexed_endpoints:
-            blueprint['api_endpoints'] = indexed_endpoints
+    indexed_endpoints = _blueprint_list(codebase_context.get('api_reference'))
+    existing_endpoints = blueprint.get('api_endpoints') or []
+    # Prefer indexed (AST-extracted) data when it has >= entries — ground truth over stale LLM output.
+    if indexed_endpoints and len(indexed_endpoints) >= len(existing_endpoints):
+        blueprint['api_endpoints'] = indexed_endpoints
+    elif existing_endpoints:
+        blueprint['api_endpoints'] = existing_endpoints
+    elif indexed_endpoints:
+        blueprint['api_endpoints'] = indexed_endpoints
     indexed_schema = _blueprint_list(codebase_context.get('database_schema'))
     if indexed_schema and len(indexed_schema) >= len(blueprint.get('database_schema') or []):
         blueprint['database_schema'] = indexed_schema
@@ -8773,7 +8923,7 @@ def generate_blueprint_sync(project: Project):
                     pass
 
             try:
-                codebase_context = build_blueprint_context(project, workspace_path)
+                codebase_context = build_blueprint_context(project, workspace_path, force=True)
                 repo_map_path = workspace_path / DEVHUB_META_DIR / "repo-map.md"
                 if repo_map_path.exists():
                     repo_map_text = repo_map_path.read_text(encoding="utf-8", errors="ignore")[:12000]
@@ -11357,21 +11507,14 @@ def _overview_severity_weight(value: str) -> int:
     }.get(normalized, 0)
 
 
-def _build_overview_project_health(blueprint: dict, runtime: dict, features_payload: list[dict]) -> list[dict]:
+def _build_overview_project_health(blueprint: dict, runtime: dict, features_payload: list[dict], codebase_context: dict) -> list[dict]:
     counts = _feature_stage_counts(features_payload)
     active_count = counts.get('development', 0) + counts.get('testing', 0) + counts.get('code_review', 0)
     runtime_type = str(runtime.get('runtime_type') or '').strip().lower()
     runtime_command = str(runtime.get('run_command') or '').strip()
     testing = blueprint.get('testing_strategy') if isinstance(blueprint.get('testing_strategy'), dict) else {}
     validation_command = str(testing.get('run_command') or '').strip()
-    instruction_files = _blueprint_list(blueprint.get('instruction_files'))
-    doc_paths = []
-    if str(blueprint.get('readme_excerpt') or '').strip():
-        doc_paths.append('README.md')
-    for item in instruction_files[:3]:
-        if isinstance(item, dict) and item.get('path'):
-            doc_paths.append(str(item.get('path')))
-    doc_paths = _dedupe_json_items(doc_paths)
+    doc_paths = _confirmed_overview_doc_paths(blueprint, codebase_context)
     return [
         {
             'label': 'Runtime',
@@ -11388,7 +11531,7 @@ def _build_overview_project_health(blueprint: dict, runtime: dict, features_payl
         {
             'label': 'Docs',
             'value': f'{len(doc_paths)} source{"s" if len(doc_paths) != 1 else ""}' if doc_paths else 'Thin docs',
-            'detail': _format_path_list(doc_paths, max_paths=3) or 'No root README or instruction file was detected in the indexed paths.',
+            'detail': _format_path_list(doc_paths, max_paths=3) or 'No README, instruction file, or docs directory content was detected in the indexed paths.',
             'tone': 'good' if doc_paths else 'warn',
         },
         {
@@ -11429,7 +11572,7 @@ def _build_overview_current_risks(blueprint: dict) -> list[dict]:
         })
     for note in _blueprint_list(blueprint.get('gotchas'))[:2]:
         detail = str(note or '').strip()
-        if not detail or detail in seen:
+        if not detail or detail in seen or _is_speculative_risk_text(detail):
             continue
         seen.add(detail)
         items.append({
@@ -11556,11 +11699,8 @@ def _build_overview_read_first(blueprint: dict, codebase_context: dict, runtime_
             'reason': reason,
         })
 
-    if str(blueprint.get('readme_excerpt') or '').strip():
-        add('Root README', 'README.md', 'Fastest way to understand project purpose, stack, and setup expectations.')
-    for item in _blueprint_list(blueprint.get('instruction_files'))[:2]:
-        if isinstance(item, dict) and item.get('path'):
-            add(PurePosixPath(str(item.get('path'))).name, str(item.get('path')), 'Project-specific guidance detected from indexed instruction files.')
+    for path in _confirmed_overview_doc_paths(blueprint, codebase_context)[:3]:
+        add(PurePosixPath(path).name, path, 'Repository documentation or instruction content detected from indexed files.')
     for entry in runtime_entrypoints[:2]:
         if isinstance(entry, dict) and entry.get('path'):
             add('Runtime entrypoint', str(entry.get('path')), 'Useful for understanding how the application boots locally.')
@@ -11666,7 +11806,7 @@ def _build_blueprint_overview_insights(project: Project, blueprint: dict, codeba
     runtime_entrypoints = _build_overview_runtime_entrypoints(project, codebase_context, runtime)
     read_first = _build_overview_read_first(blueprint, codebase_context, runtime_entrypoints)
     return {
-        'overview_project_health': _build_overview_project_health(blueprint, runtime, features_payload),
+        'overview_project_health': _build_overview_project_health(blueprint, runtime, features_payload, codebase_context),
         'overview_current_risks': _build_overview_current_risks(blueprint),
         'overview_runtime_entrypoints': runtime_entrypoints,
         'overview_read_first': read_first,
@@ -13235,7 +13375,7 @@ def deep_documentation_stream(request, project_id):
         yield _sse(initial_event)
 
         try:
-            codebase_context = build_blueprint_context(project, workspace_path)
+            codebase_context = build_blueprint_context(project, workspace_path, force=True)
         except Exception as exc:
             logger.exception("Failed to build blueprint context for project %s", project_id)
             failure_event = {
@@ -13280,7 +13420,11 @@ def deep_documentation_stream(request, project_id):
         _safe_write_deep_docs_progress(workspace_path, context_ready_event)
         yield _sse(context_ready_event)
 
-        agent = DeepDocumentationAgent(ai_config=_project_ai_config(project))
+        import queue as _queue_mod
+        from agents.observability import AgentObserver
+        _live_queue: _queue_mod.Queue = _queue_mod.Queue()
+        observer = AgentObserver(str(project_id), live_queue=_live_queue)
+        agent = DeepDocumentationAgent(ai_config=_project_ai_config(project), observer=observer)
         feature_summary = _render_project_features_summary(project, limit=20)
 
         def _persist_section_update(section_key: str, section_data: dict[str, Any]) -> dict[str, Any]:
@@ -13365,30 +13509,84 @@ def deep_documentation_stream(request, project_id):
             _safe_write_deep_docs_progress(workspace_path, completed_event)
             yield _sse(completed_event)
         else:
-            for event in agent.generate_all_sections(
-                project_name=project.name,
-                cache=codebase_context,
-                workspace_path=workspace_path,
-                existing_blueprint=project.blueprint or {},
-            ):
-                section_data = dict(event.get('section_data') or {})
-                if event.get('status') != 'started':
-                    try:
-                        section_data = _persist_section_update(str(event.get('section_key') or ''), section_data)
-                    except Exception:
-                        logger.exception("Failed to persist section %s for project %s", event.get('section_key'), project_id)
+            import concurrent.futures as _cf
+            import queue as _queue
+            from agents.deep_documentation import SECTION_ORDER as _SECTION_ORDER, SECTION_LABELS as _SECTION_LABELS
 
-                sse_payload = {
-                    'section_key': event.get('section_key'),
-                    'section_label': event.get('section_label'),
-                    'section_data': section_data,
-                    'progress_pct': event.get('progress_pct'),
-                    'status': event.get('status'),
-                    'total_sections': event.get('total_sections'),
-                    'completed_sections': event.get('completed_sections'),
+            _existing_bp = dict(project.blueprint or {})
+            _results: dict[str, dict] = {}
+            _result_q: _queue.Queue = _queue.Queue()
+            _total = len(_SECTION_ORDER)
+
+            def _run_one(sk: str, idx: int):
+                try:
+                    data = agent.generate_section(
+                        sk, project.name, codebase_context, workspace_path, existing_blueprint=_existing_bp
+                    )
+                    if isinstance(data, dict) and data.get('_error'):
+                        status = 'failed'
+                    else:
+                        data = agent._run_validators(sk, data, workspace_path, cache=codebase_context)
+                        status = 'completed'
+                except Exception as exc:
+                    data = {'_error': str(exc)}
+                    status = 'failed'
+                _result_q.put({
+                    'section_key': sk,
+                    'section_label': _SECTION_LABELS.get(sk, sk),
+                    'section_data': data,
+                    'progress_pct': int(((idx + 1) / _total) * 100),
+                    'status': status,
+                    'total_sections': _total,
+                    'agent_events': agent.observer.events_for_section(sk) if agent.observer else [],
+                })
+
+            # Emit started events for all sections first
+            for idx, sk in enumerate(_SECTION_ORDER):
+                started_evt = {
+                    'section_key': sk, 'section_label': _SECTION_LABELS.get(sk, sk),
+                    'section_data': {}, 'progress_pct': int((idx / _total) * 100),
+                    'status': 'started', 'total_sections': _total, 'completed_sections': idx,
                 }
-                _safe_write_deep_docs_progress(workspace_path, sse_payload)
-                yield _sse(sse_payload)
+                yield _sse(started_evt)
+
+            with _cf.ThreadPoolExecutor(max_workers=min(len(_SECTION_ORDER), 4)) as pool:
+                futs = [pool.submit(_run_one, sk, idx) for idx, sk in enumerate(_SECTION_ORDER)]
+                completed_count = 0
+                while completed_count < len(futs):
+                    # Drain live observer events first — stream them immediately to the client
+                    while True:
+                        try:
+                            live_evt = _live_queue.get_nowait()
+                            yield _sse({'type': 'agent_event', 'event': live_evt})
+                        except _queue.Empty:
+                            break
+
+                    # Check for a completed section (short timeout to keep live events flowing)
+                    try:
+                        event = _result_q.get(timeout=0.3)
+                    except _queue.Empty:
+                        continue
+                    completed_count += 1
+                    section_data = dict(event.get('section_data') or {})
+                    sk = str(event.get('section_key') or '')
+                    if event.get('status') != 'started':
+                        try:
+                            section_data = _persist_section_update(sk, section_data)
+                        except Exception:
+                            logger.exception("Failed to persist section %s for project %s", sk, project_id)
+                    sse_payload = {
+                        'section_key': sk,
+                        'section_label': event.get('section_label'),
+                        'section_data': section_data,
+                        'progress_pct': event.get('progress_pct'),
+                        'status': event.get('status'),
+                        'total_sections': _total,
+                        'completed_sections': completed_count,
+                        'agent_events': event.get('agent_events') or [],
+                    }
+                    _safe_write_deep_docs_progress(workspace_path, sse_payload)
+                    yield _sse(sse_payload)
 
         done_event = {
             'status': 'done',

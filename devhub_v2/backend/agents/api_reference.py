@@ -106,26 +106,254 @@ def build_api_reference_catalog(workspace_path: Path) -> list[dict[str, Any]]:
     return _sort_reference_entries(entries)
 
 
+@lru_cache(maxsize=8)
+def _build_view_definition_index(workspace_path: Path) -> dict[str, str]:
+    """Scan the workspace once and build {view_name: abs_file_path} for all Python files.
+
+    Cached per workspace_path so the expensive scan runs only once per generation.
+    Covers both function-based (`def Name(`) and class-based (`class Name(`) definitions.
+    """
+    import re as _re
+    DEFINITION_RE = _re.compile(r'^(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)\s*[:(]', _re.MULTILINE)
+    index: dict[str, str] = {}
+    for py_file in sorted(workspace_path.rglob("*.py")):
+        parts = set(py_file.relative_to(workspace_path).parts)
+        if parts & _CATALOG_SKIP_DIRS:
+            continue
+        try:
+            text = py_file.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        for match in DEFINITION_RE.finditer(text):
+            name = match.group(1)
+            if name not in index:  # first occurrence wins (closest to workspace root)
+                index[name] = str(py_file)
+    return index
+
+
+def _extract_serializer_class_name(node: ast.AST | None) -> str:
+    """Return the serializer_class assigned in a CBV class body."""
+    if not isinstance(node, ast.ClassDef):
+        return ""
+    for stmt in node.body:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        for target in stmt.targets:
+            if isinstance(target, ast.Name) and target.id == "serializer_class":
+                if isinstance(stmt.value, ast.Name):
+                    return stmt.value.id
+                if isinstance(stmt.value, ast.Attribute):
+                    return stmt.value.attr
+    return ""
+
+
+def _extract_serializer_fields(workspace_path: Path, serializer_name: str) -> list[dict[str, Any]]:
+    """Parse a serializer/schema class and return its field list."""
+    if not serializer_name or not workspace_path:
+        return []
+    index = _build_view_definition_index(workspace_path)
+    ser_file = index.get(serializer_name)
+    if not ser_file:
+        return []
+    try:
+        source = Path(ser_file).read_text(encoding="utf-8", errors="ignore")
+        tree = ast.parse(source)
+    except Exception:
+        return []
+
+    fields: list[dict[str, Any]] = []
+    for cls_node in tree.body:
+        if not isinstance(cls_node, ast.ClassDef) or cls_node.name != serializer_name:
+            continue
+        for stmt in cls_node.body:
+            # ModelSerializer Meta.fields = [...]
+            if isinstance(stmt, ast.ClassDef) and stmt.name == "Meta":
+                for meta_stmt in stmt.body:
+                    if not isinstance(meta_stmt, ast.Assign):
+                        continue
+                    for t in meta_stmt.targets:
+                        if isinstance(t, ast.Name) and t.id == "fields":
+                            val = meta_stmt.value
+                            if isinstance(val, (ast.List, ast.Tuple)):
+                                for elt in val.elts:
+                                    name = _literal_str(elt)
+                                    if name and name != "__all__":
+                                        fields.append({"name": name, "required": True, "description": "Serializer field."})
+            # Direct field declarations: email = serializers.EmailField(...)
+            if isinstance(stmt, ast.Assign):
+                for t in stmt.targets:
+                    if not isinstance(t, ast.Name) or t.id.startswith("_") or t.id in {"Meta", "serializer_class"}:
+                        continue
+                    if isinstance(stmt.value, ast.Call):
+                        field_type = _call_name(stmt.value)
+                        if not field_type:
+                            continue
+                        lower_ft = field_type.lower()
+                        if "field" in lower_ft or "serializer" in lower_ft:
+                            required = True
+                            write_only = False
+                            for kw in stmt.value.keywords:
+                                if kw.arg == "required" and isinstance(kw.value, ast.Constant):
+                                    required = bool(kw.value.value)
+                                if kw.arg in {"read_only", "write_only"} and isinstance(kw.value, ast.Constant):
+                                    if kw.arg == "read_only" and kw.value.value:
+                                        required = False
+                            fields.append({"name": t.id, "type": field_type, "required": required, "description": f"{field_type} field."})
+        break
+    return fields
+
+
+def _resolve_view_file_for_handler(base_dir: Path, workspace_path: Path, view_name: str) -> Path | None:
+    """Find the Python file that defines *view_name* (function or class).
+
+    Handles both function-based views (`def view_name(`) and class-based views
+    (`class ViewName(`), including views/ package layouts.
+
+    Search order:
+    1. views.py in the same directory as urls.py  (classic single-file layout)
+    2. views/ subdirectory — scan every .py for the definition
+    3. Workspace-wide rglob for the definition (multi-app Django)
+    """
+    # Needles for both FBV and CBV patterns
+    needles = (f"def {view_name}(", f"class {view_name}(")
+
+    def _file_contains(path: Path) -> bool:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            return any(n in text for n in needles)
+        except Exception:
+            return False
+
+    # 1. Same-dir views.py
+    candidate = base_dir / "views.py"
+    if candidate.exists():
+        if _file_contains(candidate):
+            return candidate
+
+    # 2. views/ subdirectory (package layout)
+    views_dir = base_dir / "views"
+    if views_dir.is_dir():
+        for py_file in sorted(views_dir.rglob("*.py")):
+            if _file_contains(py_file):
+                return py_file
+        # Fallback: __init__.py so caller at least gets the package root
+        init_py = views_dir / "__init__.py"
+        if init_py.exists():
+            return init_py
+
+    # 3. Workspace-wide lookup via pre-built index (O(1) after first call)
+    index = _build_view_definition_index(workspace_path)
+    abs_path = index.get(view_name)
+    if abs_path:
+        return Path(abs_path)
+
+    return None
+
+
 def _build_django_api_reference_catalog(workspace_path: Path, root_urls_path: Path) -> list[dict[str, Any]]:
     routes = _collect_django_routes(root_urls_path, workspace_path)
     entries: list[dict[str, Any]] = []
     for route_index, route in enumerate(routes):
         full_path = _normalize_url_path(route.get("path", ""))
-        if not full_path.startswith("/api/"):
-            continue
 
         view_file = route.get("view_file_abs")
         view_name = str(route.get("view_name") or "")
+        # When _collect_django_routes couldn't resolve the view file, use the
+        # workspace-level definition index as a fast fallback.
+        if not view_file and view_name:
+            index = _build_view_definition_index(workspace_path)
+            abs_path = index.get(view_name)
+            if abs_path:
+                route = dict(route)
+                route["view_file_abs"] = abs_path
+                route["view_file"] = _safe_relative_path(workspace_path, Path(abs_path))
+                view_file = abs_path
         view_info = _load_view_function(view_file, view_name) if view_file and view_name else None
         methods = _extract_allowed_methods(view_info.get("source", "") if view_info else "")
         metadata = REFERENCE_OVERRIDES.get(view_name, {})
+        route_path_params = {p["name"] for p in _path_params(full_path)}
 
         for method in methods:
-            entries.append(_build_reference_entry(route, view_info, method, route_index, metadata))
+            # Signature-aware routing: skip (route, method) combos where the method
+            # signature requires path params the route doesn't provide, or the route
+            # requires params the method doesn't accept. This prevents all 4 CRUD
+            # methods from being assigned to both collection AND detail routes of
+            # the same CBV.
+            if view_info and view_info.get("is_class_based") and route_path_params:
+                method_node = (view_info.get("method_nodes") or {}).get(method.lower())
+                if method_node is not None:
+                    arg_names = {
+                        arg.arg for arg in method_node.args.args
+                        if arg.arg not in ("self", "request", "format")
+                    }
+                    required_args = {
+                        arg.arg for arg, default in zip(
+                            reversed(method_node.args.args),
+                            reversed(method_node.args.defaults),
+                        )
+                        if arg.arg not in ("self", "request", "format")
+                    }
+                    # Method needs a pk/id arg the route doesn't have → skip
+                    if required_args - route_path_params:
+                        continue
+                    # Route has pk/id param but method has no such arg → likely wrong route
+                    if route_path_params and not (arg_names & route_path_params):
+                        # Only skip when method signature clearly lacks the route param
+                        # (don't skip if method has *args or **kwargs catch-alls)
+                        has_varargs = method_node.args.vararg or method_node.args.kwarg
+                        if not has_varargs and method in {"PUT", "PATCH", "DELETE"}:
+                            continue
+
+            entries.append(_build_reference_entry(route, view_info, method, route_index, metadata, workspace_path))
     return entries
 
 
+def _root_urlconf_from_settings(workspace_path: Path) -> Path | None:
+    """Discover ROOT_URLCONF by parsing manage.py → settings module → ROOT_URLCONF value."""
+    # Find manage.py — may be in workspace root or one level down
+    manage_py: Path | None = None
+    if (workspace_path / "manage.py").exists():
+        manage_py = workspace_path / "manage.py"
+    else:
+        for child in workspace_path.iterdir():
+            if child.is_dir() and (child / "manage.py").exists():
+                manage_py = child / "manage.py"
+                break
+    if not manage_py:
+        return None
+
+    try:
+        manage_content = manage_py.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return None
+
+    settings_match = re.search(r"DJANGO_SETTINGS_MODULE['\"],\s*['\"]([^'\"]+)['\"]", manage_content)
+    if not settings_match:
+        return None
+
+    settings_file = _resolve_module_to_file(workspace_path, settings_match.group(1))
+    if not settings_file:
+        return None
+
+    try:
+        settings_content = settings_file.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return None
+
+    root_match = re.search(r"ROOT_URLCONF\s*=\s*['\"]([^'\"]+)['\"]", settings_content)
+    if not root_match:
+        return None
+
+    return _resolve_module_to_file(workspace_path, root_match.group(1))
+
+
 def _find_root_urls_path(workspace_path: Path) -> Path | None:
+    # Step 0: settings-driven discovery — most reliable for real Django projects
+    settings_root = _root_urlconf_from_settings(workspace_path)
+    if settings_root and settings_root.exists():
+        return settings_root
+
+    # Step 1: fast-path hardcoded candidates for the most common layouts
     candidates = [
         workspace_path / "backend" / "devhub_backend" / "urls.py",
         workspace_path / "devhub_backend" / "urls.py",
@@ -135,14 +363,31 @@ def _find_root_urls_path(workspace_path: Path) -> Path | None:
     for candidate in candidates:
         if candidate.exists():
             return candidate
+
+    # Step 2: collect ALL urls.py files in the workspace, skipping build/dep dirs
+    all_urls: list[Path] = []
     for candidate in workspace_path.rglob("urls.py"):
-        try:
-            content = candidate.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        parts = set(candidate.relative_to(workspace_path).parts)
+        if parts & _CATALOG_SKIP_DIRS:
             continue
-        if "include('api.urls')" in content or 'include("api.urls")' in content:
-            return candidate
-    return None
+        all_urls.append(candidate)
+
+    if not all_urls:
+        return None
+
+    # Step 3: score each file — the "root" urls.py is the one that includes others
+    # Scoring: has urlpatterns > more include() calls > shallower depth
+    def _score(path: Path) -> tuple:
+        try:
+            content = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return (False, 0, 0)
+        has_urlpatterns = "urlpatterns" in content
+        include_count = content.count("include(")
+        depth = len(path.relative_to(workspace_path).parts)
+        return (has_urlpatterns, include_count, -depth)
+
+    return max(all_urls, key=_score)
 
 
 def _collect_django_routes(file_path: Path, workspace_path: Path, prefix: str = "") -> list[dict[str, Any]]:
@@ -170,11 +415,10 @@ def _collect_django_routes(file_path: Path, workspace_path: Path, prefix: str = 
         if not view_name:
             continue
 
-        view_file = file_path.with_name("views.py")
-        if not view_file.exists():
-            resolved = _resolve_module_to_file(workspace_path, "views")
-            if resolved:
-                view_file = resolved
+        # Resolve the view file, supporting views/ package layouts and
+        # multi-app Django projects where each app has its own views directory.
+        resolved_view = _resolve_view_file_for_handler(file_path.parent, workspace_path, view_name)
+        view_file = resolved_view if resolved_view else file_path.with_name("views.py")
 
         routes.append(
             {
@@ -227,6 +471,18 @@ def _extract_view_name(node: ast.AST | None) -> str:
         return node.attr
     if isinstance(node, ast.Name):
         return node.id
+    # Class-based views: MyView.as_view() or MyView.as_view(kwargs={...})
+    # The handler is ast.Call; func is ast.Attribute(.as_view); func.value is the class
+    if isinstance(node, ast.Call):
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr == "as_view":
+            # Return the class name: AdminLoginAPIView.as_view() → "AdminLoginAPIView"
+            if isinstance(func.value, ast.Name):
+                return func.value.id
+            if isinstance(func.value, ast.Attribute):
+                return func.value.attr
+        # Other callable handlers — recurse into the function being called
+        return _extract_view_name(func)
     return ""
 
 
@@ -251,7 +507,7 @@ def _resolve_module_to_file(workspace_path: Path, module_name: str) -> Path | No
     return None
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=128)
 def _load_view_function(view_file_rel: str, function_name: str) -> dict[str, Any]:
     view_file = Path(view_file_rel)
     try:
@@ -265,6 +521,8 @@ def _load_view_function(view_file_rel: str, function_name: str) -> dict[str, Any
         return {}
 
     helper_returns = _helper_return_payloads(tree)
+
+    # First pass: function-based views
     for node in tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == function_name:
             decorators = [_decorator_name(item) for item in node.decorator_list]
@@ -276,6 +534,32 @@ def _load_view_function(view_file_rel: str, function_name: str) -> dict[str, Any
                 "end_lineno": getattr(node, "end_lineno", None),
                 "helper_returns": helper_returns,
             }
+
+    # Second pass: class-based views (DRF APIView, ViewSet, etc.)
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == function_name:
+            decorators = [_decorator_name(item) for item in node.decorator_list]
+            # Flatten the entire class body into a source segment so method-detection
+            # regexes can find `def get(self`, `def post(self`, etc.
+            source_segment = ast.get_source_segment(source, node) or ""
+            # Build per-HTTP-method node index so _build_reference_entry can
+            # scope response/body/status extraction to the specific method only.
+            http_methods = {"get", "post", "put", "patch", "delete", "head", "options"}
+            method_nodes: dict[str, ast.FunctionDef] = {}
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name in http_methods:
+                    method_nodes[item.name] = item
+            return {
+                "source": source_segment,
+                "node": node,
+                "method_nodes": method_nodes,
+                "decorators": decorators,
+                "lineno": getattr(node, "lineno", None),
+                "end_lineno": getattr(node, "end_lineno", None),
+                "helper_returns": helper_returns,
+                "is_class_based": True,
+            }
+
     return {}
 
 
@@ -346,6 +630,62 @@ def _decorator_name(node: ast.AST) -> str:
     if isinstance(node, ast.Call):
         return _decorator_name(node.func)
     return ""
+
+
+def _ast_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _parse_permission_classes(class_node: ast.ClassDef) -> bool | None:
+    """Parse permission_classes class attribute.
+    Returns True (auth required), False (explicit public), None (not declared here).
+    """
+    for stmt in class_node.body:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        for target in stmt.targets:
+            if not (isinstance(target, ast.Name) and target.id == 'permission_classes'):
+                continue
+            val = stmt.value
+            if isinstance(val, (ast.List, ast.Tuple)):
+                if len(val.elts) == 0:
+                    return False  # permission_classes = [] → public
+                # Non-empty → auth required
+                return True
+    return None
+
+
+def _check_cbv_auth(view_info: dict[str, Any], workspace_path: "Path | None") -> bool | None:
+    """Returns True/False/None for CBV auth: True=protected, False=public, None=unknown."""
+    node = view_info.get("node")
+    if not isinstance(node, ast.ClassDef):
+        return None
+
+    own = _parse_permission_classes(node)
+    if own is not None:
+        return own
+
+    if workspace_path:
+        index = _build_view_definition_index(workspace_path)
+        for base in node.bases:
+            base_name = _ast_name(base)
+            if not base_name or base_name in {'APIView', 'GenericAPIView', 'View', 'object', 'ModelViewSet', 'ViewSet'}:
+                continue
+            base_file = index.get(base_name)
+            if not base_file:
+                continue
+            base_info = _load_view_function(base_file, base_name)
+            base_node = base_info.get("node")
+            if isinstance(base_node, ast.ClassDef):
+                inherited = _parse_permission_classes(base_node)
+                if inherited is not None:
+                    return inherited
+
+    return None
 
 
 def _extract_allowed_methods(source: str) -> list[str]:
@@ -423,16 +763,44 @@ def _build_reference_entry(
     method: str,
     route_index: int,
     metadata: dict[str, Any],
+    workspace_path: "Path | None" = None,
 ) -> dict[str, Any]:
     method_metadata = dict((metadata.get("methods") or {}).get(method) or {})
     source = str((view_info or {}).get("source") or "")
-    node = (view_info or {}).get("node")
+    class_node = (view_info or {}).get("node")
     helper_returns = (view_info or {}).get("helper_returns") or {}
+    # For CBVs, use the per-HTTP-method node for scoped extraction.
+    # This prevents DELETE response metadata from bleeding into GET/POST entries.
+    method_node_map: dict[str, ast.FunctionDef] = (view_info or {}).get("method_nodes") or {}
+    method_specific_node = method_node_map.get(method.lower())
+    node = method_specific_node or class_node
+    # Use method-scoped source for regex extraction when available
+    if method_specific_node is not None:
+        try:
+            method_source = ast.unparse(method_specific_node)
+        except Exception:
+            method_source = source
+    else:
+        method_source = source
     path = _normalize_url_path(route.get("path", ""))
     path_params = _path_params(path)
     query_params = method_metadata.get("query_params") or _query_param_objects(node)
     body_fields = _body_field_objects(node)
+    # Enrich body fields from serializer_class when direct data.get() inspection found nothing
+    if not body_fields and method != "GET" and view_info and view_info.get("is_class_based") and workspace_path:
+        ser_name = _extract_serializer_class_name(class_node)
+        if ser_name:
+            ser_fields = _extract_serializer_fields(workspace_path, ser_name)
+            if ser_fields:
+                body_fields = [f for f in ser_fields if f.get("required") is not False or method in {"POST", "PUT"}]
     response_details = _response_details(node, helper_returns)
+    # Enrich status codes from method-scoped source — avoids cross-method contamination
+    if method_source:
+        sc_from_source = _status_codes_from_source(method_source)
+        if sc_from_source:
+            merged_sc = sorted(set(list(response_details.get("status_codes") or []) + sc_from_source))
+            response_details = dict(response_details)
+            response_details["status_codes"] = merged_sc
     request_body = method_metadata.get("request_body")
     if request_body is None:
         body_field_names = [item.get("name") for item in body_fields if item.get("name")]
@@ -449,12 +817,12 @@ def _build_reference_entry(
         response_payload = _placeholder_response(response_details.get("response_keys") or [])
     response_keys = _merge_key_lists(response_details.get("response_keys") or [], _payload_keys(response_payload))
 
-    summary = str(method_metadata.get("summary") or _generic_summary(str(route.get("view_name") or ""), path, method))
+    summary = str(method_metadata.get("summary") or _summary_from_source(node, str(route.get("view_name") or ""), path, method))
     when_to_use = str(method_metadata.get("when_to_use") or _generic_when_to_use(path, method))
-    behavior_notes = list(method_metadata.get("behavior_notes") or _behavior_notes_from_source(source))
+    behavior_notes = list(method_metadata.get("behavior_notes") or _behavior_notes_from_source(method_source))
     common_errors = list(method_metadata.get("common_errors") or response_details.get("errors") or [])
     status_codes = _merge_status_codes(response_details.get("status_codes") or [], method_metadata.get("status_codes") or [])
-    access_text, auth_required = _access_details(view_info or {})
+    access_text, auth_required = _access_details(view_info or {}, workspace_path)
     description_parts = [summary, when_to_use]
     if behavior_notes:
         description_parts.append(" ".join(behavior_notes[:2]))
@@ -588,19 +956,40 @@ def _body_field_objects(node: ast.AST | None) -> list[dict[str, Any]]:
 
 
 def _body_get_keys(node: ast.AST | None) -> list[str]:
+    """Extract request body field names from view source.
+
+    Scans both the old Django style (body.get) and DRF style (request.data.get,
+    data.get, request.data['key'], data['key']).
+    """
     if node is None:
         return []
     names: list[str] = []
     seen: set[str] = set()
-    for child in ast.walk(node):
-        if not isinstance(child, ast.Call) or not isinstance(child.func, ast.Attribute) or child.func.attr != "get":
-            continue
-        if not isinstance(child.func.value, ast.Name) or child.func.value.id != "body":
-            continue
-        key = _literal_str(child.args[0]) if child.args else ""
+
+    def _add(key: str) -> None:
         if key and key not in seen:
             seen.add(key)
             names.append(key)
+
+    for child in ast.walk(node):
+        # .get(key) calls on body/data/request.data
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Attribute) and child.func.attr == "get":
+            val = child.func.value
+            if isinstance(val, ast.Name) and val.id in {"body", "data"}:
+                _add(_literal_str(child.args[0]) if child.args else "")
+            elif isinstance(val, ast.Attribute) and val.attr == "data":
+                _add(_literal_str(child.args[0]) if child.args else "")
+        # Subscript access: data['key'] or request.data['key']
+        if isinstance(child, ast.Subscript):
+            val = child.value
+            is_data = (
+                (isinstance(val, ast.Name) and val.id == "data")
+                or (isinstance(val, ast.Attribute) and val.attr == "data")
+            )
+            if is_data:
+                key = _literal_str(child.slice if not isinstance(child.slice, ast.Index) else getattr(child.slice, "value", child.slice))
+                _add(key)
+
     return names
 
 
@@ -633,7 +1022,12 @@ def _field_from_node(node: ast.AST | None) -> str:
         if isinstance(node.func, ast.Name) and node.args:
             return _field_from_node(node.args[0])
         if isinstance(node.func, ast.Attribute) and node.func.attr == "get":
-            if isinstance(node.func.value, ast.Name) and node.func.value.id == "body":
+            val = node.func.value
+            is_data_source = (
+                (isinstance(val, ast.Name) and val.id in {"body", "data"})
+                or (isinstance(val, ast.Attribute) and val.attr == "data")
+            )
+            if is_data_source:
                 return _literal_str(node.args[0]) if node.args else ""
     return ""
 
@@ -646,6 +1040,45 @@ def _name_checked_for_truthiness(node: ast.AST | None) -> str:
             if any(isinstance(comp, ast.Constant) and comp.value in {None, ""} for comp in node.comparators):
                 return node.left.id
     return ""
+
+
+_HTTP_STATUS_MAP: dict[str, int] = {
+    "HTTP_200_OK": 200, "HTTP_201_CREATED": 201, "HTTP_202_ACCEPTED": 202,
+    "HTTP_204_NO_CONTENT": 204, "HTTP_206_PARTIAL_CONTENT": 206,
+    "HTTP_400_BAD_REQUEST": 400, "HTTP_401_UNAUTHORIZED": 401,
+    "HTTP_403_FORBIDDEN": 403, "HTTP_404_NOT_FOUND": 404,
+    "HTTP_405_METHOD_NOT_ALLOWED": 405, "HTTP_409_CONFLICT": 409,
+    "HTTP_422_UNPROCESSABLE_ENTITY": 422, "HTTP_429_TOO_MANY_REQUESTS": 429,
+    "HTTP_500_INTERNAL_SERVER_ERROR": 500, "HTTP_502_BAD_GATEWAY": 502,
+    "HTTP_503_SERVICE_UNAVAILABLE": 503,
+}
+
+
+def _http_status_from_node(node: ast.AST | None) -> int | None:
+    """Resolve status.HTTP_200_OK / HTTP_200_OK AST nodes to integer."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, int):
+        return node.value
+    if isinstance(node, ast.Attribute):
+        val = _HTTP_STATUS_MAP.get(node.attr)
+        if val is not None:
+            return val
+    if isinstance(node, ast.Name):
+        val = _HTTP_STATUS_MAP.get(node.id)
+        if val is not None:
+            return val
+    return None
+
+
+def _status_codes_from_source(source: str) -> list[int]:
+    """Regex scan for status.HTTP_XXX and status=NNN patterns in view source."""
+    found: set[int] = set()
+    for m in re.finditer(r'status\.HTTP_(\d+\w*)', source):
+        val = _HTTP_STATUS_MAP.get("HTTP_" + m.group(1))
+        if val:
+            found.add(val)
+    for m in re.finditer(r'(?<!\d)status\s*=\s*(\d{3})(?!\d)', source):
+        found.add(int(m.group(1)))
+    return sorted(found)
 
 
 def _response_details(node: ast.AST | None, helper_returns: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -661,8 +1094,12 @@ def _response_details(node: ast.AST | None, helper_returns: dict[str, Any] | Non
     example_payload = None
     helper_returns = helper_returns or {}
 
+    # Scan JsonResponse(...) and DRF Response(...)
     for child in ast.walk(node):
-        if not isinstance(child, ast.Call) or _call_name(child) != "JsonResponse":
+        if not isinstance(child, ast.Call):
+            continue
+        call_name = _call_name(child)
+        if call_name not in {"JsonResponse", "Response"}:
             continue
 
         payload = child.args[0] if child.args else None
@@ -670,14 +1107,14 @@ def _response_details(node: ast.AST | None, helper_returns: dict[str, Any] | Non
         if resolved_payload is None and isinstance(payload, ast.Call) and isinstance(payload.func, ast.Name):
             resolved_payload = helper_returns.get(payload.func.id)
         if isinstance(resolved_payload, dict):
-            non_error_keys = [str(key or "").strip() for key in resolved_payload.keys() if str(key or "").strip() and str(key or "").strip() != "error"]
+            non_error_keys = [str(key or "").strip() for key in resolved_payload.keys() if str(key or "").strip() and str(key or "").strip() not in {"error", "detail", "errors"}]
             if example_payload is None and non_error_keys:
                 example_payload = resolved_payload
             for key, value in resolved_payload.items():
                 key = str(key or "").strip()
                 if not key:
                     continue
-                if key == "error":
+                if key in {"error", "detail", "errors", "message", "non_field_errors"}:
                     message = str(value or "").strip()
                     if message and message not in seen_errors:
                         seen_errors.add(message)
@@ -689,13 +1126,16 @@ def _response_details(node: ast.AST | None, helper_returns: dict[str, Any] | Non
 
         for keyword in child.keywords:
             if keyword.arg == "status":
-                status_value = _literal_int(keyword.value)
+                status_value = _http_status_from_node(keyword.value)
                 if status_value is not None and status_value not in seen_status:
                     seen_status.add(status_value)
                     status_codes.append(status_value)
 
+    # Regex fallback handled in _build_reference_entry where raw source string is available
+
     if response_keys and 200 not in seen_status:
         status_codes.append(200)
+        seen_status.add(200)
 
     return {
         "response_keys": response_keys,
@@ -725,17 +1165,61 @@ def _resource_phrase(view_name: str, path: str) -> str:
     return fallback or "endpoint"
 
 
+def _extract_docstring(node: ast.AST | None, method: str | None = None) -> str:
+    """Extract docstring from a FunctionDef/ClassDef node.
+    For CBVs, checks the HTTP-method handler first, then the class docstring.
+    """
+    if node is None:
+        return ""
+
+    def _first_docstring(n: ast.AST) -> str:
+        body = getattr(n, "body", [])
+        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+            return str(body[0].value.value or "").strip()
+        return ""
+
+    if isinstance(node, ast.ClassDef) and method:
+        method_name = method.lower()
+        # Map DRF action names
+        action_map = {"get": ("get", "list", "retrieve"), "post": ("post", "create"),
+                      "put": ("put", "update"), "patch": ("patch", "partial_update"),
+                      "delete": ("delete", "destroy")}
+        candidates = action_map.get(method_name, (method_name,))
+        for child in node.body:
+            if isinstance(child, ast.FunctionDef) and child.name in candidates:
+                doc = _first_docstring(child)
+                if doc:
+                    return doc
+        # Fall back to class docstring
+        return _first_docstring(node)
+
+    return _first_docstring(node)
+
+
+def _summary_from_source(node: ast.AST | None, view_name: str, path: str, method: str) -> str:
+    """Return docstring-based summary if available, else fall back to generic."""
+    doc = _extract_docstring(node, method)
+    if doc:
+        # Use first sentence of docstring (up to 160 chars)
+        first = doc.split("\n")[0].split(". ")[0].strip()
+        if len(first) > 20:
+            return first[:160]
+    return _generic_summary(view_name, path, method)
+
+
 def _generic_summary(view_name: str, path: str, method: str) -> str:
     title = _resource_phrase(view_name, path)
     if method == "GET":
-        return f"Read `{title}` data."
+        return f"Retrieve {title}."
     if method == "POST":
-        return f"Submit a request for `{title}`."
+        return f"Create or submit {title}."
+    if method == "PUT":
+        return f"Replace {title}."
     if method == "PATCH":
-        return f"Partially update `{title}` data."
+        return f"Partially update {title}."
     if method == "DELETE":
-        return f"Delete, stop, or remove `{title}`."
-    return f"Call `{title}`."
+        return f"Delete {title}."
+    return f"Call {title}."
 
 
 def _generic_when_to_use(path: str, method: str) -> str:
@@ -768,10 +1252,29 @@ def _behavior_notes_from_source(source: str) -> list[str]:
     return notes
 
 
-def _access_details(view_info: dict[str, Any]) -> tuple[str, bool]:
+def _access_details(view_info: dict[str, Any], workspace_path: "Path | None" = None) -> tuple[str, bool]:
     decorators = {str(item or "") for item in view_info.get("decorators") or []}
     if any(token in decorators for token in {"login_required", "permission_required"}):
         return ("Authentication or permission decorators were detected on this handler.", True)
+
+    source = str(view_info.get("source") or "")
+    if view_info.get("is_class_based") and source:
+        # AST-based check: parses permission_classes value and walks inheritance chain.
+        # Avoids false positives from `permission_classes = []` (explicit public).
+        cbv_auth = _check_cbv_auth(view_info, workspace_path)
+        if cbv_auth is True:
+            return ("DRF permission_classes or authentication_classes detected on this class-based view.", True)
+        if cbv_auth is False:
+            return ("Explicit empty permission_classes — this endpoint is public.", False)
+
+        # Fallback text scan for auth tokens not covered by permission_classes
+        DRF_AUTH_SIGNALS = (
+            "IsAuthenticated", "IsAdminUser", "IsAuthenticatedOrReadOnly",
+            "IsStaffUser", "TokenAuthentication", "JWTAuthentication", "SessionAuthentication",
+        )
+        if any(signal in source for signal in DRF_AUTH_SIGNALS):
+            return ("DRF authentication class detected on this class-based view.", True)
+
     if "csrf_exempt" in decorators:
         return ("CSRF is exempted and no explicit auth or permission checks were detected in the handler.", False)
     return ("No explicit auth or permission decorators were detected in the handler.", False)
