@@ -17,7 +17,7 @@ import re
 import time
 from pathlib import Path
 
-from agents.workspace import SKIP_DIRS
+from agents.core.workspace import SKIP_DIRS
 
 from .base_tool import BaseTool, ToolContext, ToolResult, TOOL_RESULT_MAX_CHARS
 

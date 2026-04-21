@@ -8,7 +8,8 @@ from django.db import OperationalError, ProgrammingError
 from django.http import HttpResponseRedirect, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from api.views import _build_import_inspection, _parse_json_body
+from api.codebase.scanner import _build_import_inspection
+from api.chat.helpers import _parse_json_body
 from core.models import Project
 from .github import (
     GitHubIntegrationError,

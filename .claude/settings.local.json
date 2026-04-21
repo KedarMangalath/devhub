@@ -6,7 +6,10 @@
       "mcp__code-review-graph__get_architecture_overview_tool",
       "Bash(xargs grep *)",
       "Bash(python -c ' *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(grep -n \"^@csrf_exempt$\\\\|^def \\\\|^@\" \"C:/Users/USER/Desktop/Agentic/devhub_v2/backend/api/views/_endpoints_raw.py\")",
+      "Bash(grep -v \"^[0-9]*:@$\")"
     ]
   },
   "enabledMcpjsonServers": [

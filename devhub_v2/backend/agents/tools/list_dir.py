@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 
-from agents.workspace import SKIP_DIRS
+from agents.core.workspace import SKIP_DIRS
 
 from .base_tool import BaseTool, ToolContext, ToolResult
 

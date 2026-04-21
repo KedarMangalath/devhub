@@ -8,19 +8,23 @@ from urllib.error import HTTPError
 
 from django.test import Client, TestCase, override_settings
 
-from api.views import _build_evidence_backed_workflows, _enrich_blueprint_document, _normalize_mermaid_chart, _stable_runtime_port, _write_deep_docs_progress, build_scaffold_files, detect_runtime
-from agents.api_reference import build_api_reference_catalog
-from agents.architect import ArchitectAgent
-from agents.base import AIRequestError, BaseAgent, _vertexai_base_url_for_location, ai_config_is_usable, default_ai_config, normalize_ai_config
-from agents.checkpoints import project_checkpoint_root
-from agents.compaction import ContextCompactor
-from agents.deep_documentation import DeepDocumentationAgent
-from agents.memory import build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, record_episode, retrieve_relevant_files, select_files_for_section
-from agents.prompts import PromptBuilder
-from agents.query_engine import QueryEngine
+from api.blueprint.builders import _enrich_blueprint_document
+from api.codebase.doc_builder import _build_evidence_backed_workflows
+from api.scaffold.builder import build_scaffold_files
+from api.workspace.memory import _normalize_mermaid_chart, _write_deep_docs_progress
+from api.workspace.runtime import _stable_runtime_port, detect_runtime
+from agents.docs.api_reference import build_api_reference_catalog
+from agents.coding.architect import ArchitectAgent
+from agents.core.base import AIRequestError, BaseAgent, _vertexai_base_url_for_location, ai_config_is_usable, default_ai_config, normalize_ai_config
+from agents.core.checkpoints import project_checkpoint_root
+from agents.memory.store.compaction import ContextCompactor
+from agents.docs.deep_documentation import DeepDocumentationAgent
+from agents.memory.store import build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, record_episode, retrieve_relevant_files, select_files_for_section
+from agents.customization.prompts import PromptBuilder
+from agents.memory.store.query_engine import QueryEngine
 from agents.tools.base_tool import BaseTool, ToolResult
 from agents.tools.registry import ToolRegistry
-from agents.workspace import workspace_manager
+from agents.core.workspace import workspace_manager
 from core.models import Changeset, ChatMessage, FileDiff, Project, SemanticMemory, WorkingMemory
 from core.models import Feature, FeatureApproval
 
@@ -47,7 +51,7 @@ class AiConfigDefaultsTests(TestCase):
         )
         self.assertTrue(ai_config_is_usable(config))
 
-    @patch("agents.base.shutil.which", return_value=None)
+    @patch("agents.core.base.shutil.which", return_value=None)
     def test_legacy_gemini_cli_config_falls_back_to_vertex_defaults(self, _mock_which):
         config = normalize_ai_config(
             {
@@ -63,8 +67,8 @@ class AiConfigDefaultsTests(TestCase):
         self.assertEqual(config["vertex_location"], "global")
         self.assertTrue(ai_config_is_usable(config))
 
-    @patch("agents.base.subprocess.run")
-    @patch("agents.base.shutil.which")
+    @patch("agents.core.base.subprocess.run")
+    @patch("agents.core.base.shutil.which")
     def test_vertex_token_lookup_accepts_windows_gcloud_cmd(self, mock_which, mock_run):
         mock_which.side_effect = lambda candidate: (
             r"C:\\Program Files\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd"
@@ -100,8 +104,8 @@ class AiConfigDefaultsTests(TestCase):
 
 
 class BaseAgentRetryTests(TestCase):
-    @patch("agents.base.time.sleep", return_value=None)
-    @patch("agents.base.urlopen")
+    @patch("agents.core.base.time.sleep", return_value=None)
+    @patch("agents.core.base.urlopen")
     def test_http_json_retries_429_then_succeeds(self, mock_urlopen, _mock_sleep):
         class FakeResponse:
             def __enter__(self):
@@ -281,7 +285,7 @@ class GeminiThoughtSignatureTests(TestCase):
             captured["messages"] = messages
             return {"text": "done", "tool_calls": [], "model_parts": [{"text": "done"}], "raw": {}}
 
-        with patch("agents.query_engine.BaseAgent.complete_with_tools", new=fake_complete):
+        with patch("agents.memory.store.query_engine.BaseAgent.complete_with_tools", new=fake_complete):
             result = engine.run("inspect repo", system_prompt="test", max_turns=3)
 
         self.assertTrue(result.success)
@@ -928,7 +932,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Update the heading and landing page copy"}),
@@ -947,7 +951,7 @@ class ProjectChatEditTests(TestCase):
         def fake_implement_feature(self, workspace_id, feature_title, feature_desc, spec, files_context, **kwargs):
             raise RuntimeError("simulated coder failure")
 
-        with patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Update the UI colors"}),
@@ -959,7 +963,7 @@ class ProjectChatEditTests(TestCase):
         self.assertIn("edit failed", payload["assistant_message"])
 
     def test_chat_ask_mode_never_applies_changes(self):
-        with patch("api.views.apply_chat_changes") as mock_apply_changes, patch("agents.base.BaseAgent.generate", return_value="Answer-only response"):
+        with patch("api.views.apply_chat_changes") as mock_apply_changes, patch("agents.core.base.BaseAgent.generate", return_value="Answer-only response"):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Update the heading and colors", "mode": "ask"}),
@@ -981,7 +985,7 @@ class ProjectChatEditTests(TestCase):
             captured["attachments"] = attachments
             return "I can see the attached mockup."
 
-        with patch("agents.base.BaseAgent.generate_with_attachments", new=fake_generate_with_attachments):
+        with patch("agents.core.base.BaseAgent.generate_with_attachments", new=fake_generate_with_attachments):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -1012,7 +1016,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Can you make this more modern?", "mode": "edit"}),
@@ -1052,7 +1056,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.planner.PlannerAgent.create_plan", new=fake_create_plan), patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature), patch("api.views._run_validation_suite", return_value=[]), patch("api.views._review_attempt", return_value={"approved": True, "score": 100, "summary": "Looks good.", "issues": []}):
+        with patch("agents.coding.planner.PlannerAgent.create_plan", new=fake_create_plan), patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature), patch("api.views._run_validation_suite", return_value=[]), patch("api.views._review_attempt", return_value={"approved": True, "score": 100, "summary": "Looks good.", "issues": []}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -1080,7 +1084,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Give me a checkpointed edit flow", "mode": "edit"}),
@@ -1106,7 +1110,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Edit this with undo", "mode": "edit"}),
@@ -1189,7 +1193,7 @@ class ProjectChatEditTests(TestCase):
                 total_duration_ms=6,
             )
 
-        with patch("agents.query_engine.QueryEngine.run", new=fake_run), patch("api.views.apply_chat_changes"), patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.store.query_engine.QueryEngine.run", new=fake_run), patch("api.views.apply_chat_changes"), patch("api.views.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -1235,7 +1239,7 @@ class ProjectChatEditTests(TestCase):
                 total_duration_ms=5,
             )
 
-        with patch("agents.query_engine.QueryEngine.run", new=fake_run):
+        with patch("agents.memory.store.query_engine.QueryEngine.run", new=fake_run):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Fix the workspace chatbot so it actually implements changes", "mode": "agent"}),
@@ -1267,7 +1271,7 @@ class ProjectChatEditTests(TestCase):
             total_duration_ms=12,
         )
 
-        with patch("agents.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.store.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Fix the landing page copy", "mode": "agent"}),
@@ -1306,7 +1310,7 @@ class ProjectChatEditTests(TestCase):
             "context_files": ["index.html", "style.css", "game.js"],
         }
 
-        with patch("agents.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.store.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Could you make this project retro and Nokia-like?", "mode": "agent"}),
@@ -1349,7 +1353,7 @@ class ProjectChatEditTests(TestCase):
             "context_files": ["index.html"],
         }
 
-        with patch("agents.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.store.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -1383,7 +1387,7 @@ class ProjectChatEditTests(TestCase):
             total_duration_ms=8,
         )
 
-        with patch("agents.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes") as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.store.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes") as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Could you explain how the current snake movement logic works?", "mode": "agent"}),
@@ -1417,7 +1421,7 @@ class ProjectChatEditTests(TestCase):
                 total_duration_ms=15,
             )
 
-        with patch("agents.query_engine.QueryEngine.run", new=fake_run), patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.store.query_engine.QueryEngine.run", new=fake_run), patch("api.views.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Use agent mode to edit the heading", "mode": "agent"}),
@@ -1489,7 +1493,7 @@ class ProjectChatEditTests(TestCase):
                 )
             raise AssertionError(f"Unexpected role reached in this test: {self.role}")
 
-        with patch("api.views.ai_config_is_usable", return_value=False), patch("agents.base.BaseAgent.generate", new=fake_generate):
+        with patch("api.views.ai_config_is_usable", return_value=False), patch("agents.core.base.BaseAgent.generate", new=fake_generate):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "/accessibility refresh the landing page copy", "mode": "edit"}),
@@ -1695,7 +1699,7 @@ class DeepDocumentationStreamTests(TestCase):
             }
 
         with patch("api.views.build_blueprint_context", return_value={"important_files": [], "directory_counts": {}, "file_count": 1}), patch(
-            "agents.deep_documentation.DeepDocumentationAgent.generate_all_sections",
+            "agents.docs.deep_documentation.DeepDocumentationAgent.generate_all_sections",
             new=fake_generate_all_sections,
         ):
             response = self.client.post(
@@ -1741,7 +1745,7 @@ class DeepDocumentationStreamTests(TestCase):
             }
 
         with patch("api.views.build_blueprint_context", return_value={"important_files": [], "directory_counts": {}, "file_count": 1}), patch(
-            "agents.deep_documentation.DeepDocumentationAgent.generate_all_sections",
+            "agents.docs.deep_documentation.DeepDocumentationAgent.generate_all_sections",
             new=fake_generate_all_sections,
         ), patch(
             "api.views._write_deep_docs_progress",
@@ -1780,7 +1784,7 @@ class DeepDocumentationStreamTests(TestCase):
             return dict(blueprint)
 
         with patch("api.views.build_blueprint_context", return_value={"important_files": [], "directory_counts": {}, "file_count": 1}), patch(
-            "agents.deep_documentation.DeepDocumentationAgent.generate_section",
+            "agents.docs.deep_documentation.DeepDocumentationAgent.generate_section",
             new=fake_generate_section,
         ), patch(
             "api.views._enrich_blueprint_document",
@@ -1835,7 +1839,7 @@ class DeepDocumentationStreamTests(TestCase):
             return updated
 
         with patch("api.views.build_blueprint_context", return_value={"important_files": [], "directory_counts": {}, "file_count": 1}), patch(
-            "agents.deep_documentation.DeepDocumentationAgent.generate_section",
+            "agents.docs.deep_documentation.DeepDocumentationAgent.generate_section",
             new=fake_generate_section,
         ), patch(
             "api.views._enrich_blueprint_document",
@@ -1903,7 +1907,7 @@ class DeepDocumentationStreamTests(TestCase):
             return updated
 
         with patch("api.views.build_blueprint_context", return_value={"important_files": [], "directory_counts": {}, "file_count": 1}), patch(
-            "agents.deep_documentation.DeepDocumentationAgent.generate_all_sections",
+            "agents.docs.deep_documentation.DeepDocumentationAgent.generate_all_sections",
             new=fake_generate_all_sections,
         ), patch(
             "api.views._enrich_blueprint_document",
@@ -2466,7 +2470,7 @@ class ProjectChatTraceTests(TestCase):
         self.temp_dir.cleanup()
 
     def test_chat_trace_records_explicit_file_and_readme_context(self):
-        with patch("agents.base.BaseAgent.generate", return_value="This is the grounded answer."):
+        with patch("agents.core.base.BaseAgent.generate", return_value="This is the grounded answer."):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -2534,7 +2538,7 @@ class ProjectChatTraceTests(TestCase):
         indexed_paths = {item.get("path") for item in cache.get("all_file_summaries", [])}
         self.assertNotIn("src/vendor.min.js", indexed_paths)
 
-        with patch("agents.base.BaseAgent.generate", return_value="Lazy file answer."):
+        with patch("agents.core.base.BaseAgent.generate", return_value="Lazy file answer."):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -2557,7 +2561,7 @@ class ProjectChatTraceTests(TestCase):
     def test_chat_plans_manifest_backed_reads_without_explicit_mentions(self):
         build_blueprint_context(self.project, self.project_root, force=True)
 
-        with patch("agents.base.BaseAgent.generate", return_value="Planned answer."):
+        with patch("agents.core.base.BaseAgent.generate", return_value="Planned answer."):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -2583,7 +2587,7 @@ class ProjectChatTraceTests(TestCase):
             captured_prompt["prompt"] = prompt
             return "Full file answer."
 
-        with patch("agents.base.BaseAgent.generate", side_effect=fake_generate):
+        with patch("agents.core.base.BaseAgent.generate", side_effect=fake_generate):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -2604,7 +2608,7 @@ class ProjectChatTraceTests(TestCase):
     def test_chat_broad_folder_question_materializes_multiple_related_files(self):
         build_blueprint_context(self.project, self.project_root, force=True)
 
-        with patch("agents.base.BaseAgent.generate", return_value="Folder answer."):
+        with patch("agents.core.base.BaseAgent.generate", return_value="Folder answer."):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -2677,7 +2681,7 @@ class ProjectChatTraceTests(TestCase):
             captured_prompt["prompt"] = prompt
             return "Theme answer."
 
-        with patch("agents.base.BaseAgent.generate", side_effect=fake_generate):
+        with patch("agents.core.base.BaseAgent.generate", side_effect=fake_generate):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(

@@ -1,6 +1,6 @@
 import json
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from agents.workspace import workspace_manager
+from agents.core.workspace import workspace_manager
 
 class EditorConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
