@@ -166,9 +166,9 @@ const renderInlineMarkdown = (text: string) => {
     }
     const token = match[0];
     if (token.startsWith('`') && token.endsWith('`')) {
-      nodes.push(<code key={`code-${key++}`} className="rounded bg-black/5 px-1.5 py-0.5 font-mono text-[0.95em] text-slate-800">{token.slice(1, -1)}</code>);
+      nodes.push(<code key={`code-${key++}`} className="rounded bg-black/5 px-1.5 py-0.5 font-mono text-[0.95em] text-inherit">{token.slice(1, -1)}</code>);
     } else if (token.startsWith('**') && token.endsWith('**')) {
-      nodes.push(<strong key={`strong-${key++}`} className="font-semibold text-slate-900">{token.slice(2, -2)}</strong>);
+      nodes.push(<strong key={`strong-${key++}`} className="font-semibold text-inherit">{token.slice(2, -2)}</strong>);
     } else if (token.startsWith('*') && token.endsWith('*')) {
       nodes.push(<em key={`em-${key++}`} className="italic">{token.slice(1, -1)}</em>);
     } else {
@@ -180,7 +180,7 @@ const renderInlineMarkdown = (text: string) => {
             href={linkMatch[2]}
             target="_blank"
             rel="noreferrer"
-            className="text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-800"
+            className="text-[#8c5462] underline decoration-[#d9a4b2]/60 underline-offset-2 hover:text-[#70434f]"
           >
             {linkMatch[1]}
           </a>
@@ -669,7 +669,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                 <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${isWorkspaceMode ? 'text-[#64748b]' : 'text-slate-400'}`}>Implementation Plan</p>
                 {planObjective && <p className={`mt-1 text-[12px] leading-6 ${isWorkspaceMode ? 'text-[#cbd5e1]' : 'text-slate-600'}`}>{planObjective}</p>}
               </div>
-              <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${isWorkspaceMode ? 'bg-blue-500/15 text-blue-200' : 'bg-blue-50 text-blue-700'}`}>
+              <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${isWorkspaceMode ? 'bg-[#70434f]/25 text-[#d9a4b2]' : 'bg-[#f5ecf0] text-[#70434f]'}`}>
                 {planSteps.length || planFiles.length} items
               </span>
             </div>
@@ -695,7 +695,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
             {planCommands.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {planCommands.slice(0, 3).map((command: string) => (
-                  <code key={command} className={`rounded-lg px-2.5 py-1.5 text-[10px] ${isWorkspaceMode ? 'bg-[#0b1220] text-emerald-300' : 'bg-slate-900 text-emerald-300'}`}>{command}</code>
+                  <code key={command} className={`rounded-lg px-2.5 py-1.5 text-[10px] ${isWorkspaceMode ? 'bg-[#1f1a1d] text-[#c7b08a]' : 'bg-slate-900 text-emerald-300'}`}>{command}</code>
                 ))}
               </div>
             )}
@@ -754,7 +754,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
             </button>
           </div>
         )}
-        {/* ── Tool Events Timeline (from new QueryEngine) ── */}
+        {/* Tool Events Timeline (from new QueryEngine) */}
         {Array.isArray(trace.tool_events) && trace.tool_events.length > 0 && (
           <div className={`mt-3 ml-7 rounded-2xl border px-3.5 py-3 shadow-sm ${isWorkspaceMode ? 'border-[#2a2a2a] bg-[#101010] text-[#dbe4ee]' : 'border-slate-200 bg-white text-slate-700'}`}>
             <div className="flex items-center justify-between gap-3 mb-3">
@@ -764,7 +764,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
               </div>
               <div className="flex items-center gap-2">
                 {typeof trace.turns_used === 'number' && (
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isWorkspaceMode ? 'bg-blue-500/15 text-blue-200' : 'bg-blue-50 text-blue-700'}`}>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isWorkspaceMode ? 'bg-[#70434f]/25 text-[#d9a4b2]' : 'bg-[#f5ecf0] text-[#70434f]'}`}>
                     {trace.turns_used} turns
                   </span>
                 )}
@@ -775,7 +775,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                   </span>
                 )}
                 {trace.compacted && (
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${isWorkspaceMode ? 'bg-purple-500/15 text-purple-200' : 'bg-purple-50 text-purple-700'}`}>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${isWorkspaceMode ? 'bg-[#70434f]/25 text-[#d9a4b2]' : 'bg-[#f5ecf0] text-[#70434f]'}`}>
                     compacted
                   </span>
                 )}
@@ -790,7 +790,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                   <span className={`text-[11px] font-semibold ${isWorkspaceMode ? 'text-white' : 'text-slate-800'}`}>{ev.tool}</span>
                   <span className={`flex-1 truncate text-[10px] ${isWorkspaceMode ? 'text-[#94a3b8]' : 'text-slate-400'}`}>{ev.preview?.slice(0, 80)}</span>
                   <span className={`shrink-0 text-[10px] font-medium ${ev.success ? (isWorkspaceMode ? 'text-emerald-300' : 'text-emerald-600') : (isWorkspaceMode ? 'text-rose-300' : 'text-rose-600')}`}>
-                    {ev.success ? '✓' : '✗'}
+                    {ev.success ? 'ok' : 'x'}
                   </span>
                 </div>
               ))}
@@ -982,10 +982,10 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
   }
 
   const wrapperClasses = mode === 'standalone'
-    ? 'flex h-full w-full flex-col bg-white text-slate-900'
+    ? 'devhub-chat-panel flex h-full w-full flex-col bg-white text-slate-900'
     : mode === 'workspace'
-      ? 'flex h-full min-h-0 w-[min(28rem,32vw)] min-w-[22rem] max-w-[32rem] shrink-0 flex-col overflow-hidden border-l border-[#333333] bg-[#181818] text-[#e5e7eb]'
-      : `pointer-events-auto flex flex-col overflow-hidden border border-slate-200/60 bg-white shadow-2xl ${chatExpanded ? 'fixed inset-4 z-50 rounded-3xl' : 'rounded-2xl'}`;
+      ? 'devhub-chat-panel flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#111111] text-[#e8e8e3]'
+      : `devhub-chat-panel pointer-events-auto flex flex-col overflow-hidden border border-slate-200/60 bg-white shadow-2xl ${chatExpanded ? 'fixed inset-4 z-50 rounded-3xl' : 'rounded-2xl'}`;
 
   const wrapperStyles = mode === 'standalone' || mode === 'workspace'
     ? undefined
@@ -997,9 +997,9 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
     <div className={wrapperClasses} style={wrapperStyles}>
       {/* Header */}
       {(mode === 'floating' || isWorkspaceMode) && (
-        <div className={`flex shrink-0 items-center justify-between gap-3 px-5 py-3 ${isWorkspaceMode ? 'border-b border-[#2a2a2a] bg-[#111111]' : 'border-b border-slate-100'}`}>
+        <div className={`flex shrink-0 items-center justify-between gap-3 px-4 py-3 ${isWorkspaceMode ? 'border-b border-white/10 bg-[#0d0d0d]' : 'border-b border-slate-100'}`}>
           <div className="flex items-center gap-2">
-            <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${isWorkspaceMode ? 'bg-[#0f172a] ring-1 ring-white/10' : 'bg-black shadow-sm'}`}>
+            <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${isWorkspaceMode ? 'bg-[#2b1d22] ring-1 ring-white/10' : 'bg-black shadow-sm'}`}>
               <Sparkles className="h-3.5 w-3.5 text-white" />
             </div>
             <div>
@@ -1032,7 +1032,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
       )}
 
       {/* Toolbar */}
-      <div className={`relative flex shrink-0 items-center gap-2.5 px-5 py-3 ${mode === 'standalone' ? 'pt-8 pb-4' : ''} ${isWorkspaceMode ? 'border-b border-[#2a2a2a] bg-[#181818]' : ''}`}>
+      <div className={`relative flex shrink-0 items-center gap-2 px-4 py-3 ${mode === 'standalone' ? 'pt-8 pb-4' : ''} ${isWorkspaceMode ? 'flex-wrap border-b border-white/10 bg-[#111111]' : ''}`}>
         {/* We only show title on standalone mode in the top bar to keep it anchored if they want */}
         {mode === 'standalone' && (
           <div className="mr-4 flex items-center gap-2.5 border-r border-slate-200 pr-5">
@@ -1043,7 +1043,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
           </div>
         )}
 
-        <div className={`flex items-center rounded-xl p-1 ${isWorkspaceMode ? 'border border-white/10 bg-[#111111]' : 'border border-slate-200 bg-slate-50/80 shadow-sm'}`}>
+        <div className={`flex items-center rounded-lg p-1 ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b]' : 'border border-slate-200 bg-slate-50/80 shadow-sm'}`}>
           {(Object.entries(CHAT_MODE_META) as [ChatBehaviorMode, (typeof CHAT_MODE_META)[ChatBehaviorMode]][]).map(([value, meta]) => {
             const active = chatBehaviorMode === value;
             return (
@@ -1051,7 +1051,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                 key={value}
                 type="button"
                 onClick={() => setChatBehaviorMode(value)}
-                className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition ${isWorkspaceMode ? (active ? 'bg-white text-black shadow-sm' : 'text-[#94a3b8] hover:bg-white/5 hover:text-white') : (active ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-900')}`}
+                className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition ${isWorkspaceMode ? (active ? 'bg-[#8c5462] text-white shadow-sm' : 'text-[#b9adb1] hover:bg-white/5 hover:text-white') : (active ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-900')}`}
                 title={meta.helper}
               >
                 {meta.label}
@@ -1063,7 +1063,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
         <button
           type="button"
           onClick={startNewChat}
-          className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${isWorkspaceMode ? 'border border-white/10 bg-white/5 text-white hover:bg-white/10' : 'bg-black text-white shadow-sm hover:bg-slate-800'}`}
+          className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b] text-white hover:bg-[#242424]' : 'bg-black text-white shadow-sm hover:bg-slate-800'}`}
         >
           <MessageSquarePlus className="h-3.5 w-3.5" />
           New Chat
@@ -1073,7 +1073,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
           <button
             type="button"
             onClick={() => setShowSessions(!showSessions)}
-            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${isWorkspaceMode ? 'border border-white/10 bg-[#111111] text-[#d1d5db] hover:bg-[#1f1f1f]' : 'border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50'}`}
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b] text-[#d1d5db] hover:bg-[#242424]' : 'border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50'}`}
           >
             History <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
           </button>
@@ -1110,8 +1110,10 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
       </div>
 
       {/* Messages */}
-      <div className={`flex-1 min-h-0 overflow-x-hidden overflow-y-auto ${isWorkspaceMode ? 'bg-[#181818]' : 'bg-white'} ${mode === 'standalone' ? 'px-8 sm:px-12 lg:px-24 xl:px-40' : 'px-5'} py-4`}>
-        <div className="space-y-6 max-w-3xl mx-auto w-full">
+      <div className={`flex-1 min-h-0 overflow-x-hidden overflow-y-auto ${isWorkspaceMode ? 'bg-[#111111]' : 'bg-white'} ${mode === 'standalone' ? 'px-8 sm:px-12 lg:px-24 xl:px-40' : 'px-4'} py-4`}>
+        <div className={`w-full ${isWorkspaceMode ? 'space-y-4' : 'mx-auto max-w-3xl space-y-6'}`}>
+          {!isWorkspaceMode && (
+          <>
           <div className={`rounded-2xl border px-4 py-3 ${isWorkspaceMode ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200 bg-slate-50/80 shadow-sm'}`}>
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1205,6 +1207,8 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                 </>
               )}
             </div>
+          </>
+          )}
 
           {chatMessages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -1218,9 +1222,9 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
           {chatMessages.map((message: ChatMessageRecord, index) => (
             <div key={message.id ?? `${message.role}-${index}`} className={message.role === 'user'
               ? (isWorkspaceMode
-                  ? 'ml-auto max-w-[90%] rounded-2xl border border-[#2f2f2f] bg-[#101010] px-4 py-3 text-[13px] leading-relaxed text-white shadow-[0_12px_30px_rgba(0,0,0,0.28)]'
+                  ? 'ml-auto max-w-[90%] rounded-[18px] border border-white/10 bg-[#1f1f1f] px-4 py-3 text-[13px] leading-relaxed text-white shadow-[0_12px_30px_rgba(0,0,0,0.28)]'
                   : 'ml-auto max-w-[85%] rounded-[20px] border border-slate-200/50 bg-[#f4f4f5] px-5 py-3.5 text-[13px] leading-relaxed text-slate-900 shadow-sm')
-              : (isWorkspaceMode ? 'w-full pr-2 text-[13px] leading-7 text-[#e2e8f0]' : 'pr-4 w-full text-[14px] leading-relaxed text-slate-800')
+              : (isWorkspaceMode ? 'w-full rounded-[18px] border border-[#70434f] bg-[#181818] px-4 py-3 text-[13px] leading-7 text-[#e8e4e6] shadow-[0_14px_34px_rgba(0,0,0,0.32)]' : 'pr-4 w-full text-[14px] leading-relaxed text-slate-800')
             }>
               {renderImageAttachments(normalizeMessageAttachments(message.metadata), message.role)}
               {message.role === 'assistant' && (
@@ -1232,7 +1236,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                 </div>
               )}
               {message.content && (
-                <div className={`${message.role === 'assistant' ? 'pl-7' : 'whitespace-pre-wrap break-words'}`}>
+                <div className={`${message.role === 'assistant' ? (isWorkspaceMode ? 'pl-7 text-[#d8d8d2]' : 'pl-7') : 'whitespace-pre-wrap break-words'}`}>
                   {message.role === 'assistant' ? renderMarkdownMessage(message.content) : message.content}
                 </div>
               )}
@@ -1242,7 +1246,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
           {chatSending && (
             <div className={`rounded-2xl border px-4 py-3 ml-7 ${isWorkspaceMode ? 'border-[#2a2a2a] bg-[#101010]' : 'border-slate-200 bg-slate-50/80'}`}>
               <div className="flex items-center gap-2.5">
-                <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${isWorkspaceMode ? 'bg-[#0f172a]' : 'bg-black'}`}>
+                <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${isWorkspaceMode ? 'bg-[#2b1d22]' : 'bg-black'}`}>
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
                 </div>
                 <span className={`text-[13px] font-medium ${isWorkspaceMode ? 'text-white' : 'text-slate-900'}`}>
@@ -1254,7 +1258,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                   <span className="flex items-center gap-1"><Wrench className="h-3 w-3" /> Tools</span>
                   <span className="flex items-center gap-1"><FileText className="h-3 w-3" /> Files</span>
                   <span className="flex items-center gap-1"><Terminal className="h-3 w-3" /> Commands</span>
-                  <span className="animate-pulse">●●●</span>
+                  <span className="animate-pulse">...</span>
                 </div>
               )}
             </div>
@@ -1264,8 +1268,8 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
       </div>
 
       {/* Input */}
-      <div className={`shrink-0 ${isWorkspaceMode ? 'border-t border-[#2a2a2a] bg-[#111111]' : 'bg-white'} ${mode === 'standalone' ? 'px-8 sm:px-12 lg:px-24 xl:px-40 pb-8' : 'px-5 pb-5'} pt-2`}>
-        <div className="max-w-3xl mx-auto w-full">
+      <div className={`shrink-0 ${isWorkspaceMode ? 'border-t border-white/10 bg-[#0d0d0d]' : 'bg-white'} ${mode === 'standalone' ? 'px-8 sm:px-12 lg:px-24 xl:px-40 pb-8' : 'px-4 pb-4'} pt-3`}>
+        <div className={`${isWorkspaceMode ? 'w-full' : 'mx-auto w-full max-w-3xl'}`}>
           {contextMentions.length > 0 && (
             <div className="mb-2.5 flex flex-wrap gap-1.5">
               {contextMentions.map((item) => (
@@ -1292,7 +1296,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
             <button
               type="button"
               onClick={() => attachmentInputRef.current?.click()}
-              className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold transition ${isWorkspaceMode ? 'border border-white/10 bg-white/5 text-[#dbe4ee] hover:bg-white/10' : 'border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50'}`}
+              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-semibold transition ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b] text-[#dbe4ee] hover:bg-[#242424]' : 'border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50'}`}
             >
               <ImagePlus className="h-3.5 w-3.5" />
               Attach image
@@ -1335,10 +1339,10 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                 }
               }}
               placeholder={activePlaceholder}
-              className={`min-h-[56px] w-full resize-none rounded-[20px] py-4 pl-4 pr-12 text-[13px] outline-none transition-all placeholder:font-light ${isWorkspaceMode ? 'border border-[#2f2f2f] bg-[#181818] text-white placeholder:text-[#64748b] focus:border-[#3b82f6] focus:bg-[#1b1b1b]' : 'border border-slate-200 bg-[#fbfbfc] text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-slate-300 focus:bg-white focus:shadow-[0_4px_24px_rgba(15,23,42,0.06)]'}`}
+              className={`min-h-[72px] w-full resize-none rounded-[20px] py-4 pl-4 pr-12 text-[13px] outline-none transition-all placeholder:font-light ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b] text-white placeholder:text-[#75686d] focus:border-[#8c5462]/70 focus:bg-[#202020]' : 'border border-slate-200 bg-[#fbfbfc] text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-slate-300 focus:bg-white focus:shadow-[0_4px_24px_rgba(15,23,42,0.06)]'}`}
               rows={2}
             />
-            <button onClick={sendChat} disabled={(!chatInput.trim() && chatAttachments.length === 0) || chatSending} className={`absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-2xl text-white transition disabled:opacity-30 ${isWorkspaceMode ? 'bg-[#2563eb] shadow-[0_10px_24px_rgba(37,99,235,0.35)] hover:bg-[#1d4ed8]' : 'bg-black shadow-sm hover:bg-slate-800'}`}>
+            <button onClick={sendChat} disabled={(!chatInput.trim() && chatAttachments.length === 0) || chatSending} className={`absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-2xl transition disabled:opacity-30 ${isWorkspaceMode ? 'bg-[#8c5462] text-white shadow-[0_10px_24px_rgba(112,67,79,0.22)] hover:bg-[#70434f]' : 'bg-black text-white shadow-sm hover:bg-slate-800'}`}>
               <Send className="h-4 w-4" />
             </button>
             {mentionQuery !== null && mentionOptions.length > 0 && (

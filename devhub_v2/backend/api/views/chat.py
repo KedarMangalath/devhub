@@ -1,18 +1,48 @@
 import logging
+import uuid
 
+from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from agents.core.checkpoints import (
+    create_workspace_checkpoint,
+    delete_workspace_checkpoint,
+    restore_workspace_checkpoint,
+    snapshot_previous_contents,
+)
 from agents.core.workspace import workspace_manager
+from agents.memory.store import build_memory_context, index_semantic_memory, record_episode, upsert_working_memory
 from core.models import Changeset, ChatMessage, Project
 
 from api.chat.handler import (
+    CHAT_MODE_AGENT,
+    CHAT_MODE_ASK,
+    CHAT_MODE_EDIT,
+    CHAT_STATE_EDIT_REQUEST,
+    CHAT_STATE_GROUNDED_ANSWER,
+    CHAT_STATE_NEEDS_CLARIFICATION,
+    LEGACY_CHAT_SESSION_ID,
+    _build_chat_llm_prompt,
+    _build_chat_trace_from_changes,
+    _classify_chat_state,
+    _dedupe_chat_mentions,
+    _group_project_chat_sessions,
     _handle_agent_chat_request,
+    _infer_inline_chat_mentions,
+    _normalize_chat_mentions,
+    _normalize_chat_mode,
     _record_chat_changes,
+    _resolve_chat_context,
+    _serialize_chat_message,
+    _should_apply_changes_for_chat_mode,
     apply_chat_changes,
 )
 from api.chat.helpers import (
     _changeset_by_id,
+    _chat_changeset_trace_metadata,
+    _chat_checkpoint_review_payload,
+    _chat_request_text,
     _chat_undo_payload_from_review,
     _mark_changeset_undone,
     _normalize_chat_attachments,

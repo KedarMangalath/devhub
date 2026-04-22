@@ -1,4 +1,5 @@
 import json
+import socket
 import tempfile
 from io import BytesIO
 from pathlib import Path
@@ -12,16 +13,16 @@ from api.blueprint.builders import _enrich_blueprint_document
 from api.codebase.doc_builder import _build_evidence_backed_workflows
 from api.scaffold.builder import build_scaffold_files
 from api.workspace.memory import _normalize_mermaid_chart, _write_deep_docs_progress
-from api.workspace.runtime import _stable_runtime_port, detect_runtime
+from api.workspace.runtime import _runtime_response_payload, _stable_runtime_port, detect_runtime
 from agents.docs.api_reference import build_api_reference_catalog
 from agents.coding.architect import ArchitectAgent
 from agents.core.base import AIRequestError, BaseAgent, _vertexai_base_url_for_location, ai_config_is_usable, default_ai_config, normalize_ai_config
 from agents.core.checkpoints import project_checkpoint_root
-from agents.memory.store.compaction import ContextCompactor
+from agents.memory.compaction import ContextCompactor
 from agents.docs.deep_documentation import DeepDocumentationAgent
 from agents.memory.store import build_blueprint_context, build_memory_context, compress_recent_activity, index_semantic_memory, record_episode, retrieve_relevant_files, select_files_for_section
 from agents.customization.prompts import PromptBuilder
-from agents.memory.store.query_engine import QueryEngine
+from agents.memory.query_engine import QueryEngine
 from agents.tools.base_tool import BaseTool, ToolResult
 from agents.tools.registry import ToolRegistry
 from agents.core.workspace import workspace_manager
@@ -3760,6 +3761,57 @@ class RuntimeDetectionTests(TestCase):
             self.assertIn(str(first_port), first_runtime["preview_url"])
             self.assertIn(str(second_port), second_runtime["run_command"])
             self.assertIn(str(second_port), second_runtime["preview_url"])
+
+    def test_node_runtime_overrides_occupied_vite_config_port(self):
+        with tempfile.TemporaryDirectory() as temp_dir, socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            listener.listen(1)
+            occupied_port = listener.getsockname()[1]
+            project_root = Path(temp_dir)
+            (project_root / "package.json").write_text(
+                json.dumps({"name": "occupied-vite", "scripts": {"dev": "vite"}}),
+                encoding="utf-8",
+            )
+            (project_root / "vite.config.js").write_text(
+                f"export default {{ server: {{ host: true, port: {occupied_port} }} }}\n",
+                encoding="utf-8",
+            )
+
+            runtime = detect_runtime(project_root)
+            preview_port = int(str(runtime["preview_url"]).rsplit(":", 1)[1])
+
+            self.assertEqual(runtime["runtime_type"], "node")
+            self.assertNotEqual(preview_port, occupied_port)
+            self.assertIn("-- --port", runtime["run_command"])
+            self.assertIn(str(preview_port), runtime["run_command"])
+
+    def test_runtime_payload_keeps_running_process_preview_url(self):
+        class FakeSandbox:
+            def get_status(self, _process_id):
+                return {
+                    "exists": True,
+                    "running": True,
+                    "command": "npm run dev -- --port 5222",
+                    "preview_url": "http://127.0.0.1:5222",
+                    "backend": "local",
+                }
+
+            def details(self):
+                return {"mode": "local"}
+
+        payload = _runtime_response_payload(
+            {
+                "runtime_type": "node",
+                "run_command": "npm run dev -- --port 5223",
+                "preview_url": "http://127.0.0.1:5223",
+            },
+            "workspace_runtime",
+            FakeSandbox(),
+        )
+
+        self.assertEqual(payload["run_command"], "npm run dev -- --port 5222")
+        self.assertEqual(payload["preview_url"], "http://127.0.0.1:5222")
+        self.assertTrue(payload["ready"])
 
     @patch.dict("os.environ", {"DEVHUB_SANDBOX_MODE": "docker"}, clear=False)
     def test_fastapi_runtime_uses_container_safe_python_command_in_docker_mode(self):

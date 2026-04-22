@@ -2,6 +2,8 @@ import logging
 import threading
 from pathlib import Path
 
+from django.db import close_old_connections
+
 from agents.core.base import ai_config_is_usable
 from agents.docs.documentation import generate_codebase_reference_sync
 from agents.memory.store import build_blueprint_context

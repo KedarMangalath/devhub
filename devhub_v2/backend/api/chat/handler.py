@@ -29,9 +29,13 @@ from api.chat.helpers import (
 from api.codebase.doc_builder import _project_workspace_path
 from api.project_utils import _project_ai_config
 from api.workspace.memory import _read_project_instructions
-from api.workspace.runtime import detect_runtime
+from api.workspace.runtime import _runtime_response_payload, detect_runtime, runtime_process_id, setup_process_id
 
 logger = logging.getLogger(__name__)
+
+def _secondary_runtime_process_id(workspace_id: str, index: int = 0) -> str:
+    return f"{workspace_id}_runtime_secondary_{index}"
+
 
 def _collect_workspace_context(workspace_path: Path, selected_file: str = "", selected_content: str = "", limit: int = 24) -> list[dict]:
     source_exts = {".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css", ".json", ".md"}
@@ -990,10 +994,10 @@ def _handle_agent_chat_request(
 
     # ── NEW: Use QueryEngine for tool-calling agent loop ──────────
     try:
-        from agents.memory.store.compaction import ContextCompactor
+        from agents.memory.compaction import ContextCompactor
         from agents.orchestration.coordinator import Coordinator
         from agents.customization.prompts import PromptBuilder
-        from agents.memory.store.query_engine import QueryEngine
+        from agents.memory.query_engine import QueryEngine
         from agents.tools.registry import ToolRegistry
 
         ai_config = _project_ai_config(project)
@@ -1252,6 +1256,18 @@ def _handle_agent_chat_request(
                 })
 
             if action_plan.get('start_runtime') and runtime.get('run_command'):
+                for index, secondary_runtime in enumerate(runtime.get('secondary_runtimes') or []):
+                    secondary_command = secondary_runtime.get('run_command')
+                    if not secondary_command:
+                        continue
+                    secondary_pid = _secondary_runtime_process_id(project.workspace_id, index)
+                    sandbox.run_command(
+                        secondary_pid,
+                        str(secondary_command),
+                        str(workspace_path),
+                        kind='runtime',
+                        preview_url=secondary_runtime.get('preview_url'),
+                    )
                 sandbox.run_command(runtime_pid, str(runtime.get('run_command')), str(workspace_path), kind='runtime', preview_url=runtime.get('preview_url'))
                 runtime_payload = _runtime_response_payload(runtime, runtime_pid, sandbox, wait_for_preview=True)
                 runtime_ready = bool(runtime_payload.get('ready'))

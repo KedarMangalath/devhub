@@ -1,10 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", "Geist Sans", system-ui, sans-serif;
-  --font-display: "Cormorant Garamond", Georgia, serif;
-  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --font-sans: "Plus Jakarta Sans", "Inter", "Geist Sans", system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Geist Mono", ui-monospace, monospace;
 }
 
 @layer base {
@@ -60,6 +60,52 @@
   }
 }
 
+:root[data-theme="light"] {
+  --devhub-bg: #ffffff;
+  --devhub-surface: #ffffff;
+  --devhub-surface-2: #f8fafc;
+  --devhub-border: #e5e7eb;
+  --devhub-text: #0f172a;
+  --devhub-muted: #64748b;
+  --devhub-faint: #94a3b8;
+  --devhub-primary: #000000;
+  --devhub-primary-text: #ffffff;
+  --devhub-accent: #70434f;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --devhub-bg: #000000;
+  --devhub-surface: #050505;
+  --devhub-surface-2: #0b0b0b;
+  --devhub-border: #202020;
+  --devhub-text: #ffffff;
+  --devhub-muted: #c7c7c7;
+  --devhub-faint: #858585;
+  --devhub-primary: #ffffff;
+  --devhub-primary-text: #000000;
+  --devhub-accent: #70434f;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"],
+:root[data-theme="light"] body,
+:root[data-theme="light"] #root,
+:root[data-theme="light"] .devhub-themed,
+:root[data-theme="light"] .app-scale-shell {
+  background: #ffffff !important;
+  color: #0f172a;
+}
+
+:root[data-theme="dark"],
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] #root,
+:root[data-theme="dark"] .devhub-themed,
+:root[data-theme="dark"] .app-scale-shell {
+  background: #000000 !important;
+  color: #ffffff;
+}
+
 @layer base {
   html,
   body,
@@ -71,9 +117,9 @@
     border-color: hsl(var(--border) / 1);
   }
   body {
-    background-color: hsl(var(--background) / 1);
-    color: hsl(var(--foreground) / 1);
-    font-family: var(--font-display);
+    background-color: var(--devhub-bg, hsl(var(--background) / 1));
+    color: var(--devhub-text, hsl(var(--foreground) / 1));
+    font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100%;
@@ -84,14 +130,271 @@
   .font-display-serif {
     font-family: var(--font-display);
     font-feature-settings: "liga" 1, "kern" 1;
-    letter-spacing: -0.03em;
+    letter-spacing: 0;
   }
+}
+
+.devhub-readable {
+  font-family: var(--font-sans);
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+}
+
+.devhub-readable :where(h1, h2, h3, h4) {
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.devhub-readable :where(p, li, blockquote) {
+  text-wrap: pretty;
+}
+
+.devhub-readable :where(code, pre, kbd, samp) {
+  font-family: var(--font-mono);
+  text-align: start;
+  text-wrap: initial;
+  hyphens: manual;
+}
+
+.devhub-readable :where(button, input, textarea, select, label, summary, .no-justify) {
+  text-align: start;
+  hyphens: manual;
+}
+
+@media (min-width: 768px) {
+  .devhub-readable :where(p, blockquote) {
+    text-align: justify;
+    text-justify: inter-word;
+    hyphens: auto;
+  }
+
+  .devhub-readable :where(li > span:last-child, li p) {
+    text-align: justify;
+    text-justify: inter-word;
+    hyphens: auto;
+  }
+
+  .devhub-readable :where(.text-center, [class*="text-center"]) {
+    text-align: center;
+    hyphens: manual;
+  }
+
+  .devhub-readable :where(button p, .no-justify, pre, code) {
+    text-align: initial;
+    hyphens: manual;
+  }
+}
+
+.devhub-settings-modal {
+  border-color: var(--devhub-border);
+  background: color-mix(in srgb, var(--devhub-surface) 94%, transparent);
+  color: var(--devhub-text);
+  backdrop-filter: blur(24px);
+}
+
+.devhub-settings-modal :where(input, select, textarea) {
+  border-color: var(--devhub-border);
+  background: var(--devhub-surface);
+  color: var(--devhub-text);
+}
+
+.devhub-settings-modal :where(button, .devhub-settings-section, .devhub-theme-option, .devhub-toggle-row, span) {
+  border-color: var(--devhub-border);
+}
+
+.devhub-theme-option,
+.devhub-toggle-row {
+  background: var(--devhub-surface-2);
+}
+
+.devhub-theme-option.is-active {
+  border-color: var(--devhub-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--devhub-accent) 70%, transparent) inset;
+}
+
+:root[data-density="compact"] .devhub-dashboard,
+:root[data-density="compact"] .devhub-project-view {
+  --devhub-density-scale: 0.9;
+}
+
+:root[data-density="compact"] .devhub-dashboard :where(section, article, header, aside, nav, .setup-plum-surface, .setup-plum-card),
+:root[data-density="compact"] .devhub-project-view :where(section, article, header, aside, nav) {
+  gap: calc(1em * var(--devhub-density-scale, 1));
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
+  transition-duration: 0.001ms !important;
+}
+
+.devhub-dashboard,
+.devhub-project-view,
+.devhub-chat-panel {
+  color: var(--devhub-text);
+}
+
+:root[data-theme="dark"] .devhub-dashboard,
+:root[data-theme="dark"] .devhub-project-view {
+  background-color: #000000 !important;
+  background-image: none !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .devhub-dashboard,
+:root[data-theme="light"] .devhub-project-view {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: #0f172a !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :where(.setup-plum-surface, .setup-plum-card, .setup-plum-chip, .setup-plum-input, .setup-plum-button, .setup-plum-modal),
+:root[data-theme="dark"] .devhub-project-view :where(.setup-plum-surface, .setup-plum-card, .setup-plum-chip, .setup-plum-input, .setup-plum-button, .setup-plum-modal),
+:root[data-theme="dark"] .devhub-dashboard :where(article, aside > div),
+:root[data-theme="dark"] .devhub-project-view :where(article) {
+  border-color: #202020 !important;
+  background: #050505 !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :where(header, nav, section, aside, div, button, input, textarea, select),
+:root[data-theme="dark"] .devhub-project-view :where(header, nav, section, aside, div, button, input, textarea, select),
+:root[data-theme="dark"] .devhub-chat-panel :where(div, button, input, textarea, select) {
+  border-color: #202020;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="bg-white"], [class*="bg-slate-50"], [class*="bg-[#f8fafc]"], [class*="bg-[#fff7ef]"], [class*="bg-[#f5f7fb]"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="bg-white"], [class*="bg-slate-50"], [class*="bg-[#f8fafc]"], [class*="bg-[#fff7ef]"], [class*="bg-[#f5f7fb]"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="bg-white"], [class*="bg-slate-50"], [class*="bg-[#f8fafc]"], [class*="bg-[#f5f7fb]"]) {
+  background: #050505 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="text-slate-950"], [class*="text-slate-900"], [class*="text-slate-800"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="text-slate-950"], [class*="text-slate-900"], [class*="text-slate-800"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="text-slate-950"], [class*="text-slate-900"], [class*="text-slate-800"]) {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="text-slate-700"], [class*="text-slate-600"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="text-slate-700"], [class*="text-slate-600"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="text-slate-700"], [class*="text-slate-600"]) {
+  color: #d4d4d4 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="text-slate-500"], [class*="text-slate-400"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="text-slate-500"], [class*="text-slate-400"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="text-slate-500"], [class*="text-slate-400"]) {
+  color: #9ca3af !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="border-slate"], [class*="border-black"], [class*="border-white"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="border-slate"], [class*="border-black"], [class*="border-white"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="border-slate"], [class*="border-black"], [class*="border-white"]) {
+  border-color: #202020 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is(input, textarea, select),
+:root[data-theme="dark"] .devhub-project-view :is(input, textarea, select),
+:root[data-theme="dark"] .devhub-chat-panel :is(input, textarea, select) {
+  border-color: #262626 !important;
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="bg-black"], [class*="bg-slate-950"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="bg-black"], [class*="bg-slate-950"]) {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="bg-black"], [class*="bg-slate-950"]) svg,
+:root[data-theme="dark"] .devhub-project-view :is([class*="bg-black"], [class*="bg-slate-950"]) svg {
+  color: #000000 !important;
+}
+
+:root[data-theme="light"] .devhub-workspace,
+:root[data-theme="light"] .devhub-chat-panel {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+:root[data-theme="dark"] .devhub-workspace {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .devhub-workspace :is([class*="bg-[#0a0a0c]"], [class*="bg-[#0d0d0d]"], [class*="bg-[#101012]"], [class*="bg-[#111111]"], [class*="bg-[#151515]"], [class*="bg-[#181818]"], [class*="bg-[#1b1b1b]"], [class*="bg-[#1f1a1d]"], [class*="bg-[#252526]"], [class*="bg-[#2b1d22]"], [class*="bg-[#3c3c3c]"], [class*="bg-white/5"], [class*="bg-white/10"]) {
+  background: #ffffff !important;
+}
+
+:root[data-theme="light"] .devhub-workspace :is([class*="border-white/10"], [class*="border-[#2a2a2a]"], [class*="border-[#3a2a30]"]) {
+  border-color: #e5e7eb !important;
+}
+
+:root[data-theme="light"] .devhub-workspace :is([class*="text-[#e8e8e3]"], [class*="text-[#f3f3ee]"], [class*="text-[#d4d4d4]"], [class*="text-white"]) {
+  color: #0f172a !important;
+}
+
+:root[data-theme="light"] .devhub-workspace :is([class*="text-[#a6a6a0]"], [class*="text-[#9d9d9d]"], [class*="text-[#858585]"], [class*="text-[#75756f]"], [class*="text-[#6b6b6b]"], [class*="text-[#555555]"], [class*="text-[#4a4a65]"]) {
+  color: #64748b !important;
+}
+
+:root[data-theme="light"] .devhub-workspace :is([class*="hover:bg-white/10"], [class*="hover:bg-white/5"]):hover {
+  background: #f1f5f9 !important;
+}
+
+:root[data-theme="light"] .devhub-workspace .devhub-monaco-editor,
+:root[data-theme="light"] .devhub-workspace .devhub-terminal,
+:root[data-theme="light"] .devhub-monaco-editor .monaco-editor,
+:root[data-theme="light"] .devhub-monaco-editor .monaco-editor-background,
+:root[data-theme="light"] .devhub-monaco-editor .margin,
+:root[data-theme="light"] .devhub-monaco-editor .monaco-editor .inputarea.ime-input {
+  background-color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .devhub-workspace .devhub-monaco-editor,
+:root[data-theme="dark"] .devhub-workspace .devhub-terminal,
+:root[data-theme="dark"] .devhub-monaco-editor .monaco-editor,
+:root[data-theme="dark"] .devhub-monaco-editor .monaco-editor-background,
+:root[data-theme="dark"] .devhub-monaco-editor .margin,
+:root[data-theme="dark"] .devhub-monaco-editor .monaco-editor .inputarea.ime-input {
+  background-color: #000000 !important;
 }
 
 .app-scale-shell {
   width: var(--app-vw);
   min-height: var(--app-vh);
   zoom: var(--app-scale);
+}
+
+:root[data-theme="light"] .devhub-settings-overlay {
+  background: #ffffff !important;
+}
+
+:root[data-theme="dark"] .devhub-settings-overlay {
+  background: #000000 !important;
+}
+
+:root[data-theme="dark"] .devhub-settings-overlay > .absolute {
+  background: rgba(0, 0, 0, 0.72) !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard,
+:root[data-theme="dark"] .devhub-dashboard > div,
+:root[data-theme="dark"] .devhub-project-view,
+:root[data-theme="dark"] .devhub-project-view > div {
+  background-color: #000000 !important;
+  background-image: none !important;
+}
+
+:root[data-theme="light"] .devhub-dashboard,
+:root[data-theme="light"] .devhub-dashboard > div,
+:root[data-theme="light"] .devhub-project-view,
+:root[data-theme="light"] .devhub-project-view > div {
+  background-color: #ffffff !important;
+  background-image: none !important;
 }
 
 .project-scroll-shell,
@@ -125,6 +428,17 @@
 .repo-browser-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(var(--setup-plum-b), 0.75);
   background-clip: padding-box;
+}
+
+body.workspace-resizing iframe {
+  pointer-events: none !important;
+}
+
+.devhub-monaco-editor .monaco-editor,
+.devhub-monaco-editor .monaco-editor-background,
+.devhub-monaco-editor .margin,
+.devhub-monaco-editor .monaco-editor .inputarea.ime-input {
+  background-color: #101012 !important;
 }
 
 .setup-plum-overlay {
@@ -289,4 +603,315 @@
 }
 .glass-dark {
   @apply bg-slate-950 border border-slate-800 shadow-sm text-white;
+}
+
+/* Final app-wide theme normalization. Keep this at the end so the user
+   preference wins over hard-coded Tailwind surface classes in modules. */
+:root[data-theme="dark"] .devhub-loading-screen,
+:root[data-theme="dark"] .devhub-dashboard,
+:root[data-theme="dark"] .devhub-project-view,
+:root[data-theme="dark"] .devhub-chat-panel,
+:root[data-theme="dark"] .devhub-workspace,
+:root[data-theme="dark"] .project-scroll-shell,
+:root[data-theme="dark"] .repo-browser-scroll {
+  background: #000000 !important;
+  background-image: none !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .devhub-loading-spinner,
+:root[data-theme="dark"] .devhub-dashboard .animate-spin,
+:root[data-theme="dark"] .devhub-project-view .animate-spin,
+:root[data-theme="dark"] .devhub-chat-panel .animate-spin {
+  color: #70434f !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is(
+  [class*="bg-white"],
+  [class*="bg-slate-50"],
+  [class*="bg-slate-100"],
+  [class*="bg-[#fb"],
+  [class*="bg-[#fc"],
+  [class*="bg-[#fd"],
+  [class*="bg-[#fe"],
+  [class*="bg-[#f3"],
+  [class*="bg-[#f4"],
+  [class*="bg-[#f5"],
+  [class*="bg-[#f6"],
+  [class*="bg-[#f7"],
+  [class*="bg-[#f8"],
+  [class*="bg-[#f9"],
+  [class*="bg-[#e7"],
+  [class*="bg-[#e8"],
+  [class*="bg-[#ed"],
+  [class*="bg-[#ee"],
+  [class*="bg-[linear-gradient"],
+  [class*="bg-[radial-gradient"]
+),
+:root[data-theme="dark"] .devhub-project-view :is(
+  [class*="bg-white"],
+  [class*="bg-slate-50"],
+  [class*="bg-slate-100"],
+  [class*="bg-[#fb"],
+  [class*="bg-[#fc"],
+  [class*="bg-[#fd"],
+  [class*="bg-[#fe"],
+  [class*="bg-[#f3"],
+  [class*="bg-[#f4"],
+  [class*="bg-[#f5"],
+  [class*="bg-[#f6"],
+  [class*="bg-[#f7"],
+  [class*="bg-[#f8"],
+  [class*="bg-[#f9"],
+  [class*="bg-[#e7"],
+  [class*="bg-[#e8"],
+  [class*="bg-[#ed"],
+  [class*="bg-[#ee"],
+  [class*="bg-[linear-gradient"],
+  [class*="bg-[radial-gradient"]
+),
+:root[data-theme="dark"] .devhub-chat-panel :is(
+  [class*="bg-white"],
+  [class*="bg-slate-50"],
+  [class*="bg-slate-100"],
+  [class*="bg-[#fb"],
+  [class*="bg-[#fc"],
+  [class*="bg-[#fd"],
+  [class*="bg-[#fe"],
+  [class*="bg-[#f3"],
+  [class*="bg-[#f4"],
+  [class*="bg-[#f5"],
+  [class*="bg-[#f6"],
+  [class*="bg-[#f7"],
+  [class*="bg-[#f8"],
+  [class*="bg-[#f9"],
+  [class*="bg-[#e7"],
+  [class*="bg-[#e8"],
+  [class*="bg-[#ed"],
+  [class*="bg-[#ee"],
+  [class*="bg-[linear-gradient"],
+  [class*="bg-[radial-gradient"]
+) {
+  background: #050505 !important;
+  background-image: none !important;
+  color: #ffffff !important;
+  border-color: #202020 !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="bg-black"], [class*="bg-slate-950"], [class*="bg-[#000"], [class*="bg-[#050"], [class*="bg-[#0a"], [class*="bg-[#0b"], [class*="bg-[#0d"], [class*="bg-[#101"], [class*="bg-[#111"], [class*="bg-[#141"], [class*="bg-[#181"], [class*="bg-[#1b"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="bg-black"], [class*="bg-slate-950"], [class*="bg-[#000"], [class*="bg-[#050"], [class*="bg-[#0a"], [class*="bg-[#0b"], [class*="bg-[#0d"], [class*="bg-[#101"], [class*="bg-[#111"], [class*="bg-[#141"], [class*="bg-[#181"], [class*="bg-[#1b"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="bg-black"], [class*="bg-slate-950"], [class*="bg-[#000"], [class*="bg-[#050"], [class*="bg-[#0a"], [class*="bg-[#0b"], [class*="bg-[#0d"], [class*="bg-[#101"], [class*="bg-[#111"], [class*="bg-[#141"], [class*="bg-[#181"], [class*="bg-[#1b"]) {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is(button[class*="bg-black"], a[class*="bg-black"], [role="button"][class*="bg-black"], button[class*="bg-[#70434f"], a[class*="bg-[#70434f"], [role="button"][class*="bg-[#70434f"]),
+:root[data-theme="dark"] .devhub-project-view :is(button[class*="bg-black"], a[class*="bg-black"], [role="button"][class*="bg-black"], button[class*="bg-[#70434f"], a[class*="bg-[#70434f"], [role="button"][class*="bg-[#70434f"]),
+:root[data-theme="dark"] .devhub-chat-panel :is(button[class*="bg-black"], a[class*="bg-black"], [role="button"][class*="bg-black"], button[class*="bg-[#70434f"], a[class*="bg-[#70434f"], [role="button"][class*="bg-[#70434f"]) {
+  background: #70434f !important;
+  border-color: #70434f !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="text-[#70434f]"], [class*="text-[#8c5462]"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="text-[#70434f]"], [class*="text-[#8c5462]"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="text-[#70434f]"], [class*="text-[#8c5462]"]) {
+  color: #d9a4b2 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="text-black"], [class*="text-slate-950"], [class*="text-slate-900"], [class*="text-slate-800"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="text-black"], [class*="text-slate-950"], [class*="text-slate-900"], [class*="text-slate-800"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="text-black"], [class*="text-slate-950"], [class*="text-slate-900"], [class*="text-slate-800"]) {
+  color: #ffffff !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="text-slate-700"], [class*="text-slate-600"], [class*="text-[#475569]"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="text-slate-700"], [class*="text-slate-600"], [class*="text-[#475569]"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="text-slate-700"], [class*="text-slate-600"], [class*="text-[#475569]"]) {
+  color: #d4d4d4 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="text-slate-500"], [class*="text-slate-400"], [class*="text-slate-300"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="text-slate-500"], [class*="text-slate-400"], [class*="text-slate-300"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="text-slate-500"], [class*="text-slate-400"], [class*="text-slate-300"]) {
+  color: #a3a3a3 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is([class*="border-slate"], [class*="border-white"], [class*="border-black"], [class*="border-[#e"], [class*="border-[#f"], [class*="border-[rgba"]),
+:root[data-theme="dark"] .devhub-project-view :is([class*="border-slate"], [class*="border-white"], [class*="border-black"], [class*="border-[#e"], [class*="border-[#f"], [class*="border-[rgba"]),
+:root[data-theme="dark"] .devhub-chat-panel :is([class*="border-slate"], [class*="border-white"], [class*="border-black"], [class*="border-[#e"], [class*="border-[#f"], [class*="border-[rgba"]) {
+  border-color: #202020 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is(input, textarea, select),
+:root[data-theme="dark"] .devhub-project-view :is(input, textarea, select),
+:root[data-theme="dark"] .devhub-chat-panel :is(input, textarea, select) {
+  background: #050505 !important;
+  color: #ffffff !important;
+  border-color: #242424 !important;
+}
+
+:root[data-theme="dark"] .devhub-dashboard :is(input, textarea, select)::placeholder,
+:root[data-theme="dark"] .devhub-project-view :is(input, textarea, select)::placeholder,
+:root[data-theme="dark"] .devhub-chat-panel :is(input, textarea, select)::placeholder {
+  color: #737373 !important;
+}
+
+:root[data-theme="dark"] .setup-plum-modal,
+:root[data-theme="dark"] .setup-plum-surface,
+:root[data-theme="dark"] .setup-plum-card,
+:root[data-theme="dark"] .setup-plum-chip,
+:root[data-theme="dark"] .setup-plum-input,
+:root[data-theme="dark"] .setup-plum-button {
+  background: #050505 !important;
+  color: #ffffff !important;
+  border-color: #202020 !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .project-scroll-shell,
+:root[data-theme="dark"] .repo-browser-scroll {
+  scrollbar-color: rgba(var(--setup-plum-b), 0.78) #000000;
+}
+
+:root[data-theme="dark"] .project-scroll-shell::-webkit-scrollbar-track,
+:root[data-theme="dark"] .repo-browser-scroll::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+:root[data-theme="dark"] .project-scroll-shell::-webkit-scrollbar-thumb,
+:root[data-theme="dark"] .repo-browser-scroll::-webkit-scrollbar-thumb {
+  border-color: #000000;
+}
+
+:root[data-theme="light"] .devhub-loading-screen {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* ── Workspace loading animation ── */
+@keyframes loader-ring-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes loader-icon-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+@keyframes loader-bar-indeterminate {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes loader-fade-up {
+  from { opacity: 0; transform: translate3d(0, 20px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes loader-title-in {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.devhub-workspace-loader {
+  animation: loader-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.devhub-loader-icon-ring {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.devhub-loader-icon-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2.5px solid rgba(var(--setup-plum-b), 0.1);
+}
+
+.devhub-loader-icon-ring::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2.5px solid transparent;
+  border-top-color: rgba(var(--setup-plum-b), 0.7);
+  border-right-color: rgba(var(--setup-plum-b), 0.3);
+  animation: loader-ring-spin 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.devhub-loader-icon-core {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #0f172a, #1e293b);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  animation: loader-icon-pulse 2.4s ease-in-out infinite;
+}
+
+.devhub-loader-text-group {
+  text-align: center;
+}
+
+.devhub-loader-title {
+  animation: loader-title-in 600ms cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+}
+
+.devhub-loader-sub {
+  animation: loader-title-in 600ms cubic-bezier(0.16, 1, 0.3, 1) 350ms both;
+}
+
+.devhub-loader-bar-track {
+  width: 160px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(var(--setup-plum-b), 0.1);
+  overflow: hidden;
+  animation: loader-title-in 600ms cubic-bezier(0.16, 1, 0.3, 1) 500ms both;
+}
+
+.devhub-loader-bar-fill {
+  width: 50%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(var(--setup-plum-b), 0.6), rgba(var(--setup-plum-a), 0.9));
+  animation: loader-bar-indeterminate 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+:root[data-theme="dark"] .devhub-loader-icon-core {
+  background: linear-gradient(145deg, #ffffff, #e2e8f0) !important;
+  color: #0f172a !important;
+}
+
+/* ── Header entrance animation ── */
+@keyframes header-slide-down {
+  from { opacity: 0; transform: translate3d(0, -100%, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.devhub-header-enter {
+  animation: header-slide-down 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Content area entrance animation ── */
+@keyframes content-fade-in {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.devhub-content-enter {
+  animation: content-fade-in 560ms cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
 }

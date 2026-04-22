@@ -1,11 +1,16 @@
 import logging
+import json
+import shutil
+import subprocess
 import threading
+from pathlib import Path
 
+from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from agents.core.base import ai_config_is_usable
-from agents.memory.store import build_blueprint_context
+from agents.memory.store import _blueprint_cache_path, build_blueprint_context, compress_recent_activity, index_semantic_memory
 from agents.customization.project_customization import (
     bootstrap_project_customization,
     build_project_customization_summary,
@@ -14,7 +19,7 @@ from agents.customization.project_customization import (
     suggested_project_customization_files,
 )
 from agents.core.workspace import PROJECTS_DIR, workspace_manager
-from core.models import DocumentationRun, Feature, FeatureHistory, Project
+from core.models import DocumentationRun, Feature, FeatureApproval, FeatureHistory, Project, TestResult, WorkingMemory
 from integrations.github import (
     GitHubIntegrationError,
     clone_repository_with_token,
@@ -24,7 +29,11 @@ from integrations.github import (
 from integrations.models import GitHubConnection
 
 from agents.implementation.executor import generate_feature_spec_sync, implement_feature_sync
-from api.blueprint.generator import _schedule_project_context_generation, generate_blueprint_sync
+from api.blueprint.generator import (
+    _schedule_project_context_generation,
+    generate_blueprint_sync,
+    generate_codebase_reference_sync,
+)
 from api.blueprint.overview import (
     _derive_onboarding_summary,
     _project_features_payload,
@@ -32,9 +41,12 @@ from api.blueprint.overview import (
     _project_source_type,
     _recommended_start_tab,
     _work_items_summary,
-    _build_blueprint_overview_insights,
 )
-from api.codebase.doc_builder import _build_codebase_doc_payload, _project_workspace_path
+from api.codebase.doc_builder import (
+    _build_codebase_doc_payload,
+    _project_workspace_path,
+)
+from api.chat.handler import run_ai_test_simulation
 from api.chat.helpers import _parse_json_body
 from api.project_utils import (
     MEMORY_DB_ERRORS,
@@ -55,6 +67,16 @@ from api.workspace.memory import (
 from api.workspace.runtime import detect_runtime
 
 logger = logging.getLogger(__name__)
+def _read_cached_blueprint_context(workspace_path: Path) -> dict:
+    try:
+        cache_path = _blueprint_cache_path(workspace_path)
+        if not cache_path.exists():
+            return {}
+        cached = json.loads(cache_path.read_text(encoding='utf-8', errors='ignore'))
+        return cached if isinstance(cached, dict) else {}
+    except Exception:
+        logger.debug("Unable to read cached blueprint context for %s", workspace_path, exc_info=True)
+        return {}
 
 def list_projects(request):
     projects = [
@@ -306,42 +328,7 @@ def get_project(request, project_id):
                     logger.exception("Failed to refresh working memory for project %s", project.id)
             if project.blueprint:
                 try:
-                    codebase_context = build_blueprint_context(project, workspace_path)
-                    enriched_blueprint = dict(project.blueprint or {})
-                    evidence_sequence_flows, evidence_common_workflows = _build_evidence_backed_workflows(workspace_path)
-                    blueprint_backfilled = False
-                    api_reference = _blueprint_list(codebase_context.get('api_reference'))
-                    if api_reference and enriched_blueprint.get('api_endpoints') != api_reference:
-                        enriched_blueprint['api_endpoints'] = api_reference
-                        blueprint_backfilled = True
-                    if evidence_sequence_flows and enriched_blueprint.get('sequence_flows') != evidence_sequence_flows:
-                        enriched_blueprint['sequence_flows'] = evidence_sequence_flows
-                        blueprint_backfilled = True
-                    if evidence_common_workflows and enriched_blueprint.get('common_workflows') != evidence_common_workflows:
-                        enriched_blueprint['common_workflows'] = evidence_common_workflows
-                        blueprint_backfilled = True
-                    enriched_blueprint = _merge_repo_guidance_into_blueprint(project, enriched_blueprint, codebase_context)
-                    enriched_blueprint.update(_build_blueprint_overview_insights(project, enriched_blueprint, codebase_context, features_payload))
-                    if blueprint_backfilled:
-                        feature_summary = _render_project_features_summary(project, limit=20)
-                        design_document_markdown, design_document_sections = _render_blueprint_design_document(
-                            project,
-                            enriched_blueprint,
-                            codebase_context,
-                            feature_summary,
-                        )
-                        enriched_blueprint['design_document_markdown'] = design_document_markdown
-                        enriched_blueprint['design_document_sections'] = [
-                            {
-                                'id': section.get('id'),
-                                'title': section.get('title'),
-                                'markdown': '\n'.join(section.get('body') or []).strip(),
-                            }
-                            for section in design_document_sections
-                        ]
-                    if enriched_blueprint != (project.blueprint or {}):
-                        project.blueprint = enriched_blueprint
-                        project.save(update_fields=['blueprint'])
+                    _read_cached_blueprint_context(workspace_path)
                 except Exception:
                     logger.exception("Failed to backfill onboarding guidance for project %s", project.id)
 

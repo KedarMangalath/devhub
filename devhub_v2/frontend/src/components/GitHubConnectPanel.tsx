@@ -159,6 +159,7 @@ export default function GitHubConnectPanel({
   const [copiedCallback, setCopiedCallback] = useState(false);
   const [selectedRepository, setSelectedRepository] = useState('');
   const [inspectedRepository, setInspectedRepository] = useState('');
+  const [localInspecting, setLocalInspecting] = useState(false);
   const [hoveredRepository, setHoveredRepository] = useState('');
   const [hoverAnchorRect, setHoverAnchorRect] = useState<HoverAnchorRect | null>(null);
   const [hoverCardPosition, setHoverCardPosition] = useState<HoverCardPosition>({
@@ -387,6 +388,7 @@ export default function GitHubConnectPanel({
 
   const inspectRepository = async (fullName: string) => {
     if (!connection?.id || !fullName) return;
+    setLocalInspecting(true);
     try {
       const response = await fetch(`${apiBase}/projects/import/github-connect/inspect/`, {
         method: 'POST',
@@ -406,6 +408,8 @@ export default function GitHubConnectPanel({
       setInspectedRepository(fullName);
     } catch {
       onError('Could not inspect the selected GitHub repository.');
+    } finally {
+      setLocalInspecting(false);
     }
   };
 
@@ -1003,8 +1007,8 @@ export default function GitHubConnectPanel({
           </span>
           {selectedRepository ? (
             <span className="setup-plum-chip inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-slate-950">
-              <Loader2 className={`h-3.5 w-3.5 ${inspecting ? 'animate-spin' : ''}`} />
-              {inspecting
+              <Loader2 className={`h-3.5 w-3.5 ${(inspecting || localInspecting) ? 'animate-spin' : ''}`} />
+              {(inspecting || localInspecting)
                 ? 'Inspecting selected repo...'
                 : inspectedRepository === selectedRepository
                   ? 'Inspection complete'

@@ -308,7 +308,7 @@ export default function OnboardingPanel({
 
   if (!blueprint || Object.keys(blueprint).length === 0) {
     return (
-      <div className="flex min-h-[360px] items-center justify-center rounded-[28px] border border-dashed border-black/5 bg-white/70 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+      <div className="devhub-readable flex min-h-[360px] items-center justify-center rounded-[28px] border border-dashed border-black/5 bg-white/70 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
         <div className="max-w-lg px-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Onboarding</p>
           <h3 className="mt-3 text-2xl font-semibold text-slate-900">No blueprint generated yet</h3>
@@ -322,7 +322,7 @@ export default function OnboardingPanel({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="devhub-readable space-y-8">
       <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Onboarding</p>
@@ -342,7 +342,15 @@ export default function OnboardingPanel({
           <div className="rounded-2xl border border-black/5 bg-[#f8fafc] p-4 shadow-[0_16px_32px_rgba(15,23,42,0.06)]">
             <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Workspace</p>
             <p className="mt-3 text-sm font-medium text-slate-800">{workspaceReady ? 'Ready' : 'Waiting'}</p>
-            <p className="mt-1 text-xs text-slate-500 break-words whitespace-pre-wrap">{toText(runtime?.run_command, 'Open the workspace to keep code, preview, and chat in sync.')}</p>
+            <p className="mt-1 text-xs text-slate-500 break-words whitespace-pre-wrap">{(() => {
+              const cmd = runtime?.run_command;
+              if (!cmd) return 'Open the workspace to keep code, preview, and chat in sync.';
+              const m = String(cmd).match(/^pushd\s+"([^"]+)"\s+&&\s+(.+?)\s+&&\s+popd$/i);
+              if (m) return `${m[2]}  (in ${m[1]}/)`;
+              const cd2 = String(cmd).match(/^cd\s+(\S+)\s+&&\s+(.+)$/i);
+              if (cd2) return `${cd2[2]}  (in ${cd2[1]}/)`;
+              return cmd;
+            })()}</p>
           </div>
           <div className="rounded-2xl border border-black/5 bg-[#fff7ef] p-4 shadow-[0_16px_32px_rgba(15,23,42,0.06)]">
             <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Next tab</p>

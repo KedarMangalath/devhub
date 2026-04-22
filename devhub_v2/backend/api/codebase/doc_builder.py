@@ -1,4 +1,5 @@
 import html
+import hashlib
 import json
 import logging
 import os
@@ -9,7 +10,7 @@ from typing import Any
 
 from agents.core.base import BaseAgent
 from agents.docs.documentation import generate_codebase_reference_sync
-from agents.memory.store import build_memory_context
+from agents.memory.store import _blueprint_cache_path, build_memory_context
 from agents.core.workspace import SKIP_DIRS
 from core.models import DocumentationRun, Feature, Project
 
@@ -17,6 +18,35 @@ from api.project_utils import DEVHUB_META_DIR, _project_ai_config
 from api.workspace.runtime import detect_runtime
 
 logger = logging.getLogger(__name__)
+
+
+def _read_cached_codebase_context(workspace_path: Path) -> dict:
+    try:
+        cache_path = _blueprint_cache_path(workspace_path)
+        if not cache_path.exists():
+            return {}
+        cached = json.loads(cache_path.read_text(encoding="utf-8", errors="ignore"))
+        return cached if isinstance(cached, dict) else {}
+    except Exception:
+        logger.debug("Unable to read cached codebase context for %s", workspace_path, exc_info=True)
+        return {}
+
+def _detect_workspace_package_manager(workspace_path: Path | None, package_data: dict) -> str:
+    package_manager = str(package_data.get("packageManager") or "").strip().lower()
+    if package_manager:
+        return package_manager.split("@", 1)[0]
+    if workspace_path and (workspace_path / "pnpm-lock.yaml").exists():
+        return "pnpm"
+    if workspace_path and (workspace_path / "pnpm-workspace.yaml").exists():
+        return "pnpm"
+    if workspace_path and (workspace_path / "yarn.lock").exists():
+        return "yarn"
+    if workspace_path and ((workspace_path / "bun.lock").exists() or (workspace_path / "bun.lockb").exists()):
+        return "bun"
+    if workspace_path and (workspace_path / "package-lock.json").exists():
+        return "npm"
+    return "npm" if package_data else ""
+
 
 def _read_workspace_text(workspace_path: Path | None, rel_path: str) -> str:
     if not workspace_path:
@@ -2005,7 +2035,7 @@ def _build_codebase_doc_payload(project: Project, rel_path: str = "") -> dict:
     workspace_path = _project_workspace_path(project)
     if not workspace_path:
         raise FileNotFoundError("Project workspace is not available")
-    codebase_context = build_blueprint_context(project, workspace_path)
+    codebase_context = _read_cached_codebase_context(workspace_path)
     target_path, normalized = _codebase_doc_target(workspace_path, rel_path)
     if not target_path.exists():
         raise FileNotFoundError(f"Path not found: {normalized}")

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agents.core.base import BaseAgent, build_multimodal_message_content, normalize_ai_config
-from agents.memory.store.compaction import ContextCompactor
+from agents.memory.compaction import ContextCompactor
 from agents.customization.prompts import PromptBuilder
 from agents.tools.base_tool import ToolContext, ToolResult
 from agents.tools.registry import ToolRegistry

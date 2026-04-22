@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 
 import GitHubConnectPanel from '../components/GitHubConnectPanel';
+import AppSettingsButton from '../components/AppSettingsButton';
 import ToastStack from '../components/ToastStack';
 
 const API = 'http://localhost:8000/api';
@@ -1187,7 +1188,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-[var(--app-vh)] bg-[linear-gradient(180deg,#ffffff_0%,#ffffff_74%,rgba(140,84,98,0.035)_100%)] text-slate-900">
+    <div className="devhub-dashboard min-h-[var(--app-vh)] bg-[linear-gradient(180deg,#ffffff_0%,#ffffff_74%,rgba(140,84,98,0.035)_100%)] text-slate-900">
       <ToastStack
         items={[
           ...(error ? [{ id: 'dashboard-error', type: 'error' as const, text: error }] : []),
@@ -1244,6 +1245,7 @@ export default function Dashboard() {
                 <h2 className="mt-2 text-2xl font-semibold text-slate-950">Your workspaces</h2>
               </div>
               <div className="flex flex-wrap items-center gap-3">
+                <AppSettingsButton />
                 <button
                   type="button"
                   onClick={() => setShowAiSettings(true)}

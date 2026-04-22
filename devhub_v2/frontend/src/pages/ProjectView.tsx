@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronRight, Code2, FileCode, Loader2, PanelLeftClose, PanelLeftOpen, PencilLine, Play, Plus, Sparkles, X, XCircle, Trash2 } from 'lucide-react';
 
 import BlueprintPanel from '../components/BlueprintPanel';
@@ -14,6 +14,22 @@ const API = 'http://localhost:8000/api';
 const PIPELINE_STAGES = ['backlog', 'development', 'testing', 'code_review', 'staging'];
 const IMPLEMENTATION_ACTIONS = ['implementation_started', 'implementation_completed', 'implementation_failed'];
 
+/** Strip pushd/popd wrapper from a run command for cleaner display. */
+function cleanRunCommand(cmd: string | null | undefined): string {
+  if (!cmd) return 'Not detected';
+  // pushd "dir" && actual_command && popd  →  actual_command (in dir/)
+  const pushd = cmd.match(/^pushd\s+"([^"]+)"\s+&&\s+(.+?)\s+&&\s+popd$/i);
+  if (pushd) {
+    return `${pushd[2]}  (in ${pushd[1]}/)`.trim();
+  }
+  // cd dir && actual_command  →  actual_command (in dir/)
+  const cd = cmd.match(/^cd\s+(\S+)\s+&&\s+(.+)$/i);
+  if (cd) {
+    return `${cd[2]}  (in ${cd[1]}/)`.trim();
+  }
+  return cmd;
+}
+
 function getImplementationHistory(feature: any) {
   const history = Array.isArray(feature?.pipeline_history) ? feature.pipeline_history : [];
   return history.filter((item: any) => IMPLEMENTATION_ACTIONS.includes(item.action));
@@ -25,6 +41,10 @@ export default function ProjectView() {
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [workspaceFullscreen, setWorkspaceFullscreen] = useState(false);
+  const [workspaceMounted, setWorkspaceMounted] = useState(false);
+  const [workspaceRuntimeRunning, setWorkspaceRuntimeRunning] = useState(false);
+  const [showLeaveRuntimeModal, setShowLeaveRuntimeModal] = useState(false);
+  const [stoppingForLeave, setStoppingForLeave] = useState(false);
   const [workItemsView, setWorkItemsView] = useState<'list' | 'board'>('list');
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -97,6 +117,66 @@ export default function ProjectView() {
     setActiveTab(recommended);
     initialTabAppliedRef.current = true;
   }, [project]);
+
+  useEffect(() => {
+    if (activeTab === 'code') {
+      setWorkspaceMounted(true);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (!project?.workspace_id) {
+      setWorkspaceRuntimeRunning(false);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`${API}/workspace/${project.workspace_id}/runtime/`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (!cancelled) {
+          const running = Boolean(data?.status?.running);
+          setWorkspaceRuntimeRunning(running);
+          if (running) {
+            setWorkspaceMounted(true);
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.workspace_id]);
+
+  useEffect(() => {
+    if (!workspaceRuntimeRunning) return undefined;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [workspaceRuntimeRunning]);
+
+  useEffect(() => {
+    if (!workspaceRuntimeRunning || !id) return undefined;
+
+    const projectPath = `/project/${id}`;
+    window.history.replaceState({ devhubProjectGuard: true }, '', window.location.href);
+    window.history.pushState({ devhubProjectGuard: true }, '', window.location.href);
+
+    const handlePopState = () => {
+      if (window.location.pathname === projectPath) return;
+      window.history.pushState({ devhubProjectGuard: true }, '', projectPath);
+      setShowLeaveRuntimeModal(true);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [workspaceRuntimeRunning, id]);
 
   useEffect(() => {
     if (contentScrollRef.current) {
@@ -492,6 +572,40 @@ export default function ProjectView() {
     }
   };
 
+  const stopWorkspaceRuntime = async () => {
+    if (!project?.workspace_id) return;
+    try {
+      const workspaceId = project.workspace_id;
+      await Promise.allSettled([
+        fetch(`${API}/workspace/${workspaceId}/runtime/`, { method: 'DELETE' }),
+        fetch(`${API}/workspace/${workspaceId}/setup/`, { method: 'DELETE' }),
+        fetch(`${API}/workspace/${workspaceId}/process/${encodeURIComponent(`${workspaceId}_cmd.exe`)}/`, { method: 'DELETE' }),
+      ]);
+    } finally {
+      setWorkspaceRuntimeRunning(false);
+    }
+  };
+
+  const leaveProject = async () => {
+    if (workspaceRuntimeRunning) {
+      setShowLeaveRuntimeModal(true);
+      return;
+    }
+    navigate('/');
+  };
+
+  const confirmStopAndLeave = async () => {
+    if (stoppingForLeave) return;
+    setStoppingForLeave(true);
+    try {
+      await stopWorkspaceRuntime();
+      setShowLeaveRuntimeModal(false);
+      navigate('/');
+    } finally {
+      setStoppingForLeave(false);
+    }
+  };
+
   const saveProjectSettings = async () => {
     setSavingProject(true);
     try {
@@ -521,7 +635,24 @@ export default function ProjectView() {
   };
 
   if (loading || isDeleting) {
-    return <div className="min-h-[var(--app-vh)] bg-[#f8f9fa] flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-slate-400" /></div>;
+    return (
+      <div className="devhub-loading-screen devhub-project-view flex min-h-[var(--app-vh)] items-center justify-center bg-[#f8f9fa]">
+        <div className="devhub-workspace-loader flex flex-col items-center gap-5">
+          <div className="devhub-loader-icon-ring">
+            <div className="devhub-loader-icon-core">
+              <Code2 className="h-6 w-6" />
+            </div>
+          </div>
+          <div className="devhub-loader-text-group">
+            <p className="text-sm font-semibold text-slate-700 devhub-loader-title">{isDeleting ? 'Removing project…' : 'Loading workspace…'}</p>
+            <p className="text-xs text-slate-400 devhub-loader-sub">Setting up your environment</p>
+          </div>
+          <div className="devhub-loader-bar-track">
+            <div className="devhub-loader-bar-fill" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const stageColor = (status: string) => ({
@@ -535,10 +666,11 @@ export default function ProjectView() {
   const bp = project?.blueprint;
   const sourceType = project?.source_type || 'starter';
   const onboardingSummary = project?.onboarding_summary || {};
-  const hideProjectChrome = workspaceFullscreen && activeTab === 'code';
+  // In workspace: hide the top header bar only. The sidebar stays (icon-only) so you can navigate back.
+  const hideProjectHeader = activeTab === 'code';
 
   return (
-    <div className="h-[var(--app-vh)] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,246,248,0.98)_42%,_#eef1f4_100%)] text-slate-900 font-sans flex flex-col">
+    <div className="devhub-project-view h-[var(--app-vh)] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,246,248,0.98)_42%,_#eef1f4_100%)] text-slate-900 font-sans flex flex-col">
       <ToastStack
         items={[
           ...(agentResult
@@ -565,11 +697,58 @@ export default function ProjectView() {
           if (toastId === 'action-feedback') setActionFeedback(null);
         }}
       />
-      {!hideProjectChrome && (
-      <header className="sticky top-0 z-50 w-full border-b border-white/70 bg-white/65 backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+      {showLeaveRuntimeModal && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-5 text-slate-900 shadow-[0_34px_90px_rgba(0,0,0,0.28)]">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#70434f] text-white shadow-[0_16px_34px_rgba(112,67,79,0.28)]">
+                  <Play className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Running Session</p>
+                  <h3 className="mt-1 text-lg font-semibold text-slate-950">Stop project before leaving?</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    This workspace is still running. DevHub can stop the preview, terminal session, and setup process before returning to the landing page.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLeaveRuntimeModal(false)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+                aria-label="Stay in project"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowLeaveRuntimeModal(false)}
+                disabled={stoppingForLeave}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Stay here
+              </button>
+              <button
+                type="button"
+                onClick={() => { void confirmStopAndLeave(); }}
+                disabled={stoppingForLeave}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#70434f] px-4 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(112,67,79,0.25)] transition hover:bg-[#5f3843] disabled:opacity-60"
+              >
+                {stoppingForLeave ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                {stoppingForLeave ? 'Stopping...' : 'Stop and leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!hideProjectHeader && (
+      <header className="sticky top-0 z-50 w-full border-b border-white/70 bg-white/65 backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)] devhub-header-enter">
         <div className="flex h-14 items-center px-6 justify-between max-w-[2000px] mx-auto">
           <div className="flex items-center gap-3">
-            <Link to="/" className="w-8 h-8 rounded-lg bg-black flex items-center justify-center shadow-md"><Code2 className="w-5 h-5 text-white" /></Link>
+            <button type="button" onClick={() => { void leaveProject(); }} className="w-8 h-8 rounded-lg bg-black flex items-center justify-center shadow-md"><Code2 className="w-5 h-5 text-white" /></button>
             <div className="w-px h-6 bg-slate-300" />
             <div>
               <h2 className="font-semibold text-sm">{project?.name}</h2>
@@ -609,7 +788,7 @@ export default function ProjectView() {
       </header>
       )}
 
-      {!hideProjectChrome && project?.context_initializing && (
+      {!hideProjectHeader && project?.context_initializing && (
         <div className="max-w-[2000px] mx-auto w-full px-6 mt-2">
           <div className="p-3 rounded-2xl text-sm flex items-center justify-between border border-blue-100 bg-white/80 text-slate-700 backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
             <span>
@@ -623,7 +802,7 @@ export default function ProjectView() {
         </div>
       )}
 
-      {!hideProjectChrome && implementationRun && (
+      {!hideProjectHeader && implementationRun && (
         <div className="max-w-[2000px] mx-auto w-full px-6 mt-2">
           <div className="rounded-[28px] border border-white/70 bg-white/68 backdrop-blur-2xl shadow-[0_28px_80px_rgba(15,23,42,0.14)] px-5 py-4">
             <div className="flex items-start justify-between gap-4">
@@ -653,23 +832,62 @@ export default function ProjectView() {
         </div>
       )}
 
-      <main className={`flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row w-full overflow-hidden ${hideProjectChrome ? 'fixed inset-0 z-[110] max-w-none bg-[#111111] px-0 py-0 gap-0' : 'max-w-[2000px] mx-auto px-4 sm:px-6 py-4 gap-4'}`}>
-        {!hideProjectChrome && (
-        <nav className={`w-full shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(var(--app-vh)-8rem)] transition-[width,padding] duration-200 ${sidebarCollapsed ? 'lg:w-[84px] lg:pr-2' : 'lg:w-60 lg:pr-3'}`}>
-          <div className={`hidden lg:flex items-center justify-between mb-2 ${sidebarCollapsed ? 'px-1' : 'px-3'}`}>
-            <div className={`text-[10px] font-bold uppercase tracking-wider text-slate-400 ${sidebarCollapsed ? 'sr-only' : ''}`}>Views</div>
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed((current) => !current)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-black/5 bg-white/80 text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-colors hover:bg-white hover:text-slate-800"
-              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </button>
-          </div>
+      <main className="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row w-full overflow-hidden max-w-[2000px] mx-auto px-4 sm:px-6 py-4 gap-4">
+        {/* Sidebar always visible — collapses to icons in workspace but remains expandable */}
+        <nav className={`w-full shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(var(--app-vh)-8rem)] transition-[width,padding] duration-200 ${sidebarCollapsed ? 'lg:w-[84px] lg:px-2' : 'lg:w-64 lg:px-3'}`}>
+          {/* Show project name + Views only on workspace tab where the top header is hidden */}
+          {activeTab === 'code' && (
+            <div className={`hidden lg:flex mb-3 border-b border-slate-200/70 pb-3 ${
+              sidebarCollapsed ? 'flex-col items-center gap-2' : 'items-center justify-between gap-3'
+            }`}>
+              <button
+                type="button"
+                onClick={() => { void leaveProject(); }}
+                className={`inline-flex shrink-0 items-center justify-center rounded-2xl transition-colors ${
+                  sidebarCollapsed
+                    ? 'h-11 w-11 bg-black text-white shadow-[0_16px_34px_rgba(15,23,42,0.18)]'
+                    : 'h-10 w-10 bg-black text-white shadow-md hover:bg-slate-800'
+                }`}
+                title="Back to projects"
+              >
+                <Code2 className="h-[18px] w-[18px]" />
+              </button>
+              {!sidebarCollapsed && (
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold leading-5 text-slate-700">{project?.name || 'DevHub'}</span>
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">Views</span>
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed((current) => !current)}
+                className={`inline-flex items-center justify-center rounded-xl border border-black/5 bg-white/85 text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-colors hover:bg-white hover:text-slate-800 ${
+                  sidebarCollapsed ? 'h-9 w-9' : 'h-9 w-9 shrink-0'
+                }`}
+                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              </button>
+            </div>
+          )}
+          {/* Collapse/expand toggle when not on workspace tab */}
+          {activeTab !== 'code' && (
+            <div className="hidden lg:flex mb-3 border-b border-slate-200/70 pb-3 items-center justify-end">
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed((current) => !current)}
+                className={`inline-flex items-center justify-center rounded-xl border border-black/5 bg-white/85 text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition-colors hover:bg-white hover:text-slate-800 ${
+                  sidebarCollapsed ? 'h-9 w-9' : 'h-9 w-9 shrink-0'
+                }`}
+                title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              </button>
+            </div>
+          )}
           {tabs.map((tab) => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              title={sidebarCollapsed ? tab.label : undefined}
+              title={tab.label}
               className={`shrink-0 lg:w-full flex items-center gap-3 py-3 rounded-2xl text-left transition-all whitespace-nowrap ${sidebarCollapsed ? 'lg:justify-center lg:px-0' : 'px-3'} ${activeTab === tab.id ? 'bg-black text-white shadow-[0_18px_38px_rgba(15,23,42,0.18)]' : 'border border-transparent text-slate-600 hover:bg-white hover:border-black/5'}`}>
               <span className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold ${activeTab === tab.id ? 'bg-white/10 text-white' : 'bg-slate-100 text-slate-500'}`}>{tab.icon}</span>
               <span className={`min-w-0 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
@@ -679,7 +897,6 @@ export default function ProjectView() {
             </button>
           ))}
         </nav>
-        )}
 
         <section
           className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col bg-transparent"
@@ -688,7 +905,7 @@ export default function ProjectView() {
             ref={contentScrollRef}
             className={`project-scroll-shell flex-1 min-h-0 min-w-0 overflow-auto overflow-x-hidden ${
               activeTab === 'code'
-                ? 'p-0 bg-[#1e1e1e]'
+                ? 'p-0'
                 : activeTab === 'chat'
                   ? 'p-0 bg-white'
                   : activeTab === 'onboarding'
@@ -696,18 +913,22 @@ export default function ProjectView() {
                     : 'p-4 sm:p-6'
             }`}
           >
-            {activeTab === 'code' && (
-              <CodeWorkspace
-                workspaceId={project?.workspace_id ?? null}
-                projectId={id ?? ''}
-                projectPath={project?.local_path}
-                coderCustomization={project?.coder_customization}
-                onProjectChanged={fetchProject}
-                projectSidebarCollapsed={sidebarCollapsed}
-                onToggleProjectSidebar={() => setSidebarCollapsed((current) => !current)}
-                isFullscreen={workspaceFullscreen}
-                onToggleFullscreen={() => setWorkspaceFullscreen((current) => !current)}
-              />
+            {workspaceMounted && (
+              <div className={activeTab === 'code' ? 'h-full min-h-0' : 'hidden'}>
+                <CodeWorkspace
+                  workspaceId={project?.workspace_id ?? null}
+                  projectId={id ?? ''}
+                  projectName={project?.name || 'Project'}
+                  projectPath={project?.local_path}
+                  coderCustomization={project?.coder_customization}
+                  onProjectChanged={fetchProject}
+                  projectSidebarCollapsed={sidebarCollapsed}
+                  onToggleProjectSidebar={undefined}
+                  isFullscreen={workspaceFullscreen}
+                  onToggleFullscreen={() => setWorkspaceFullscreen((current) => !current)}
+                  onRuntimeRunningChange={setWorkspaceRuntimeRunning}
+                />
+              </div>
             )}
 
             {activeTab === 'chat' && (
@@ -854,7 +1075,7 @@ export default function ProjectView() {
                           <code className="break-all rounded bg-white px-1.5 py-0.5 text-[10px] text-slate-600">{project?.local_path || '—'}</code>
                         </div>
                         <div className="rounded-2xl bg-[#f8fafc] px-3 py-2.5 break-words">
-                          <b className="text-slate-500">Runtime:</b> {project?.runtime?.run_command || 'Not detected'}
+                          <b className="text-slate-500">Runtime:</b> {cleanRunCommand(project?.runtime?.run_command)}
                         </div>
                         <div className="rounded-2xl bg-[#f8fafc] px-3 py-2.5">
                           <b className="text-slate-500">Workspace:</b> {project?.workspace_id ? 'Active' : 'Unavailable'}

@@ -29,9 +29,9 @@ from pathlib import Path
 from typing import Any
 
 from agents.core.base import BaseAgent, normalize_ai_config
-from agents.memory.store.compaction import ContextCompactor  # noqa: E402 used by _AnchorAwareCompactor
+from agents.memory.compaction import ContextCompactor  # noqa: E402 used by _AnchorAwareCompactor
 from agents.customization.prompts import PromptBuilder
-from agents.memory.store.query_engine import QueryEngine
+from agents.memory.query_engine import QueryEngine
 from agents.tools.base_tool import ToolBudget, ToolContext
 from agents.tools.file_read import FileReadTool
 from agents.tools.glob_tool import GlobTool

@@ -161,6 +161,11 @@ class SandboxManager:
                     env or {},
                 )
 
+            metadata = dict(metadata)
+            metadata["kind"] = kind
+            if preview_url:
+                metadata["preview_url"] = preview_url
+
             handle = ProcessHandle(
                 process,
                 display_cmd,
@@ -350,6 +355,10 @@ class SandboxManager:
         }
         if handle.metadata.get("container_name"):
             status["container_name"] = handle.metadata["container_name"]
+        if handle.metadata.get("kind"):
+            status["kind"] = handle.metadata["kind"]
+        if handle.metadata.get("preview_url"):
+            status["preview_url"] = handle.metadata["preview_url"]
         return status
 
     def send_input(self, process_id: str, input_str: str):

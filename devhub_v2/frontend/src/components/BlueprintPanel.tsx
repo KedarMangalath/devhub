@@ -304,7 +304,7 @@ export default function BlueprintPanel({
 
   if (!blueprint || !Object.keys(blueprint).length) {
     return (
-      <div className="flex min-h-[360px] items-center justify-center rounded-[28px] border border-dashed border-black/5 bg-white/70 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+      <div className="devhub-readable flex min-h-[360px] items-center justify-center rounded-[28px] border border-dashed border-black/5 bg-white/70 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
         <div className="max-w-lg px-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Blueprint</p>
           <h3 className="mt-3 text-2xl font-semibold text-slate-900">No blueprint generated yet</h3>
@@ -481,7 +481,7 @@ export default function BlueprintPanel({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="devhub-readable space-y-5">
       <div className={`sticky top-0 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-[linear-gradient(180deg,rgba(247,249,252,0.96),rgba(247,249,252,0.82))] backdrop-blur-xl transition-transform duration-200 ${tabBarVisible ? 'translate-y-0' : '-translate-y-[130%]'}`}>
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-2">

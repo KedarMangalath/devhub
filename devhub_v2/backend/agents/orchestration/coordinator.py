@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agents.core.base import normalize_ai_config
-from agents.memory.store.compaction import ContextCompactor
+from agents.memory.compaction import ContextCompactor
 from agents.customization.prompts import PromptBuilder
-from agents.memory.store.query_engine import QueryEngine, QueryResult
+from agents.memory.query_engine import QueryEngine, QueryResult
 from agents.tools.base_tool import BaseTool, ToolContext, ToolResult
 from agents.tools.registry import ToolRegistry
 from agents.orchestration.worker import Worker, WorkerResult

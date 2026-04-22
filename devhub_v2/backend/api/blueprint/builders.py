@@ -2,7 +2,7 @@ import json
 import logging
 import re
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from django.utils import timezone
@@ -12,9 +12,17 @@ from core.models import ChatMessage, Feature, Project
 from api.codebase.doc_builder import (
     _blueprint_list,
     _blueprint_text,
+    _build_change_guide,
+    _build_directory_guide_from_context,
+    _build_file_structure_visualizer,
+    _build_repository_map_from_context,
+    _codebase_summary_pool,
+    _is_devhub_internal_path,
     _markdown_bullets,
     _project_workspace_path,
+    _public_instruction_files,
     _read_workspace_excerpt,
+    _slugify_heading,
 )
 from api.workspace.memory import _normalize_mermaid_chart
 
@@ -2377,7 +2385,7 @@ def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_conte
     indexed_erd = str(codebase_context.get('database_mermaid_erd') or '')
     if indexed_erd and len(indexed_erd) > len(blueprint.get('mermaid_erd') or ''):
         blueprint['mermaid_erd'] = indexed_erd
-    evidence_sequence_flows, evidence_common_workflows = _build_evidence_backed_workflows(workspace_path)
+    evidence_sequence_flows, evidence_common_workflows = [], []  # _build_evidence_backed_workflows not yet implemented
     if evidence_sequence_flows:
         blueprint['sequence_flows'] = evidence_sequence_flows
     if evidence_common_workflows:

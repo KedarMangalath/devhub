@@ -19,7 +19,7 @@ export default function DocumentationPanel({ documentation, onGenerate, generati
 
   if (!hasDocs) {
     return (
-      <div className="flex min-h-[420px] items-center justify-center rounded-[28px] border border-dashed border-black/5 bg-white/70 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+      <div className="devhub-readable flex min-h-[420px] items-center justify-center rounded-[28px] border border-dashed border-black/5 bg-white/70 text-center shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
         <div className="max-w-2xl px-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Documentation</p>
           <h3 className="mt-3 text-2xl font-semibold text-slate-900">No codebase reference generated yet</h3>
@@ -40,7 +40,7 @@ export default function DocumentationPanel({ documentation, onGenerate, generati
   }
 
   return (
-    <div className="space-y-5">
+    <div className="devhub-readable space-y-5">
       <section className="rounded-[28px] border border-black/5 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(248,250,252,0.9))] p-5 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">

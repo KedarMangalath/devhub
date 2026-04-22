@@ -108,7 +108,7 @@ export default function GitHubPanel({ projectId, integration }: Props) {
 
   if (!connected) {
     return (
-      <div className="rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+      <div className="devhub-readable rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">GitHub</p>
         <h2 className="mt-2 text-xl font-semibold text-slate-900">No connected GitHub repo yet</h2>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">
@@ -119,7 +119,7 @@ export default function GitHubPanel({ projectId, integration }: Props) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="devhub-readable space-y-5">
       <div className="rounded-[28px] border border-black/5 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-6 py-6 shadow-[0_22px_60px_rgba(15,23,42,0.1)]">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>

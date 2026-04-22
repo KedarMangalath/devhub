@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from agents.memory.store.compaction import ContextCompactor
+from agents.memory.compaction import ContextCompactor
 from agents.customization.prompts import PromptBuilder
-from agents.memory.store.query_engine import QueryEngine, QueryResult
+from agents.memory.query_engine import QueryEngine, QueryResult
 from agents.tools.base_tool import ToolResult
 from agents.tools.registry import ToolRegistry
 
