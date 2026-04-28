@@ -1,12 +1,14 @@
 import re
 from pathlib import Path
 
+from agents.skills.global_registry import build_skill_injection_prompt, detect_skills_for_message
 
 DEVHUB_META_DIR = ".devhub"
 PROJECT_SKILLS_DIR = "skills"
 PROJECT_PROMPTS_DIR = "prompts"
 KNOWN_PROMPT_OVERRIDES = ("chat", "planner", "coder", "reviewer", "implementation")
 SKILL_FILE_NAME = "SKILL.md"
+SKILL_TRIGGER_KEYS = ("keywords", "triggers", "tags", "hints")
 ROLE_PROMPT_OVERRIDES = {
     "chat": ("chat",),
     "planner": ("implementation", "planner"),
@@ -102,6 +104,10 @@ def _first_meaningful_line(markdown_body: str) -> str:
     return ""
 
 
+def _split_trigger_terms(value: str) -> list[str]:
+    return [item.strip() for item in re.split(r"[,;/|]", str(value or "")) if item.strip()]
+
+
 def _meta_dir(workspace_path: Path) -> Path:
     return workspace_path / DEVHUB_META_DIR
 
@@ -136,12 +142,16 @@ def list_project_skills(workspace_path: Path, limit: int = 32) -> list[dict]:
         skill_name = str(frontmatter.get("name") or directory_name).strip()
         description = str(frontmatter.get("description") or _first_meaningful_line(body) or f"Project skill: {skill_name}").strip()
         rel_path = str(path.relative_to(workspace_path)).replace("\\", "/")
+        trigger_terms: list[str] = []
+        for key in SKILL_TRIGGER_KEYS:
+            trigger_terms.extend(_split_trigger_terms(frontmatter.get(key) or ""))
         items.append(
             {
                 "name": skill_name,
                 "slug": _normalize_key(skill_name) or _normalize_key(directory_name),
                 "description": description[:280],
                 "path": rel_path,
+                "trigger_terms": list(dict.fromkeys(trigger_terms)),
                 "content": body.strip(),
             }
         )
@@ -309,9 +319,35 @@ def bootstrap_project_customization(workspace_path: Path) -> dict:
     }
 
 
-def build_implementation_customization_bundle(workspace_path: Path, request_text: str = "") -> dict:
+def build_implementation_customization_bundle(
+    workspace_path: Path,
+    request_text: str = "",
+    *,
+    skill_override: dict | None = None,
+    skill_arguments: str = "",
+    active_global_skills: list[dict] | None = None,
+) -> dict:
     request_text = str(request_text or "").strip()
-    skill, skill_args = parse_project_skill_invocation(workspace_path, request_text)
+    skill = skill_override
+    skill_args = str(skill_arguments or "").strip() if skill_override else ""
+    skill_source = "override" if skill_override else ""
+
+    if not skill:
+        skill, skill_args = parse_project_skill_invocation(workspace_path, request_text)
+        if skill:
+            skill_source = "explicit"
+
+    if not skill and request_text:
+        auto_project_skills = detect_skills_for_message(
+            request_text,
+            skills=list_project_skills(workspace_path),
+            top_n=1,
+        )
+        if auto_project_skills:
+            skill = auto_project_skills[0]
+            skill_args = request_text
+            skill_source = "auto"
+
     prompt_overrides = {}
     for name in KNOWN_PROMPT_OVERRIDES:
         raw = read_project_prompt_override(workspace_path, name)
@@ -319,7 +355,7 @@ def build_implementation_customization_bundle(workspace_path: Path, request_text
             prompt_overrides[name] = raw
 
     effective_request_text = request_text
-    if skill and skill_args:
+    if skill_source in {"explicit", "override"} and skill and skill_args:
         effective_request_text = skill_args
 
     return {
@@ -328,8 +364,11 @@ def build_implementation_customization_bundle(workspace_path: Path, request_text
         "summary": build_project_customization_summary(workspace_path),
         "prompt_overrides": prompt_overrides,
         "skill": skill,
+        "skill_source": skill_source,
         "skill_arguments": skill_args,
         "skill_prompt": build_skill_execution_prompt(skill, skill_args),
+        "global_skills": list(active_global_skills or []),
+        "global_skill_prompt": build_skill_injection_prompt(list(active_global_skills or [])),
     }
 
 
@@ -368,6 +407,10 @@ def build_role_customization_addendum(bundle: dict | None, role: str) -> str:
             "Honor the active project skill while still following the current request, repository evidence, and safety constraints."
         )
 
+    global_skill_prompt = str(bundle.get("global_skill_prompt") or "").strip()
+    if global_skill_prompt:
+        sections.append(f"# Active Global Skills\n{global_skill_prompt[:12000]}")
+
     return _join_sections(sections, limit=24000)
 
 
@@ -393,5 +436,9 @@ def build_role_prompt_context(bundle: dict | None, role: str) -> str:
         skill_name = str(((bundle.get("skill") or {}) if isinstance(bundle.get("skill"), dict) else {}).get("name") or "").strip()
         heading = f"Active project skill: /{skill_name}" if skill_name else "Active project skill"
         sections.append(f"{heading}\n{skill_prompt[:10000]}")
+
+    global_skill_prompt = str(bundle.get("global_skill_prompt") or "").strip()
+    if global_skill_prompt:
+        sections.append(f"Active global skills:\n{global_skill_prompt[:10000]}")
 
     return _join_sections(sections, limit=20000)

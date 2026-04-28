@@ -1,0 +1,549 @@
+{
+  "cache_version": 24,
+  "fingerprint": "41b86faf1f6dbbf86dc16f151a3f54ed870acc46",
+  "manifest_file_count": 7,
+  "file_count": 6,
+  "directory_counts": {
+    "backend": 2,
+    "frontend": 2,
+    ".": 1,
+    "src": 2
+  },
+  "root_directories": [
+    ".devhub",
+    "backend",
+    "frontend",
+    "src"
+  ],
+  "manifest": [
+    {
+      "path": "backend/agents/architect.py",
+      "size": 33,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777024605054814400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/agents/memory.py",
+      "size": 44,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777024605055871100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/src/components/CodeWorkspace.tsx",
+      "size": 703,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777024605054814400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/src/pages/ProjectView.tsx",
+      "size": 1028,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777024605054814400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "README.md",
+      "size": 38,
+      "extension": ".md",
+      "language": "markdown",
+      "modified": 1777024605053304700,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "src/App.tsx",
+      "size": 68,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777024605053808700,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "src/vendor.min.js",
+      "size": 2416,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777024605055871100,
+      "depth": 2,
+      "tier": 3,
+      "tier_reason": "minified-asset"
+    }
+  ],
+  "indexed_paths": [
+    "backend/agents/architect.py",
+    "backend/agents/memory.py",
+    "frontend/src/components/CodeWorkspace.tsx",
+    "frontend/src/pages/ProjectView.tsx",
+    "README.md",
+    "src/App.tsx",
+    "src/vendor.min.js"
+  ],
+  "important_files": [
+    {
+      "path": "README.md",
+      "size": 38,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "readme",
+      "language": "markdown",
+      "lines": 2,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "docs",
+        "config"
+      ],
+      "headings": [
+        "Trace Demo"
+      ],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Primary repository guide that explains what the project is, how to get it running, and which workflows matter first.",
+      "why": "New developers usually start here because it establishes product context, setup order, and high-level repo conventions.",
+      "how": "Read the main headings first: Trace Demo, then follow any setup or run commands it documents.",
+      "excerpt": "# Trace Demo\nUse the App component.\n",
+      "brief": "README.md (markdown, docs, config)",
+      "summary": "Primary repository guide that explains what the project is, how to get it running, and which workflows matter first. It has about 2 lines. Top headings: Trace Demo."
+    },
+    {
+      "path": "src/App.tsx",
+      "size": 68,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "ui-component",
+      "language": "typescript-react",
+      "lines": 1,
+      "symbol": "App",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `App` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "export default function App() { return <main>Hello trace</main>; }\n",
+      "brief": "src/App.tsx (typescript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 1 lines. Primary symbol: App."
+    },
+    {
+      "path": "frontend/src/pages/ProjectView.tsx",
+      "size": 1028,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "typescript-react",
+      "lines": 16,
+      "symbol": "ProjectView",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `ProjectView` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "frontend/src/pages/ProjectView.tsx (typescript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 16 lines. Primary symbol: ProjectView."
+    },
+    {
+      "path": "frontend/src/components/CodeWorkspace.tsx",
+      "size": 703,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "typescript-react",
+      "lines": 14,
+      "symbol": "CodeWorkspace",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `CodeWorkspace` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "frontend/src/components/CodeWorkspace.tsx (typescript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 14 lines. Primary symbol: CodeWorkspace."
+    },
+    {
+      "path": "backend/agents/architect.py",
+      "size": 33,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 2,
+      "symbol": "ArchitectAgent",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/agents` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `ArchitectAgent` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "backend/agents/architect.py (python)",
+      "summary": "Source file that contributes to the `backend/agents` area of the repository. It has about 2 lines. Primary symbol: ArchitectAgent."
+    },
+    {
+      "path": "backend/agents/memory.py",
+      "size": 44,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 2,
+      "symbol": "build_memory_context",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/agents` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `build_memory_context` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "backend/agents/memory.py (python)",
+      "summary": "Source file that contributes to the `backend/agents` area of the repository. It has about 2 lines. Primary symbol: build_memory_context."
+    }
+  ],
+  "all_file_summaries": [
+    {
+      "path": "README.md",
+      "size": 38,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "readme",
+      "language": "markdown",
+      "lines": 2,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "docs",
+        "config"
+      ],
+      "headings": [
+        "Trace Demo"
+      ],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Primary repository guide that explains what the project is, how to get it running, and which workflows matter first.",
+      "why": "New developers usually start here because it establishes product context, setup order, and high-level repo conventions.",
+      "how": "Read the main headings first: Trace Demo, then follow any setup or run commands it documents.",
+      "excerpt": "# Trace Demo\nUse the App component.\n",
+      "brief": "README.md (markdown, docs, config)",
+      "summary": "Primary repository guide that explains what the project is, how to get it running, and which workflows matter first. It has about 2 lines. Top headings: Trace Demo."
+    },
+    {
+      "path": "src/App.tsx",
+      "size": 68,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "ui-component",
+      "language": "typescript-react",
+      "lines": 1,
+      "symbol": "App",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `App` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "export default function App() { return <main>Hello trace</main>; }\n",
+      "brief": "src/App.tsx (typescript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 1 lines. Primary symbol: App."
+    },
+    {
+      "path": "frontend/src/pages/ProjectView.tsx",
+      "size": 1028,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "typescript-react",
+      "lines": 16,
+      "symbol": "ProjectView",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `ProjectView` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "frontend/src/pages/ProjectView.tsx (typescript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 16 lines. Primary symbol: ProjectView."
+    },
+    {
+      "path": "frontend/src/components/CodeWorkspace.tsx",
+      "size": 703,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "typescript-react",
+      "lines": 14,
+      "symbol": "CodeWorkspace",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `CodeWorkspace` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "frontend/src/components/CodeWorkspace.tsx (typescript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 14 lines. Primary symbol: CodeWorkspace."
+    },
+    {
+      "path": "backend/agents/architect.py",
+      "size": 33,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 2,
+      "symbol": "ArchitectAgent",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/agents` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `ArchitectAgent` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "backend/agents/architect.py (python)",
+      "summary": "Source file that contributes to the `backend/agents` area of the repository. It has about 2 lines. Primary symbol: ArchitectAgent."
+    },
+    {
+      "path": "backend/agents/memory.py",
+      "size": 44,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 2,
+      "symbol": "build_memory_context",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/agents` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `build_memory_context` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "backend/agents/memory.py (python)",
+      "summary": "Source file that contributes to the `backend/agents` area of the repository. It has about 2 lines. Primary symbol: build_memory_context."
+    }
+  ],
+  "dependency_graph": {
+    "edges": [],
+    "adjacency": {},
+    "reverse_adjacency": {}
+  },
+  "api_reference": [],
+  "database_schema": [],
+  "database_mermaid_erd": "",
+  "database_source_files": [],
+  "database_model_names": [],
+  "graph_summary": "",
+  "graph_architecture_overview": {},
+  "graph_repository_map": [],
+  "graph_key_components": [],
+  "graph_sequence_flows": [],
+  "graph_knowledge_gaps": [],
+  "graph_stats": {},
+  "env_var_names": [],
+  "readme_excerpt": "# Trace Demo\nUse the App component.\n",
+  "instruction_files": [
+    {
+      "path": "README.md",
+      "content": "# Trace Demo\nUse the App component.\n"
+    }
+  ],
+  "repo_tree": "Trace Demo/\n|- .devhub/\n|- backend\n|  `- agents\n|     |- architect.py\n|     `- memory.py\n|- frontend\n|  `- src\n|     |- components\n|     |  `- CodeWorkspace.tsx\n|     `- pages\n|        `- ProjectView.tsx\n|- src\n|  `- App.tsx\n`- README.md",
+  "repo_tree_nodes": [
+    {
+      "name": ".devhub",
+      "path": ".devhub",
+      "type": "directory",
+      "children": [],
+      "child_count": 0
+    },
+    {
+      "name": "backend",
+      "path": "backend",
+      "type": "directory",
+      "children": [
+        {
+          "name": "agents",
+          "path": "backend/agents",
+          "type": "directory",
+          "children": [
+            {
+              "name": "architect.py",
+              "path": "backend/agents/architect.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "memory.py",
+              "path": "backend/agents/memory.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            }
+          ],
+          "child_count": 2
+        }
+      ],
+      "child_count": 1
+    },
+    {
+      "name": "frontend",
+      "path": "frontend",
+      "type": "directory",
+      "children": [
+        {
+          "name": "src",
+          "path": "frontend/src",
+          "type": "directory",
+          "children": [
+            {
+              "name": "components",
+              "path": "frontend/src/components",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "CodeWorkspace.tsx",
+                  "path": "frontend/src/components/CodeWorkspace.tsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 1
+            },
+            {
+              "name": "pages",
+              "path": "frontend/src/pages",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "ProjectView.tsx",
+                  "path": "frontend/src/pages/ProjectView.tsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 1
+            }
+          ],
+          "child_count": 2
+        }
+      ],
+      "child_count": 1
+    },
+    {
+      "name": "src",
+      "path": "src",
+      "type": "directory",
+      "children": [
+        {
+          "name": "App.tsx",
+          "path": "src/App.tsx",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "vendor.min.js",
+          "path": "src/vendor.min.js",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        }
+      ],
+      "child_count": 2
+    },
+    {
+      "name": "README.md",
+      "path": "README.md",
+      "type": "file",
+      "children": [],
+      "child_count": 0
+    }
+  ],
+  "compact_summary": "Project: Trace Demo\nFingerprint: 41b86faf1f6dbbf86dc16f151a3f54ed870acc46\nManifest files: 7\nIndexed files: 6\nTop directories:\n- backend: 2 files\n- frontend: 2 files\n- src: 2 files\n- .: 1 files\nImportant files:\n- README.md: Primary repository guide that explains what the project is, how to get it running, and which workflows matter first. It has about 2 lines. Top headings: Trace Demo.\n- src/App.tsx: Reusable UI component responsible for part of the interface. It has about 1 lines. Primary symbol: App.\n- frontend/src/pages/ProjectView.tsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 16 lines. Primary symbol: ProjectView.\n- frontend/src/components/CodeWorkspace.tsx: Reusable UI component responsible for part of the interface. It has about 14 lines. Primary symbol: CodeWorkspace.\n- backend/agents/architect.py: Source file that contributes to the `backend/agents` area of the repository. It has about 2 lines. Primary symbol: ArchitectAgent.\n- backend/agents/memory.py: Source file that contributes to the `backend/agents` area of the repository. It has about 2 lines. Primary symbol: build_memory_context.\nProject instructions:\n- README.md: # Trace Demo Use the App component. \nREADME content (use for setup_steps):\n  # Trace Demo\n  Use the App component.",
+  "detected_css_frameworks": [],
+  "detected_test_frameworks": [],
+  "detected_lint_tools": [],
+  "detected_websocket_services": [],
+  "detected_integration_clients": []
+}

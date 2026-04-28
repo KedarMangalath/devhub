@@ -1,0 +1,258 @@
+<!-- create_chatbot.html -->
+{% extends 'base.html' %}
+
+{% block title %}
+{% if chatbot %}Update{% else %}Create{% endif %} Chatbot Settings
+{% endblock %}
+
+{% block content %}
+<head>
+<style>
+    .dashboard-title {
+        font-size: 23px;
+        font-family: 'Poppins', sans-serif;
+        color: var(--text-main);
+        margin-bottom: 30px;
+        text-align: center;
+        position: relative;
+    }
+
+    .dashboard-title:after {
+        content: '';
+        position: absolute;
+        bottom: -10px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 50px;
+        height: 3px;
+        background: linear-gradient(90deg, #3f5b9b, #4360a9);
+        border-radius: 2px;
+    }
+
+    .settings-card {
+        background-color: var(--card-bg);
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(67, 96, 169, 0.1);
+        transition: all 0.3s ease;
+        border: 1px solid var(--border); 
+        overflow: hidden;
+        margin: 20px auto;
+        width: 95%; 
+        max-width: 1400px; 
+    }
+
+    .settings-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 35px rgba(67, 96, 169, 0.15);
+    }
+
+    .card-body {
+        padding: 30px;
+    }
+
+    .form-label {
+        color: #3f5b9b;
+        font-weight: 500;
+        font-size: 0.95rem;
+        margin-bottom: 8px;
+        font-family: 'Poppins', sans-serif;
+    }
+
+    .form-control, .form-select {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 15px;
+        transition: all 0.3s ease;
+        font-size: 0.95rem;
+        font-family: 'Poppins', sans-serif;
+        background-color: #f8faff;
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: #3f5b9b;
+        box-shadow: 0 0 0 3px rgba(63, 91, 155, 0.1);
+        background-color: var(--card-bg);
+    }
+
+    textarea.form-control {
+        min-height: 120px;
+    }
+
+    .submit-btn {
+        background: linear-gradient(90deg, #38a747, #2d8a3a);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        padding: 12px 25px;
+        font-size: 1rem;
+        font-weight: 500;
+        font-family: 'Poppins', sans-serif;
+        width: 100%;
+        margin-top: 20px;
+        transition: all 0.3s ease;
+    }
+
+    .submit-btn:hover {
+        background: linear-gradient(90deg, #2d8a3a, #38a747);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(56, 167, 71, 0.2);
+    }
+
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .invalid-feedback {
+        color: #dc3545;
+        font-size: 0.85rem;
+        margin-top: 5px;
+    }
+
+    .alert-danger {
+        background-color: #fff5f5;
+        border: 1px solid #fed7d7;
+        border-radius: 10px;
+        color: #dc3545;
+        padding: 15px;
+        margin-top: 20px;
+    }
+
+    .form-control, .form-select {
+        transform: translateY(0);
+        transition: transform 0.3s ease;
+    }
+
+    .form-control:focus, .form-select:focus {
+        transform: translateY(-2px);
+    }
+
+    .container {
+        width: 100%;
+        padding-right: 15px;
+        padding-left: 15px;
+        margin-right: auto;
+        margin-left: auto;
+    }
+
+    .col-lg-8 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+</style>
+</head>
+
+<h2 class="dashboard-title">{% if chatbot %}Update{% else %}Create{% endif %} Chatbot Settings</h2>
+
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="settings-card">
+                <div class="card-body">
+                    <form method="post" class="row g-3">
+                        {% csrf_token %}
+                        
+                        <div class="col-12 form-group">
+                            <label class="form-label">{{ form.name.label }}</label>
+                            <input type="text" name="{{ form.name.name }}" 
+                                   id="{{ form.name.id_for_label }}" 
+                                   class="form-control {% if form.name.errors %}is-invalid{% endif %}" 
+                                   value="{{ form.name.value|default:'' }}">
+                            {% if form.name.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.name.errors.0 }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-12 form-group">
+                            <label class="form-label">{{ form.chatbot_tone.label }}</label>
+                            <select name="{{ form.chatbot_tone.name }}" 
+                                    id="{{ form.chatbot_tone.id_for_label }}" 
+                                    class="form-select {% if form.chatbot_tone.errors %}is-invalid{% endif %}">
+                                {% for choice in form.chatbot_tone.field.choices %}
+                                <option value="{{ choice.0 }}" {% if choice.0 == form.chatbot_tone.value %}selected{% endif %}>
+                                    {{ choice.1 }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if form.chatbot_tone.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.chatbot_tone.errors.0 }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-12 form-group">
+                            <label class="form-label">Lead Mails</label>
+                            <input type="email" name="lead_mails" 
+                                   id="id_lead_mails" 
+                                   class="form-control {% if form.lead_mails.errors %}is-invalid{% endif %}" 
+                                   value="{{ form.lead_mails.value|default:'' }}">
+                            {% if form.lead_mails.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.lead_mails.errors.0 }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-12 form-group">
+                            <label class="form-label">{{ form.role_behavior.label }}</label>
+                            <select name="{{ form.role_behavior.name }}" 
+                                    id="{{ form.role_behavior.id_for_label }}" 
+                                    class="form-select {% if form.role_behavior.errors %}is-invalid{% endif %}">
+                                {% for choice in form.role_behavior.field.choices %}
+                                <option value="{{ choice.0 }}" {% if choice.0 == form.role_behavior.value %}selected{% endif %}>
+                                    {{ choice.1 }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if form.role_behavior.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.role_behavior.errors.0 }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-12 form-group">
+                            <label class="form-label">{{ form.conversation_behavior.label }}</label>
+                            <textarea name="{{ form.conversation_behavior.name }}" 
+                                      id="{{ form.conversation_behavior.id_for_label }}" 
+                                      class="form-control {% if form.conversation_behavior.errors %}is-invalid{% endif %}" 
+                                      rows="4">{{ form.conversation_behavior.value|default:'' }}</textarea>
+                            {% if form.conversation_behavior.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.conversation_behavior.errors.0 }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-12 form-group">
+                            <label class="form-label">{{ form.fallback_message.label }}</label>
+                            <textarea name="{{ form.fallback_message.name }}" 
+                                      id="{{ form.fallback_message.id_for_label }}" 
+                                      class="form-control {% if form.fallback_message.errors %}is-invalid{% endif %}">{{ form.fallback_message.value|default:'' }}</textarea>
+                            {% if form.fallback_message.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.fallback_message.errors.0 }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="col-12">
+                            <button type="submit" class="submit-btn">
+                                {% if chatbot %}Update{% else %}Create{% endif %} Chatbot
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            {% if form.errors %}
+            <div class="alert alert-danger">
+                {{ form.errors }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

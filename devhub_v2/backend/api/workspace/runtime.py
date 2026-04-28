@@ -112,10 +112,18 @@ def _inject_vite_host_port_command(cmd: str, port: int) -> str:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _python_executable_command() -> str:
+def _python_executable_command(runtime_root: Path | None = None) -> str:
     sandbox_mode = str(os.environ.get("DEVHUB_SANDBOX_MODE") or "").strip().lower()
     if sandbox_mode == "docker":
         return "python"
+    
+    if runtime_root:
+        if os.name == "nt":
+            python_path = runtime_root / ".venv" / "Scripts" / "python.exe"
+        else:
+            python_path = runtime_root / ".venv" / "bin" / "python"
+        return f'"{python_path}"'
+        
     return f'"{sys.executable}"'
 
 
@@ -186,12 +194,16 @@ def _runtime_root_score(
 
 
 def _python_install_required(project_root: Path) -> bool:
-    if not (project_root / "requirements.txt").exists():
-        return False
     sandbox_mode = str(os.environ.get("DEVHUB_SANDBOX_MODE") or "").strip().lower()
     if sandbox_mode == "docker":
+        if not (project_root / "requirements.txt").exists():
+            return False
         return not (project_root / ".devhub" / "python-packages").exists()
-    return False
+    # Local mode: use a completion marker so re-imports are skipped after a successful setup,
+    # but a fresh clone (no .venv AND no marker) always runs setup first.
+    if not (project_root / ".venv").exists():
+        return True
+    return not (project_root / ".devhub" / "python-setup-complete").exists()
 
 
 def _node_setup_command(project_root: Path) -> str | None:
@@ -200,9 +212,57 @@ def _node_setup_command(project_root: Path) -> str | None:
         package_manager = _node_package_manager(project_root)
         commands.append(f"{package_manager} install")
     if (project_root / "requirements.txt").exists():
-        python_cmd = _python_executable_command()
-        commands.append(f"{python_cmd} -m pip install -r requirements.txt")
+        python_setup = _python_setup_command(project_root)
+        if python_setup:
+            commands.append(python_setup)
     return " && ".join(commands) if commands else None
+
+def _python_setup_command(runtime_root: Path) -> str | None:
+    sandbox_mode = str(os.environ.get("DEVHUB_SANDBOX_MODE") or "").strip().lower()
+    
+    script = """import os, re, subprocess, sys
+imports = set()
+for root, dirs, files in os.walk('.'):
+    if '.venv' in dirs: dirs.remove('.venv')
+    for f in files:
+        if f.endswith('.py'):
+            try:
+                c = open(os.path.join(root, f), 'r', encoding='utf-8').read()
+                for m in re.findall(r'^\\s*(?:from|import)\\s+([a-zA-Z0-9_]+)', c, re.MULTILINE):
+                    imports.add(m)
+            except: pass
+ignore = set(sys.stdlib_module_names) if hasattr(sys, 'stdlib_module_names') else set()
+to_install = []
+mappings = {'dotenv': 'python-dotenv', 'cv2': 'opencv-python', 'PIL': 'Pillow', 'bs4': 'beautifulsoup4', 'yaml': 'pyyaml', 'dateutil': 'python-dateutil', 'github': 'PyGithub'}
+for p in imports:
+    if p not in ignore and not os.path.exists(p) and not os.path.exists(p+'.py'):
+        to_install.append(mappings.get(p, p))
+if to_install:
+    print('Installing auto-detected dependencies:', ', '.join(to_install))
+    subprocess.run([sys.executable, '-m', 'pip', 'install'] + to_install)
+else:
+    print('No external dependencies detected.')
+"""
+    import base64
+    script_b64 = base64.b64encode(script.encode('utf-8')).decode('utf-8')
+    
+    if sandbox_mode == "docker":
+        if not (runtime_root / "requirements.txt").exists():
+            return f'python -c "import base64; open(\\".devhub_setup.py\\", \\"wb\\").write(base64.b64decode(\\"{script_b64}\\"))" && python .devhub_setup.py'
+        return "python -m pip install -r requirements.txt"
+    
+    if os.name == "nt":
+        venv_python = ".venv\\Scripts\\python.exe"
+    else:
+        venv_python = ".venv/bin/python"
+    
+    sys_python = sys.executable
+    cmd = f'"{sys_python}" -m venv .venv'
+    if (runtime_root / "requirements.txt").exists():
+        cmd += f' && "{venv_python}" -m pip install -r requirements.txt'
+    else:
+        cmd += f' && "{sys_python}" -c "import base64; open(\\".devhub_setup.py\\", \\"wb\\").write(base64.b64decode(\\"{script_b64}\\"))" && "{venv_python}" .devhub_setup.py'
+    return cmd
 
 
 def _node_package_manager(project_root: Path) -> str:
@@ -372,13 +432,37 @@ def _detect_node_runtime_at_path(project_root: Path, runtime_root: Path) -> dict
     }
 
 
+def _django_settings_module(runtime_root: Path) -> str | None:
+    """Extract the DJANGO_SETTINGS_MODULE value from manage.py."""
+    try:
+        content = (runtime_root / "manage.py").read_text(errors="ignore")
+        m = re.search(r"DJANGO_SETTINGS_MODULE['\"]?\s*,\s*['\"]([^'\"]+)['\"]", content)
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def _write_devhub_settings(runtime_root: Path, original_module: str) -> Path:
+    """Write a settings shim that removes X-Frame-Options so the IDE preview iframe works."""
+    shim_path = runtime_root / "devhub_settings.py"
+    shim_path.write_text(
+        f"from {original_module} import *\n"
+        f"# DevHub: strip X-Frame-Options so the in-IDE preview iframe can load the app\n"
+        f"MIDDLEWARE = [m for m in MIDDLEWARE if 'XFrameOptionsMiddleware' not in m]\n"
+    )
+    return shim_path
+
+
 def _detect_django_runtime_at_path(project_root: Path, runtime_root: Path) -> dict | None:
     if not (runtime_root / "manage.py").exists():
         return None
-    python_cmd = _python_executable_command()
+    python_cmd = _python_executable_command(runtime_root)
     port = _alloc_port(runtime_root, start=8100, end=8799)
     rel_runtime_root = runtime_root.relative_to(project_root) if runtime_root != project_root else Path(".")
     entrypoint = "manage.py" if rel_runtime_root == Path(".") else f"{rel_runtime_root.as_posix()}/manage.py"
+
+    original_settings = _django_settings_module(runtime_root)
+
     return {
         "label": runtime_root.name or project_root.name,
         "runtime_type": "django",
@@ -387,11 +471,12 @@ def _detect_django_runtime_at_path(project_root: Path, runtime_root: Path) -> di
             rel_runtime_root, f"{python_cmd} manage.py runserver 127.0.0.1:{port}"
         ),
         "setup_command": _prefix_command_for_runtime_dir(
-            rel_runtime_root, f"{python_cmd} -m pip install -r requirements.txt"
-        ) if (runtime_root / "requirements.txt").exists() else None,
+            rel_runtime_root, _python_setup_command(runtime_root)
+        ) if _python_setup_command(runtime_root) else None,
         "install_required": _python_install_required(runtime_root),
         "preview_url": f"http://127.0.0.1:{port}",
         "runtime_root": runtime_root.as_posix(),
+        "django_settings_override": "devhub_settings" if original_settings else None,
     }
 
 
@@ -404,7 +489,7 @@ def _detect_python_runtime_at_path(project_root: Path, runtime_root: Path) -> di
     if not entrypoint:
         return None
 
-    python_cmd = _python_executable_command()
+    python_cmd = _python_executable_command(runtime_root)
     port = _alloc_port(runtime_root, start=8100, end=8799)
     module_name = Path(entrypoint).stem
 
@@ -425,8 +510,8 @@ def _detect_python_runtime_at_path(project_root: Path, runtime_root: Path) -> di
         "entrypoint": entrypoint if rel_runtime_root == Path(".") else f"{rel_runtime_root.as_posix()}/{entrypoint}",
         "run_command": _prefix_command_for_runtime_dir(rel_runtime_root, run_command),
         "setup_command": _prefix_command_for_runtime_dir(
-            rel_runtime_root, f"{python_cmd} -m pip install -r requirements.txt"
-        ) if (runtime_root / "requirements.txt").exists() else None,
+            rel_runtime_root, _python_setup_command(runtime_root)
+        ) if _python_setup_command(runtime_root) else None,
         "install_required": _python_install_required(runtime_root),
         "preview_url": f"http://127.0.0.1:{port}",
         "runtime_root": runtime_root.as_posix(),
@@ -883,9 +968,20 @@ def _runtime_response_payload(
         payload["ready"] = ready
         payload["preview_error"] = preview_error
     else:
-        # GET: do NOT probe — the browser can reach localhost directly.
-        # Return ready=True so the frontend shows the iframe immediately.
-        payload["ready"] = True
+        # GET: fast TCP probe — only show iframe once port is accepting connections.
+        # Avoids Chrome getting stuck on chrome-error:// if the app is still starting.
+        parsed = urlparse(preview_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port
+        tcp_ready = False
+        if port:
+            try:
+                import socket as _socket
+                with _socket.create_connection((host, port), timeout=0.5):
+                    tcp_ready = True
+            except OSError:
+                tcp_ready = False
+        payload["ready"] = tcp_ready
         payload["preview_error"] = None
 
     return payload

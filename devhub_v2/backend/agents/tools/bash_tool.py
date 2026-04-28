@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import time
+from pathlib import Path
 
 from .base_tool import BaseTool, ToolContext, ToolResult
 
@@ -29,6 +30,60 @@ BLOCKED_PATTERNS = [
     re.compile(r"\brm\s+-rf\s+\*", re.IGNORECASE),
     re.compile(r":(){ :\|:& };:", re.IGNORECASE),  # fork bomb
 ]
+
+
+def _inject_unix_tools(env: dict[str, str]) -> None:
+    """Add Git for Windows Unix tools (grep, find, etc.) to PATH on Windows."""
+    import shutil
+    if shutil.which("grep"):
+        return
+    candidates = [
+        r"C:\Program Files\Git\usr\bin",
+        r"C:\Program Files (x86)\Git\usr\bin",
+    ]
+    for path in candidates:
+        if Path(path).is_dir():
+            env["PATH"] = f"{path}{os.pathsep}{env.get('PATH', os.environ.get('PATH', ''))}"
+            break
+
+
+def _project_virtualenv_env(work_dir: str) -> dict[str, str]:
+    env_updates: dict[str, str] = {}
+    workspace_root = Path(work_dir)
+    runtime_root = workspace_root
+
+    try:
+        from api.workspace.runtime import detect_runtime  # noqa: PLC0415
+
+        detected = detect_runtime(workspace_root)
+        detected_root = detected.get("runtime_root")
+        if detected_root:
+            runtime_root = Path(detected_root)
+    except Exception:
+        runtime_root = workspace_root
+
+    if os.name == "nt":
+        candidates = [
+            runtime_root / ".venv" / "Scripts",
+            runtime_root / "venv" / "Scripts",
+            workspace_root / ".venv" / "Scripts",
+            workspace_root / "venv" / "Scripts",
+        ]
+    else:
+        candidates = [
+            runtime_root / ".venv" / "bin",
+            runtime_root / "venv" / "bin",
+            workspace_root / ".venv" / "bin",
+            workspace_root / "venv" / "bin",
+        ]
+
+    bin_dir = next((candidate for candidate in candidates if candidate.exists()), None)
+    if not bin_dir:
+        return env_updates
+
+    env_updates["PATH"] = f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}"
+    env_updates["VIRTUAL_ENV"] = str(bin_dir.parent)
+    return env_updates
 
 
 class BashTool(BaseTool):
@@ -74,7 +129,11 @@ class BashTool(BaseTool):
 
         work_dir = str(context.workspace_path)
         env = os.environ.copy()
+        env.pop("DJANGO_SETTINGS_MODULE", None)
         env["PAGER"] = "cat"
+        env.update(_project_virtualenv_env(work_dir))
+        if os.name == "nt":
+            _inject_unix_tools(env)
 
         start = time.time()
         try:

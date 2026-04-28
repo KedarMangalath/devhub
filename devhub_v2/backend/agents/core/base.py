@@ -766,6 +766,7 @@ class BaseAgent:
         prompt = self._cli_prompt(messages, response_schema=response_schema)
         command_text = _string_value(self.ai_config.get("gemini_cli_command")) or os.environ.get("DEVHUB_GEMINI_CLI_COMMAND", "gemini")
         env = os.environ.copy()
+        env.pop("DJANGO_SETTINGS_MODULE", None)
 
         api_key = self._resolve_api_key()
         if api_key:

@@ -1,0 +1,1342 @@
+{% extends 'base.html' %}
+{% csrf_token %}
+
+{% block title %}Custom Chat Flows{% endblock %}
+
+{% block extra_head %}
+<link href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css" rel="stylesheet">
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+<style>
+    /* Main layout styles */
+    .flow-container {
+        display: flex;
+        gap: 20px;
+    }
+    .flow-list {
+        width: 300px;
+        flex-shrink: 0;
+    }
+    .flow-editor {
+        flex-grow: 1;
+    }
+    
+    /* Flow item styles */
+    .flow-item {
+        padding: 10px 15px;
+        margin-bottom: 8px;
+        border-radius: 6px;
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .flow-item:hover {
+        background-color: #e9ecef;
+    }
+    .flow-item.active {
+        background-color: #e7f5ff;
+        border-color: #4dabf7;
+    }
+    .flow-item .badge {
+        float: right;
+    }
+    
+    /* Step styles */
+    .step-container {
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        margin-bottom: 15px;
+        background-color: #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .step-header {
+        padding: 10px 15px;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: 500;
+        cursor: move;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .step-body {
+        padding: 15px;
+    }
+    .message-step {
+        border-left: 4px solid #4dabf7;
+    }
+    .buttons-step {
+        border-left: 4px solid #40c057;
+    }
+    
+    /* Button styles */
+    .button-item {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 8px 12px;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    /* Sortable styles */
+    .steps-container .ui-sortable-placeholder {
+        visibility: visible !important;
+        background-color: #e9ecef;
+        border: 2px dashed #adb5bd;
+        height: 100px;
+        margin-bottom: 15px;
+    }
+    
+    /* Form styles */
+    .editor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .form-section {
+        margin-bottom: 20px;
+    }
+    .form-section-title {
+        margin-bottom: 10px;
+        font-weight: 500;
+    }
+    .button-row {
+        margin-bottom: 10px;
+        padding: 10px 40px 10px 10px; /* Added right padding for delete button */
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        position: relative;
+    }
+    .remove-button-btn {
+        position: absolute;
+        top: 50%;
+        right: 8px;
+        transform: translateY(-50%);
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-size: 0.75rem;
+    }
+    
+    /* Preview styles */
+    .preview-container {
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 20px;
+        background-color: #f8f9fa;
+        margin-top: 20px;
+    }
+    .preview-bot-message {
+        background-color: #e7f5ff;
+        padding: 10px 15px;
+        border-radius: 18px;
+        margin-bottom: 10px;
+        max-width: 80%;
+        align-self: flex-start;
+    }
+    .preview-user-message {
+        background-color: #339af0;
+        color: white;
+        padding: 10px 15px;
+        border-radius: 18px;
+        margin-bottom: 10px;
+        max-width: 80%;
+        align-self: flex-end;
+    }
+    .preview-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+    }
+    .preview-button {
+        background-color: white;
+        border: 1px solid #339af0;
+        color: #339af0;
+        padding: 5px 10px;
+        border-radius: 15px;
+        cursor: pointer;
+    }
+    .chat-messages {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .empty-state-icon {
+        font-size: 48px;
+        color: #adb5bd;
+        margin-bottom: 15px;
+    }
+    
+    /* Modal styles */
+    .modal-backdrop {
+        background-color: rgba(0,0,0,0.5);
+    }
+    
+    /* Button value field style */
+    .button-value-field {
+        opacity: 0.7;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    {% csrf_token %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Custom Chat Flows</h2>
+        <button id="createFlowBtn" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Create New Flow
+        </button>
+    </div>
+    
+    {% if messages %}
+    <div class="row mb-4">
+        <div class="col-12">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <div class="flow-container">
+        <!-- Flow List -->
+        <div class="flow-list">
+            <div class="card mb-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Your Flows</h5>
+                </div>
+                <div class="card-body p-2">
+                    <div id="flowListContainer">
+                        {% if flows %}
+                            {% for flow in flows %}
+                            <div class="flow-item" data-flow-id="{{ flow.id }}">
+                                {{ flow.name }}
+                                {% if flow.is_active %}
+                                <span class="badge bg-success">Active</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center text-muted py-3">
+                                <p>No flows created yet</p>
+                                <p>Create your first flow to get started</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Help</h5>
+                </div>
+                <div class="card-body">
+                    <p><i class="fas fa-info-circle me-2 text-primary"></i> Create a custom flow to define how your chatbot interacts with users before collecting lead information.</p>
+                    <hr>
+                    <h6>Tips:</h6>
+                    <ul class="mb-0">
+                        <li>Add message steps for bot responses</li>
+                        <li>Add button steps for user interactions</li>
+                        <li>Drag and drop to reorder steps</li>
+                        <li>Only one flow can be active at a time</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Flow Editor -->
+        <div class="flow-editor">
+            <!-- Empty state (shown when no flow is selected) -->
+            <div id="emptyState" class="empty-state">
+                <div class="empty-state-icon">
+                    <i class="fas fa-project-diagram"></i>
+                </div>
+                <h4>Select a flow to edit</h4>
+                <p class="text-muted">Or create a new flow to get started</p>
+                <button id="createFlowBtnEmpty" class="btn btn-primary mt-2">
+                    <i class="fas fa-plus me-2"></i>Create New Flow
+                </button>
+            </div>
+            
+            <!-- Flow editor (hidden initially) -->
+            <div id="flowEditor" style="display: none;">
+                <div class="card mb-4">
+                    <div class="card-header bg-light">
+                        <div class="editor-header">
+                            <h5 class="mb-0" id="flowEditorTitle">Edit Flow</h5>
+                            <div class="btn-group">
+                                <button id="previewFlowBtn" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-eye me-1"></i>Preview
+                                </button>
+                                <button id="deleteFlowBtn" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-trash me-1"></i>Delete
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <form id="flowForm">
+                            <div class="row mb-3">
+                                <div class="col-md-8">
+                                    <label for="flowName" class="form-label">Flow Name</label>
+                                    <input type="text" id="flowName" class="form-control" required>
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <div class="form-check">
+                                        <input type="checkbox" id="isActive" class="form-check-input">
+                                        <label for="isActive" class="form-check-label">Set as active flow</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <button type="submit" id="saveFlowBtn" class="btn btn-success">
+                                    <i class="fas fa-save me-1"></i>Save Flow
+                                </button>
+                                <button type="button" id="addStepBtn" class="btn btn-primary">
+                                    <i class="fas fa-plus me-1"></i>Add Step
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Flow Steps</h5>
+                        <button id="saveOrderBtn" class="btn btn-sm btn-success" style="display: none;">
+                            <i class="fas fa-save me-1"></i>Save Order
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <!-- Steps container (for sortable steps) -->
+                        <div id="stepsContainer" class="steps-container">
+                            <!-- Steps will be dynamically added here -->
+                        </div>
+                        
+                        <!-- Empty steps message -->
+                        <div id="emptySteps" class="text-center py-4">
+                            <i class="fas fa-tasks fa-3x text-muted mb-3"></i>
+                            <h5>No steps in this flow</h5>
+                            <p class="text-muted">Add steps to create your custom conversation flow.</p>
+                            <button id="addFirstStepBtn" class="btn btn-primary mt-2">
+                                <i class="fas fa-plus me-2"></i>Add First Step
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Step Modal -->
+<div class="modal fade" id="stepModal" tabindex="-1" aria-labelledby="stepModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="stepModalLabel">Add Step</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="stepForm">
+                    <input type="hidden" id="stepId" value="">
+                    
+                    <div class="mb-3">
+                        <label for="stepType" class="form-label">Step Type</label>
+                        <select id="stepType" class="form-select" required>
+                            <option value="">-- Select Step Type --</option>
+                            <option value="message">Bot Message</option>
+                            <option value="buttons">Buttons with Options</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="stepMessage" class="form-label">Message</label>
+                        <textarea id="stepMessage" class="form-control" rows="3" required></textarea>
+                        <div class="form-text">The message the bot will display to the user.</div>
+                    </div>
+                    
+                    <div id="buttonsSection" style="display: none;">
+                        <div class="form-section">
+                            <div class="form-section-title">
+                                <h5>Buttons</h5>
+                                <p class="text-muted">Add buttons for user to select from</p>
+                                <div class="alert alert-info">
+                                    <small>Button value will automatically match the button label</small>
+                                </div>
+                            </div>
+                            
+                            <div id="buttonContainer">
+                                <!-- Button rows will be added here -->
+                                <div class="button-row">
+                                    <div class="row">
+                                        <div class="col">
+                                            <label class="form-label">Button Label</label>
+                                            <input type="text" class="form-control button-label" placeholder="e.g., Yes, 3 BHK, etc.">
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-danger remove-button-btn" disabled>
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button type="button" id="addButtonRowBtn" class="btn btn-outline-primary mt-2">
+                                <i class="fas fa-plus me-1"></i>Add Another Button
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="saveStepBtn" class="btn btn-primary">Save Step</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="previewModalLabel">Flow Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="preview-container">
+                    <div id="previewChat" class="chat-messages">
+                        <!-- Preview messages will be added here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this flow? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="confirmDeleteBtn" class="btn btn-danger">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+$(document).ready(function() {
+    // Global variables
+    let currentFlowId = null;
+    let buttonRowCount = 1;
+    
+    // Initialize UI components
+    initializeSortable();
+    
+    // Event handlers
+    $('#createFlowBtn, #createFlowBtnEmpty').click(createNewFlow);
+    $('#flowListContainer').on('click', '.flow-item', selectFlow);
+    $('#flowForm').submit(saveFlow);
+    $('#addStepBtn, #addFirstStepBtn').click(showAddStepModal);
+    $('#stepType').change(toggleButtonsSection);
+    $('#addButtonRowBtn').click(addButtonRow);
+    $('#buttonContainer').on('click', '.remove-button-btn', removeButtonRow);
+    $('#saveStepBtn').click(saveStep);
+    $('#stepsContainer').on('click', '.edit-step-btn', editStep);
+    $('#stepsContainer').on('click', '.delete-step-btn', deleteStep);
+    $('#deleteFlowBtn').click(showDeleteFlowModal);
+    $('#confirmDeleteBtn').click(deleteFlow);
+    $('#previewFlowBtn').click(previewFlow);
+    
+    // Functions
+    
+    // Initialize sortable steps
+    function initializeSortable() {
+        $("#stepsContainer").sortable({
+            handle: ".step-header",
+            placeholder: "ui-sortable-placeholder",
+            start: function(e, ui) {
+                ui.placeholder.height(ui.item.height());
+            },
+            update: function() {
+                // Show save order button when steps are reordered
+                $("#saveOrderBtn").show();
+            }
+        });
+        
+        // Save order button click handler
+        $("#saveOrderBtn").click(saveStepOrder);
+    }
+    
+    // Create a new flow
+    function createNewFlow() {
+        // Debug CSRF token
+        console.log("CSRF Token:", getCsrfToken());
+        console.log("CSRF Token length:", getCsrfToken().length);
+
+        // Reset form
+        $('#flowForm')[0].reset();
+        
+        // Show editor with empty form
+        $('#emptyState').hide();
+        $('#flowEditor').show();
+        $('#flowEditorTitle').text('Create New Flow');
+        
+        // Clear step container
+        $('#stepsContainer').empty();
+        $('#emptySteps').show();
+        
+        // Reset current flow ID
+        currentFlowId = null;
+    }
+    
+    // Select a flow to edit
+    function selectFlow() {
+        const flowId = $(this).data('flow-id');
+        if (!flowId) {
+            console.error('No flow ID found');
+            return;
+        }
+        
+        currentFlowId = flowId;
+        
+        // Highlight selected flow
+        $('.flow-item').removeClass('active');
+        $(this).addClass('active');
+        
+        // Show editor
+        $('#emptyState').hide();
+        $('#flowEditor').show();
+        $('#flowEditorTitle').text('Edit Flow');
+        
+        // Load flow data
+        $.ajax({
+            url: `/api/get-flow/${flowId}/`,  // Changed from currentFlowId to flowId
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    const flow = response.flow;
+                    
+                    // Set form values
+                    $('#flowName').val(flow.name);
+                    $('#isActive').prop('checked', flow.is_active);
+                    
+                    // Load steps
+                    const steps = flow.steps || [];
+                    if (steps.length > 0) {
+                        $('#stepsContainer').empty();
+                        $('#emptySteps').hide();
+                        
+                        // Add each step to the container
+                        steps.forEach(function(step) {
+                            addStepToContainer(step);
+                        });
+                    } else {
+                        $('#stepsContainer').empty();
+                        $('#emptySteps').show();
+                    }
+                } else {
+                    showAlert('danger', 'Error loading flow: ' + response.error);
+                }
+            },
+            error: function() {
+                showAlert('danger', 'Error loading flow. Please try again.');
+            }
+        });
+    }
+    
+    // Load flow data for editing
+    function loadFlowData(flowId) {
+        // Make API call to get flow data
+        $.ajax({
+            url: `/api/get-flow/${flowId}/`,
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    const flow = response.flow;
+                    
+                    // Set form values
+                    $('#flowName').val(flow.name);
+                    $('#isActive').prop('checked', flow.is_active);
+                    
+                    // Load steps
+                    const steps = flow.steps || [];
+                    if (steps.length > 0) {
+                        $('#stepsContainer').empty();
+                        $('#emptySteps').hide();
+                        
+                        // Add each step to the container
+                        steps.forEach(function(step) {
+                            addStepToContainer(step);
+                        });
+                    } else {
+                        $('#stepsContainer').empty();
+                        $('#emptySteps').show();
+                    }
+                } else {
+                    showAlert('danger', 'Error loading flow: ' + response.error);
+                }
+            },
+            error: function() {
+                showAlert('danger', 'Error loading flow. Please try again.');
+            }
+        });
+    }
+    
+    // Save flow changes
+    function saveFlow(e) {
+        e.preventDefault();
+        
+        const name = $('#flowName').val();
+        const isActive = $('#isActive').is(':checked');
+        
+        if (!name) {
+            showAlert('danger', 'Flow name is required');
+            return;
+        }
+        
+        // If editing existing flow
+        if (currentFlowId) {
+            $.ajax({
+                url: `/api/flow/${currentFlowId}/update/`,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    name: name,
+                    is_active: isActive
+                }),
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Update flow item in list
+                        const $flowItem = $(`.flow-item[data-flow-id="${currentFlowId}"]`);
+                        $flowItem.text(name);
+                        
+                        // Update active badge
+                        $flowItem.find('.badge').remove();
+                        if (isActive) {
+                            // Remove active badge from all other flows
+                            $('.flow-item .badge').remove();
+                            $flowItem.append('<span class="badge bg-success">Active</span>');
+                        }
+                        
+                        showAlert('success', 'Flow updated successfully');
+                    } else {
+                        showAlert('danger', 'Error updating flow: ' + response.error);
+                    }
+                },
+                error: function() {
+                    showAlert('danger', 'Error updating flow. Please try again.');
+                }
+            });
+        }
+        // If creating new flow
+        else {
+            $.ajax({
+                url: '/api/flow/create/',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    name: name,
+                    is_active: isActive
+                }),
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        const flow = response.flow;
+                        
+                        // Add new flow to list
+                        let flowItemHtml = `<div class="flow-item active" data-flow-id="${flow.id}">${flow.name}`;
+                        if (flow.is_active) {
+                            // Remove active badge from all other flows
+                            $('.flow-item .badge').remove();
+                            flowItemHtml += '<span class="badge bg-success">Active</span>';
+                        }
+                        flowItemHtml += '</div>';
+                        
+                        // If this is the first flow
+                        if ($('#flowListContainer .flow-item').length === 0) {
+                            $('#flowListContainer').html(flowItemHtml);
+                        } else {
+                            // Add to the top of the list
+                            $('#flowListContainer').prepend(flowItemHtml);
+                            // Remove active class from other flows
+                            $('#flowListContainer .flow-item').not(':first').removeClass('active');
+                        }
+                        
+                        // Set current flow ID to the new flow
+                        currentFlowId = flow.id;
+                        
+                        // Update editor title
+                        $('#flowEditorTitle').text('Edit Flow');
+                        
+                        showAlert('success', 'Flow created successfully');
+                    } else {
+                        showAlert('danger', 'Error creating flow: ' + response.error);
+                    }
+                },
+                error: function() {
+                    showAlert('danger', 'Error creating flow. Please try again.');
+                }
+            });
+        }
+    }
+    
+    // Show add step modal
+    function showAddStepModal() {
+        if (!currentFlowId) {
+            showAlert('danger', 'Please save the flow first');
+            return;
+        }
+        
+        // Reset form
+        $('#stepForm')[0].reset();
+        $('#stepId').val('');
+        $('#stepType').val('');
+        $('#buttonsSection').hide();
+        
+        // Reset button rows
+        buttonRowCount = 1;
+        $('#buttonContainer').html(`
+            <div class="button-row">
+                <div class="row">
+                    <div class="col">
+                        <label class="form-label">Button Label</label>
+                        <input type="text" class="form-control button-label" placeholder="e.g., Yes, 3 BHK, etc.">
+                    </div>
+                    <button type="button" class="btn btn-sm btn-danger remove-button-btn" disabled>
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `);
+        
+        // Update modal title
+        $('#stepModalLabel').text('Add Step');
+        
+        // Show modal
+        const stepModal = new bootstrap.Modal(document.getElementById('stepModal'));
+        stepModal.show();
+    }
+    
+    // Toggle buttons section based on step type
+    function toggleButtonsSection() {
+        if ($(this).val() === 'buttons') {
+            $('#buttonsSection').show();
+        } else {
+            $('#buttonsSection').hide();
+        }
+    }
+    
+    // Add a new button row
+    function addButtonRow() {
+        buttonRowCount++;
+        
+        const newRow = `
+            <div class="button-row">
+                <div class="row">
+                    <div class="col">
+                        <label class="form-label">Button Label</label>
+                        <input type="text" class="form-control button-label" placeholder="e.g., Yes, 3 BHK, etc.">
+                    </div>
+                    <button type="button" class="btn btn-sm btn-danger remove-button-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        $('#buttonContainer').append(newRow);
+        
+        // Enable all remove buttons if we have more than one row
+        if (buttonRowCount > 1) {
+            $('.remove-button-btn').prop('disabled', false);
+        }
+    }
+    
+    // Remove a button row
+    function removeButtonRow() {
+        $(this).closest('.button-row').remove();
+        buttonRowCount--;
+        
+        // Disable remove buttons if only one row remains
+        if (buttonRowCount <= 1) {
+            $('.remove-button-btn').prop('disabled', true);
+        }
+    }
+    
+    // Save step (add or update)
+    function saveStep() {
+        const stepId = $('#stepId').val();
+        const stepType = $('#stepType').val();
+        const message = $('#stepMessage').val();
+        
+        if (!stepType || !message) {
+            alert('Step type and message are required');
+            return;
+        }
+        
+        // Collect button data if step type is buttons
+        const buttons = [];
+        if (stepType === 'buttons') {
+            $('.button-row').each(function() {
+                const label = $(this).find('.button-label').val();
+                
+                if (label) {
+                    buttons.push({
+                        label: label,
+                        value: label // Use label as value
+                    });
+                }
+            });
+            
+            if (buttons.length === 0) {
+                alert('Please add at least one button with a label');
+                return;
+            }
+        }
+        
+        // Prepare step data
+        const stepData = {
+            step_type: stepType,
+            message: message
+        };
+        
+        if (stepType === 'buttons') {
+            stepData.buttons = buttons;
+        }
+        
+        // If editing existing step
+        if (stepId) {
+            $.ajax({
+                url: `/api/flow/${currentFlowId}/step/${stepId}/update/`,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(stepData),
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Close modal
+                        bootstrap.Modal.getInstance(document.getElementById('stepModal')).hide();
+                        
+                        // Update step in container
+                        const $step = $(`#step-${stepId}`);
+                        $step.replaceWith(createStepHtml(response.step));
+                        
+                        showAlert('success', 'Step updated successfully');
+                    } else {
+                        showAlert('danger', 'Error updating step: ' + response.error);
+                    }
+                },
+                error: function() {
+                    showAlert('danger', 'Error updating step. Please try again.');
+                }
+            });
+        }
+        // If adding new step
+        else {
+            $.ajax({
+                url: `/api/flow/${currentFlowId}/step/add/`,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(stepData),
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Close modal
+                        bootstrap.Modal.getInstance(document.getElementById('stepModal')).hide();
+                        
+                        // Add step to container
+                        addStepToContainer(response.step);
+                        
+                        // Hide empty steps message
+                        $('#emptySteps').hide();
+                        
+                        showAlert('success', 'Step added successfully');
+                    } else {
+                        showAlert('danger', 'Error adding step: ' + response.error);
+                    }
+                },
+                error: function() {
+                    showAlert('danger', 'Error adding step. Please try again.');
+                }
+            });
+        }
+    }
+    
+    // Add step to container
+    function addStepToContainer(step) {
+        const stepClass = step.type === 'message' ? 'message-step' : 'buttons-step';
+        const stepTypeLabel = step.type === 'message' ? 'Bot Message' : 'Buttons';
+        const stepTypeBadge = step.type === 'message' ? 'primary' : 'success';
+        
+        let buttonsHtml = '';
+        if (step.type === 'buttons' && step.buttons && step.buttons.length > 0) {
+            buttonsHtml = '<div class="mt-3">';
+            step.buttons.forEach(function(button) {
+                buttonsHtml += `
+                    <div class="button-item">
+                        <div>
+                            <strong>${button.label}</strong>
+                        </div>
+                    </div>
+                `;
+            });
+            buttonsHtml += '</div>';
+        }
+
+        const stepHtml = `
+            <div id="step-${step.id}" class="step-container ${stepClass}" data-step-id="${step.id}">
+                <div class="step-header">
+                    <div>
+                        <span class="badge bg-${stepTypeBadge} me-2">${stepTypeLabel}</span>
+                        <span class="text-muted">Step ${step.order}</span>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-primary edit-step-btn" data-step-id="${step.id}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger delete-step-btn" data-step-id="${step.id}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="step-body">
+                    <p class="mb-2">${step.message}</p>
+                    ${buttonsHtml}
+                </div>
+            </div>
+        `;
+        
+        $('#stepsContainer').append(stepHtml);
+    }
+    
+    // Create step HTML
+    function createStepHtml(step) {
+        const stepClass = step.type === 'message' ? 'message-step' : 'buttons-step';
+        const stepTypeLabel = step.type === 'message' ? 'Bot Message' : 'Buttons';
+        const stepTypeBadge = step.type === 'message' ? 'primary' : 'success';
+        
+        let html = `
+            <div id="step-${step.id}" class="step-container ${stepClass}" data-step-id="${step.id}">
+                <div class="step-header">
+                    <div>
+                        <span class="badge bg-${stepTypeBadge} me-2">${stepTypeLabel}</span>
+                        <span class="text-muted">Step ${step.order}</span>
+                    </div>
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-primary edit-step-btn" data-step-id="${step.id}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger delete-step-btn" data-step-id="${step.id}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="step-body">
+                    <p class="mb-2">${step.message}</p>
+        `;
+        
+        // Add buttons if step type is buttons
+        if (step.type === 'buttons' && step.buttons && step.buttons.length > 0) {
+            html += '<div class="mt-3">';
+            step.buttons.forEach(function(button) {
+                html += `
+                    <div class="button-item">
+                        <div>
+                            <strong>${button.label}</strong>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+        
+        html += '</div></div>';
+        
+        return html;
+    }
+    
+    // Edit step
+    function editStep() {
+        const stepId = $(this).data('step-id');
+        
+        // Get step data
+        $.ajax({
+            url: `/api/flow/${currentFlowId}/step/${stepId}/update/`,
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    const step = response.step;
+                    
+                    // Set form values
+                    $('#stepId').val(stepId);
+                    $('#stepType').val(step.type);
+                    $('#stepMessage').val(step.message);
+                    
+                    // Handle buttons if step type is buttons
+                    if (step.type === 'buttons') {
+                        $('#buttonsSection').show();
+                        
+                        // Clear button container
+                        $('#buttonContainer').empty();
+                        buttonRowCount = 0;
+                        
+                        // Add button rows
+                        if (step.buttons && step.buttons.length > 0) {
+                            step.buttons.forEach(function(button) {
+                                addButtonRowWithValues(button.label);
+                            });
+                        } else {
+                            // Add a single empty row
+                            addButtonRowWithValues('');
+                        }
+                    } else {
+                        $('#buttonsSection').hide();
+                    }
+                    
+                    // Update modal title
+                    $('#stepModalLabel').text('Edit Step');
+                    
+                    // Show modal
+                    const stepModal = new bootstrap.Modal(document.getElementById('stepModal'));
+                    stepModal.show();
+                } else {
+                    showAlert('danger', 'Error loading step: ' + response.error);
+                }
+            },
+            error: function() {
+                showAlert('danger', 'Error loading step. Please try again.');
+            }
+        });
+    }
+    
+    // Add button row with values
+    function addButtonRowWithValues(label) {
+        buttonRowCount++;
+        
+        const newRow = `
+            <div class="button-row">
+                <div class="row">
+                    <div class="col">
+                        <label class="form-label">Button Label</label>
+                        <input type="text" class="form-control button-label" placeholder="e.g., Yes, 3 BHK, etc." value="${label}">
+                    </div>
+                    <button type="button" class="btn btn-sm btn-danger remove-button-btn" ${buttonRowCount <= 1 ? 'disabled' : ''}>
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        $('#buttonContainer').append(newRow);
+    }
+    
+    // Delete step
+    function deleteStep() {
+        const stepId = $(this).data('step-id');
+        
+        if (confirm('Are you sure you want to delete this step?')) {
+            $.ajax({
+                url: `/api/flow/${currentFlowId}/step/${stepId}/delete/`,
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Remove step from container
+                        $(`#step-${stepId}`).remove();
+                        
+                        // Show empty steps message if no steps left
+                        if ($('#stepsContainer').children().length === 0) {
+                            $('#emptySteps').show();
+                        }
+                        
+                        showAlert('success', 'Step deleted successfully');
+                    } else {
+                        showAlert('danger', 'Error deleting step: ' + response.error);
+                    }
+                },
+                error: function() {
+                    showAlert('danger', 'Error deleting step. Please try again.');
+                }
+            });
+        }
+    }
+    
+    // Save step order
+    function saveStepOrder() {
+        const steps = [];
+        
+        // Collect step IDs and new order
+        $('#stepsContainer .step-container').each(function(index) {
+            steps.push({
+                id: $(this).data('step-id'),
+                order: index + 1
+            });
+        });
+        
+        $.ajax({
+            url: `/api/flow/${currentFlowId}/steps/reorder/`,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ steps: steps }),
+            headers: {
+                'X-CSRFToken': getCsrfToken()
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Hide save order button
+                    $('#saveOrderBtn').hide();
+                    
+                    // Update step order labels
+                    $('#stepsContainer .step-container').each(function(index) {
+                        $(this).find('.step-header .text-muted').text('Step ' + (index + 1));
+                    });
+                    
+                    showAlert('success', 'Step order saved successfully');
+                } else {
+                    showAlert('danger', 'Error saving step order: ' + response.error);
+                }
+            },
+            error: function() {
+                showAlert('danger', 'Error saving step order. Please try again.');
+            }
+        });
+    }
+    
+    // Show delete flow modal
+    function showDeleteFlowModal() {
+        if (!currentFlowId) {
+            return;
+        }
+        
+        // Show modal
+        const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+        deleteModal.show();
+    }
+    
+    // Delete flow
+    function deleteFlow() {
+        if (!currentFlowId) {
+            return;
+        }
+        
+        $.ajax({
+            url: `/api/flow/${currentFlowId}/delete/`,
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken()
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Close modal
+                    bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+                    
+                    // Remove flow from list
+                    $(`.flow-item[data-flow-id="${currentFlowId}"]`).remove();
+                    
+                    // Clear editor
+                    $('#flowEditor').hide();
+                    $('#emptyState').show();
+                    
+                    // Reset current flow ID
+                    currentFlowId = null;
+                    
+                    // Show empty message if no flows left
+                    if ($('#flowListContainer .flow-item').length === 0) {
+                        $('#flowListContainer').html(`
+                            <div class="text-center text-muted py-3">
+                                <p>No flows created yet</p>
+                                <p>Create your first flow to get started</p>
+                            </div>
+                        `);
+                    }
+                    
+                    showAlert('success', 'Flow deleted successfully');
+                } else {
+                    showAlert('danger', 'Error deleting flow: ' + response.error);
+                }
+            },
+            error: function() {
+                showAlert('danger', 'Error deleting flow. Please try again.');
+            }
+        });
+    }
+    
+    // Preview flow
+    function previewFlow() {
+        if (!currentFlowId) {
+            return;
+        }
+        
+        // Get flow data
+        $.ajax({
+            url: `/api/get-flow/${currentFlowId}/`,
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    const flow = response.flow;
+                    
+                    // Clear preview container
+                    $('#previewChat').empty();
+                    
+                    // Generate preview
+                    generateFlowPreview(flow);
+                    
+                    // Show modal
+                    const previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+                    previewModal.show();
+                } else {
+                    showAlert('danger', 'Error loading flow: ' + response.error);
+                }
+            },
+            error: function() {
+                showAlert('danger', 'Error loading flow. Please try again.');
+            }
+        });
+    }
+    
+    // Generate flow preview
+    function generateFlowPreview(flow) {
+        const steps = flow.steps || [];
+        
+        steps.forEach(function(step, index) {
+            // Add bot message
+            addPreviewMessage(step.message, 'preview-bot-message');
+            
+            // Add buttons if step type is buttons
+            if (step.type === 'buttons' && step.buttons && step.buttons.length > 0) {
+                const buttonsDiv = $('<div class="preview-buttons"></div>');
+                
+                step.buttons.forEach(function(button) {
+                    const buttonEl = $(`<button class="preview-button">${button.label}</button>`);
+                    buttonsDiv.append(buttonEl);
+                });
+                
+                $('#previewChat').append(buttonsDiv);
+                
+                // Add user message for the first button (to show flow)
+                if (index < steps.length - 1) {
+                    addPreviewMessage(step.buttons[0].label, 'preview-user-message');
+                }
+            }
+        });
+        
+        // Add lead collection preview at the end
+        addPreviewMessage('Before we continue, could you please tell me your name?', 'preview-bot-message');
+        
+        // Add form preview
+        const formDiv = $(`
+            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" class="form-control" placeholder="Enter your name" disabled>
+                    <button class="btn btn-primary" disabled>Submit</button>
+                </div>
+            </div>
+        `);
+        
+        $('#previewChat').append(formDiv);
+    }
+    
+    // Add message to preview
+    function addPreviewMessage(message, className) {
+        const messageDiv = $(`<div class="${className}">${message}</div>`);
+        $('#previewChat').append(messageDiv);
+    }
+    
+    // Show alert message
+    function showAlert(type, message) {
+        const alertHtml = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        
+        // Add alert to page
+        $('h2').after(alertHtml);
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(function() {
+            $('.alert').alert('close');
+        }, 5000);
+    }
+    
+    // Get CSRF token
+    function getCsrfToken() {
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        
+        // First try to get from the cookie
+        let token = getCookie('csrftoken');
+        
+        // If not found in cookie, try to get from the form
+        if (!token) {
+            const tokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            if (tokenInput) {
+                token = tokenInput.value;
+            }
+        }
+        
+        return token || '';
+    }
+});
+</script>
+{% endblock %}

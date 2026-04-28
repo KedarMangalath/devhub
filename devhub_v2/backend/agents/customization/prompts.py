@@ -59,6 +59,25 @@ TOOL_USAGE_PROMPT = """\
 - Don't remove code that isn't related to the current task.
 - Group logically related changes together.
 - If the user asked for an implementation or fix, keep going until the code is actually changed or you can clearly explain the blocker.
+
+### Multi-Page UI Work
+- If request mentions theme, sidebar, redesign, restyle, layout, color palette, or multiple named pages, inspect the shared layout/base file plus every named page before making any edit.
+- Use `browser_screenshot` with `stage="before"` before broad UI changes and `stage="after"` once edits are done so the work has visual proof, not just code diffs.
+- For broad UI changes, work in phases: shared shell/layout first, then individual pages/components, then verification.
+
+### UI File Preflight (REQUIRED before editing any UI file)
+Before editing a UI file (template, component, page, stylesheet), read the files it depends on:
+1. Find and read the parent/base layout it inherits from (e.g. base template, root layout component, shared CSS) — confirm which extension points/slots/blocks/props exist.
+2. Find and read the data source for this UI file (e.g. the server route/view/controller that renders it, or the API endpoint the component fetches from) — confirm the exact variable names, field names, and response shape it expects.
+3. Find and read any form definitions or schema files — confirm field names match what the UI submits.
+4. Only after steps 1-3, write the UI file using the confirmed variable names, field names, and extension points.
+This is framework-agnostic: applies equally to Django templates, React components, Vue pages, Rails ERB, Next.js routes, etc.
+
+### Skill Auto-Creation
+- You have access to global and project skills. If the current task requires specialized behavior not covered by any available skill, you can create a new global skill by calling:
+  `POST /api/skills/` with JSON `{"name": "...", "description": "...", "body": "..."}`.
+- Project-specific skills live in `.devhub/skills/<slug>/SKILL.md` — create them with `file_write` for workspace-scoped behavior.
+- Only create a skill when the task is genuinely reusable across future requests, not a one-off edit.
 """
 
 RESPONSE_RULES_PROMPT = """\

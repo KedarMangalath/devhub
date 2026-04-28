@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, ChevronDown, ChevronRight, Code2, FileCode, Loader2, PanelLeftClose, PanelLeftOpen, PencilLine, Play, Plus, Sparkles, X, XCircle, Trash2 } from 'lucide-react';
 
 import BlueprintPanel from '../components/BlueprintPanel';
@@ -35,9 +35,157 @@ function getImplementationHistory(feature: any) {
   return history.filter((item: any) => IMPLEMENTATION_ACTIONS.includes(item.action));
 }
 
+type ScaffoldTask = {
+  id?: string;
+  label: string;
+  status?: 'pending' | 'running' | 'completed' | 'failed' | string;
+};
+
+const DEFAULT_SCAFFOLD_TASKS: ScaffoldTask[] = [
+  { id: 'spec', label: 'Shape the product brief', status: 'pending' },
+  { id: 'plan', label: 'Plan files and data model', status: 'pending' },
+  { id: 'code', label: 'Generate the frontend', status: 'pending' },
+  { id: 'validate', label: 'Validate and repair', status: 'pending' },
+  { id: 'context', label: 'Index workspace context', status: 'pending' },
+];
+
+type ScaffoldEvent = {
+  type?: string;
+  message?: string;
+  stage?: string | number;
+  created_at?: string;
+};
+
+type ScaffoldProgress = {
+  status?: string;
+  title?: string;
+  message?: string;
+  progress_pct?: number;
+  tasks?: ScaffoldTask[];
+  events?: ScaffoldEvent[];
+};
+
+type ScaffoldProject = {
+  name?: string;
+  status?: string;
+  scaffold_progress?: ScaffoldProgress;
+};
+
+function ScaffoldProgressCard({ project }: { project: ScaffoldProject }) {
+  const progress = project?.scaffold_progress || {};
+  const tasks: ScaffoldTask[] = Array.isArray(progress.tasks) && progress.tasks.length ? progress.tasks : DEFAULT_SCAFFOLD_TASKS;
+  const events: ScaffoldEvent[] = Array.isArray(progress.events) ? progress.events.slice(-6).reverse() : [];
+  const pct = Math.max(0, Math.min(100, Number(progress.progress_pct || 8)));
+  const isDone = progress.status === 'done' || project?.status === 'active';
+  const isFailed = progress.status === 'failed';
+  const completedCount = tasks.filter((task) => task.status === 'completed').length;
+
+  const statusIcon = (status: string) => {
+    if (status === 'completed') {
+      return <Check className="h-3.5 w-3.5" />;
+    }
+    if (status === 'running') {
+      return <Loader2 className="h-3.5 w-3.5 animate-spin" />;
+    }
+    if (status === 'failed') {
+      return <XCircle className="h-3.5 w-3.5" />;
+    }
+    return <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />;
+  };
+
+  return (
+    <div className="max-w-[2000px] mx-auto w-full px-6 mt-2">
+      <div className="overflow-hidden rounded-[28px] border border-[#1d4ed8]/30 bg-[#101113] text-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <div className="flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-stretch lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white ring-1 ring-white/10">
+                {isFailed ? <XCircle className="h-4 w-4 text-rose-300" /> : isDone ? <Check className="h-4 w-4 text-emerald-300" /> : <Sparkles className="h-4 w-4" />}
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
+                  {isDone ? 'Starter Ready' : isFailed ? 'Build Interrupted' : 'Building Starter Project'}
+                </p>
+                <h3 className="mt-1 text-base font-semibold text-white">{progress.title || `Building ${project?.name || 'your app'}`}</h3>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-white/62">
+                  {progress.message || 'DevHub is generating files, validating imports, and preparing the workspace preview.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className={`h-full rounded-full transition-[width] duration-700 ease-out ${isFailed ? 'bg-rose-400' : 'bg-[linear-gradient(90deg,#60a5fa,#a78bfa,#f59e0b)]'}`}
+                style={{ width: `${isDone ? 100 : pct}%` }}
+              />
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {tasks.map((task) => {
+                const status = task.status || 'pending';
+                const active = status === 'running';
+                const complete = status === 'completed';
+                const failed = status === 'failed';
+                return (
+                  <div
+                    key={task.id || task.label}
+                    className={`flex min-h-[54px] items-center gap-2 rounded-2xl border px-3 py-2 text-xs transition-colors ${
+                      complete
+                        ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100'
+                        : active
+                          ? 'border-amber-300/30 bg-amber-300/10 text-amber-100'
+                          : failed
+                            ? 'border-rose-300/30 bg-rose-300/10 text-rose-100'
+                            : 'border-white/10 bg-white/[0.04] text-white/45'
+                    }`}
+                  >
+                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${complete ? 'bg-emerald-400/20' : active ? 'bg-amber-300/20' : failed ? 'bg-rose-300/20' : 'bg-white/10'}`}>
+                      {statusIcon(status)}
+                    </span>
+                    <span className="min-w-0 font-medium leading-4">{task.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="w-full rounded-2xl border border-white/10 bg-white/[0.04] p-3 lg:w-[360px]">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">Live Activity</span>
+              <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-medium text-white/55">
+                {completedCount}/{tasks.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {events.length ? events.map((event, index) => (
+                <div key={`${event.created_at || event.message || event.type}-${index}`} className="flex items-start gap-2 rounded-xl bg-black/20 px-3 py-2">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/55">
+                    {event.type === 'file_done' ? <Check className="h-3 w-3" /> : <FileCode className="h-3 w-3" />}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-medium text-white/78">{event.message || event.type}</p>
+                    {event.stage && <p className="text-[10px] text-white/36">Stage {event.stage}</p>}
+                  </div>
+                </div>
+              )) : (
+                <div className="flex items-center gap-2 rounded-xl bg-black/20 px-3 py-3 text-xs text-white/50">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Warming up the generator...
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectView() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const autoRun = searchParams.get('autorun') === '1';
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [workspaceFullscreen, setWorkspaceFullscreen] = useState(false);
@@ -670,7 +818,7 @@ export default function ProjectView() {
   const hideProjectHeader = activeTab === 'code';
 
   return (
-    <div className="devhub-project-view h-[var(--app-vh)] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,246,248,0.98)_42%,_#eef1f4_100%)] text-slate-900 font-sans flex flex-col">
+    <div className={`devhub-project-view h-[var(--app-vh)] overflow-hidden text-slate-900 font-sans flex flex-col ${activeTab === 'code' ? 'bg-[#0a0a0c]' : 'bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.92),_rgba(244,246,248,0.98)_42%,_#eef1f4_100%)]'}`}>
       <ToastStack
         items={[
           ...(agentResult
@@ -788,15 +936,21 @@ export default function ProjectView() {
       </header>
       )}
 
-      {!hideProjectHeader && project?.context_initializing && (
+      {!hideProjectHeader && project?.scaffold_progress && (project?.status === 'scaffolding' || project?.scaffold_progress?.status === 'running' || project?.scaffold_progress?.status === 'failed') && (
+        <ScaffoldProgressCard project={project} />
+      )}
+
+      {!hideProjectHeader && project?.context_initializing && project?.status !== 'scaffolding' && project?.scaffold_progress?.status !== 'running' && project?.scaffold_progress?.status !== 'failed' && (
         <div className="max-w-[2000px] mx-auto w-full px-6 mt-2">
           <div className="p-3 rounded-2xl text-sm flex items-center justify-between border border-blue-100 bg-white/80 text-slate-700 backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
             <span>
-              DevHub is auto-generating the blueprint{project?.source_type === 'starter' ? '' : ', onboarding context, and repository docs'} for this project.
+              {project?.status === 'scaffolding'
+                ? 'DevHub is generating your starter codebase — this takes a few minutes. You can leave this tab open.'
+                : `DevHub is auto-generating the blueprint${project?.source_type === 'starter' ? '' : ', onboarding context, and repository docs'} for this project.`}
             </span>
             <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-500">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Syncing
+              {project?.status === 'scaffolding' ? 'Scaffolding' : 'Syncing'}
             </span>
           </div>
         </div>
@@ -832,9 +986,9 @@ export default function ProjectView() {
         </div>
       )}
 
-      <main className="flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row w-full overflow-hidden max-w-[2000px] mx-auto px-4 sm:px-6 py-4 gap-4">
+      <main className={`flex-1 min-h-0 min-w-0 flex flex-col lg:flex-row w-full overflow-hidden ${activeTab === 'code' ? 'max-w-none p-0 gap-0' : 'max-w-[2000px] mx-auto px-4 sm:px-6 py-4 gap-4'}`}>
         {/* Sidebar always visible — collapses to icons in workspace but remains expandable */}
-        <nav className={`w-full shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 border-b lg:border-b-0 lg:border-r border-slate-200 overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(var(--app-vh)-8rem)] transition-[width,padding] duration-200 ${sidebarCollapsed ? 'lg:w-[84px] lg:px-2' : 'lg:w-64 lg:px-3'}`}>
+        <nav className={`w-full shrink-0 flex lg:flex-col gap-2 lg:gap-1 pb-3 lg:pb-0 border-b lg:border-b-0 lg:border-r overflow-x-auto lg:overflow-y-auto min-h-0 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(var(--app-vh)-8rem)] transition-[width,padding] duration-200 ${activeTab === 'code' ? 'border-white/10' : 'border-slate-200'} ${sidebarCollapsed ? 'lg:w-[84px] lg:px-2' : 'lg:w-64 lg:px-3'}`}>
           {/* Show project name + Views only on workspace tab where the top header is hidden */}
           {activeTab === 'code' && (
             <div className={`hidden lg:flex mb-3 border-b border-slate-200/70 pb-3 ${
@@ -899,13 +1053,14 @@ export default function ProjectView() {
         </nav>
 
         <section
-          className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col bg-transparent"
+          className={`flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col ${activeTab === 'code' ? 'bg-[#0a0a0c]' : 'bg-transparent'}`}
         >
           <div
             ref={contentScrollRef}
-            className={`project-scroll-shell flex-1 min-h-0 min-w-0 overflow-auto overflow-x-hidden ${
+            key={activeTab}
+            className={`project-scroll-shell flex-1 min-h-0 min-w-0 overflow-auto overflow-x-hidden sleek-tab-enter ${
               activeTab === 'code'
-                ? 'p-0'
+                ? 'p-0 bg-[#0a0a0c]'
                 : activeTab === 'chat'
                   ? 'p-0 bg-white'
                   : activeTab === 'onboarding'
@@ -927,6 +1082,7 @@ export default function ProjectView() {
                   isFullscreen={workspaceFullscreen}
                   onToggleFullscreen={() => setWorkspaceFullscreen((current) => !current)}
                   onRuntimeRunningChange={setWorkspaceRuntimeRunning}
+                  autoRun={autoRun}
                 />
               </div>
             )}

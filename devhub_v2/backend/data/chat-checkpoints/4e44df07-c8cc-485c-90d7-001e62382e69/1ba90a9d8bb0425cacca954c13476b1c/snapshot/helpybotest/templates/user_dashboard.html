@@ -1,0 +1,337 @@
+{% extends 'base.html' %}
+{% block title %}User Dashboard{% endblock %}
+{% block content %}
+{% load static %}
+<head>
+  <link rel="stylesheet" href="{% static 'css/user_dash.css' %}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .dashboard-card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(67, 96, 169, 0.1);
+      transition: all 0.3s ease;
+      border: 2px solid #4360a927;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    .dashboard-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 35px rgba(67, 96, 169, 0.15);
+    }
+
+    .script-card {
+      margin-top: 30px;
+      padding: 25px;
+    }
+
+    .card-title {
+      position: relative;
+      padding-bottom: 15px;
+      margin-bottom: 20px;
+      color: #3f5b9b;
+      font-size: 19px;
+      font-weight: 500;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .card-title:after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 50px;
+      height: 3px;
+      background: linear-gradient(90deg, #3f5b9b, #4360a9);
+      border-radius: 2px;
+    }
+
+    .stats-container {
+      background: #f8faff;
+      border: 2px solid #4360a927;
+      border-radius: 12px;
+      padding: 25px;
+      transition: all 0.3s ease;
+    }
+
+    .widget-actions {
+      background: #f8faff;
+      border: 2px solid #4360a927;
+      border-radius: 12px;
+      padding: 25px;
+    }
+
+    .code-block {
+      background: #f1f4fd;
+      border-radius: 8px;
+      padding: 15px;
+      margin: 10px 0;
+      font-family: monospace;
+      font-size: 14px;
+      color: #3f5b9b;
+      word-break: break-all;
+    }
+
+    .sample-link {
+      color: #3f5b9b;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      display: inline-block;
+      margin: 10px 0;
+    }
+
+    .sample-link:hover {
+      color: #38a747;
+      transform: translateX(5px);
+    }
+
+    .widbtn {
+      background: linear-gradient(90deg, #3f5b9b, #4360a9);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      transition: all 0.3s ease;
+    }
+
+    .widbtn:hover {
+      background: linear-gradient(90deg, #4360a9, #3f5b9b);
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(67, 96, 169, 0.2);
+    }
+
+    .success-message {
+      color: #38a747;
+      padding: 10px;
+      margin-top: 15px;
+      border-radius: 8px;
+      background: rgba(56, 167, 71, 0.1);
+    }
+
+    .stat-value {
+      color: #38a747;
+      font-weight: 500;
+      font-size: 17px;
+    }
+    .chart-container {
+      position: relative;
+      height: 300px;
+      margin-bottom: 20px;
+  }
+
+  .stats-card {
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .stat-item {
+      text-align: center;
+      padding: 15px;
+  }
+
+  .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #3f5b9b;
+  }
+
+  .stat-label {
+      color: #666;
+      font-size: 14px;
+  }
+
+  /* Add these CSS rules in the <style> section */
+
+    .btn-custom {
+        background: linear-gradient(90deg, #3f5b9b, #4360a9);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        transition: all 0.3s ease;
+        margin-right: 10px;
+        font-weight: 500;
+        text-decoration: none;
+    }
+    
+    .btn-custom:hover {
+        background: linear-gradient(90deg, #4360a9, #3f5b9b);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(67, 96, 169, 0.2);
+        color: white;
+    }
+    
+    .btn-custom-secondary {
+        background: #f8faff;
+        color: #3f5b9b;
+        border: 2px solid #4360a927;
+        border-radius: 8px;
+        padding: 10px 20px;
+        transition: all 0.3s ease;
+        font-weight: 500;
+    }
+    
+    .btn-custom-secondary:hover {
+        background: #f1f4fd;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(67, 96, 169, 0.1);
+    }
+    
+    .code-block code {
+        color: #1d2741;  
+    }
+
+
+
+  </style>
+</head>
+
+<h2 class="mb-4 ps-lg-5" style="font-size: 23px; font-family: 'Poppins', sans-serif; color: #1d2741be;">Dashboard</h2>
+
+<div class="container-fluid">
+  <!-- Statistics Cards -->
+  <div class="row mb-4">
+      <div class="col-md-4">
+          <div class="stats-card">
+              <div class="stat-item">
+                  <div class="stat-value">{{ total_chats }}</div>
+                  <div class="stat-label">Total Chat Sessions</div>
+              </div>
+          </div>
+      </div>
+      <div class="col-md-4">
+          <div class="stats-card">
+              <div class="stat-item">
+                  <div class="stat-value">{{ total_messages }}</div>
+                  <div class="stat-label">Total Messages</div>
+              </div>
+          </div>
+      </div>
+      <div class="col-md-4">
+          <div class="stats-card">
+              <div class="stat-item">
+                  <div class="stat-value">{{ avg_messages_per_session }}</div>
+                  <div class="stat-label">Avg Messages/Session</div>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="row mb-4">
+      <div class="col-md-6">
+          <div class="dashboard-card">
+              <div class="card-body">
+                  <h5 class="card-title">Daily Chat Sessions (Last 30 Days)</h5>
+                  <div class="chart-container">
+                      <canvas id="dailyChatsChart"></canvas>
+                  </div>
+              </div>
+          </div>
+      </div>
+      <div class="col-md-6">
+          <div class="dashboard-card">
+              <div class="card-body">
+                  <h5 class="card-title">Hourly Chat Distribution</h5>
+                  <div class="chart-container">
+                      <canvas id="hourlyDistributionChart"></canvas>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <div class="row">
+      <div class="col-md-8 mx-auto">
+          <div class="dashboard-card">
+              <div class="card-body">
+                  <h5 class="card-title">Widget Integration</h5>
+                  <div class="code-block">
+                      <code>{{ script_tag|escape }}</code>
+                  </div>
+                  <div class="mt-3">
+                      <a href="{{ sample_page_url }}" target="_blank" class="btn btn-custom">View Sample Page</a>
+                      <form action="{% url 'regenerate_widget' %}" method="post" class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-custom-secondary">Regenerate Widget</button>
+                      </form>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
+</div>
+
+<script>
+// Daily Chats Chart
+const dailyChartCtx = document.getElementById('dailyChatsChart').getContext('2d');
+new Chart(dailyChartCtx, {
+  type: 'line',
+  data: {
+      labels: {{ daily_chats|safe|stringformat:'s' }}.map(item => new Date(item.date).toLocaleDateString()),
+      datasets: [{
+          label: 'Chat Sessions',
+          data: {{ daily_chats|safe|stringformat:'s' }}.map(item => item.count),
+          borderColor: '#3f5b9b',
+          tension: 0.4,
+          fill: true,
+          backgroundColor: 'rgba(63, 91, 155, 0.1)'
+      }]
+  },
+  options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+          legend: {
+              display: false
+          }
+      },
+      scales: {
+          y: {
+              beginAtZero: true,
+              ticks: {
+                  stepSize: 1
+              }
+          }
+      }
+  }
+});
+
+// Hourly Distribution Chart
+const hourlyChartCtx = document.getElementById('hourlyDistributionChart').getContext('2d');
+new Chart(hourlyChartCtx, {
+  type: 'bar',
+  data: {
+      labels: {{ hourly_distribution|safe|stringformat:'s' }}.map(item => `${item.hour}:00`),
+      datasets: [{
+          label: 'Chat Count',
+          data: {{ hourly_distribution|safe|stringformat:'s' }}.map(item => item.count),
+          backgroundColor: '#3f5b9b',
+      }]
+  },
+  options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+          legend: {
+              display: false
+          }
+      },
+      scales: {
+          y: {
+              beginAtZero: true,
+              ticks: {
+                  stepSize: 1
+              }
+          }
+      }
+  }
+});
+</script>
+
+{% endblock %}

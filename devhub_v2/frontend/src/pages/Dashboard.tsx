@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  CheckCircle2,
   ChevronLeft,
   FolderOpen,
   Github,
@@ -28,10 +29,28 @@ type Project = {
   name: string;
   description: string;
   status: string;
+  raw_status?: string;
   tech_stack: string[];
   github_url?: string | null;
   local_path?: string | null;
   source_type?: SourceType;
+  context_initializing?: boolean;
+  documentation_status?: string;
+  scaffold_progress?: ScaffoldProgress | null;
+};
+
+type ScaffoldTask = {
+  id?: string;
+  label: string;
+  status?: string;
+};
+
+type ScaffoldProgress = {
+  status?: string;
+  title?: string;
+  message?: string;
+  progress_pct?: number;
+  tasks?: ScaffoldTask[];
 };
 
 type ProjectForm = {
@@ -165,6 +184,28 @@ function mergeAiConfig(config?: any) {
     merged.base_url = 'https://openrouter.ai/api/v1';
   }
   return merged;
+}
+
+function isScaffoldingProject(project: Project) {
+  const progressStatus = project.scaffold_progress?.status;
+  return project.status === 'scaffolding' || progressStatus === 'running';
+}
+
+function isBusyProject(project: Project) {
+  const progressStatus = project.scaffold_progress?.status;
+  return isScaffoldingProject(project) || Boolean(project.context_initializing && progressStatus !== 'done' && progressStatus !== 'failed');
+}
+
+function projectStatusLabel(project: Project) {
+  if (isScaffoldingProject(project)) return 'Scaffolding';
+  if (project.context_initializing) return 'Syncing';
+  if (project.scaffold_progress?.status === 'failed') return 'Needs attention';
+  return project.status || 'active';
+}
+
+function currentScaffoldTask(progress?: ScaffoldProgress | null) {
+  const tasks = Array.isArray(progress?.tasks) ? progress?.tasks || [] : [];
+  return tasks.find((task) => task.status === 'running') || tasks.find((task) => task.status === 'pending') || null;
 }
 
 const DEFAULT_FORM: ProjectForm = {
@@ -376,7 +417,7 @@ export default function Dashboard() {
     }));
   };
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       const response = await fetch(`${API}/projects/`);
       const data = await response.json();
@@ -386,11 +427,21 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [fetchProjects]);
+
+  const hasBusyProjects = useMemo(() => projects.some(isBusyProject), [projects]);
+
+  useEffect(() => {
+    if (!hasBusyProjects) return undefined;
+    const timer = window.setInterval(() => {
+      void fetchProjects();
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [fetchProjects, hasBusyProjects]);
 
   const fetchAiSettings = async () => {
     try {
@@ -796,7 +847,7 @@ export default function Dashboard() {
         setError(data.error || 'Could not create project.');
         return;
       }
-      navigate(`/project/${data.id}`);
+      navigate(`/project/${data.id}${sourceType === 'starter' ? '?autorun=1' : ''}`);
     } catch {
       setError('Could not create project because the server could not be reached.');
     } finally {
@@ -1305,10 +1356,15 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="mt-8 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                {projects.map((project) => (
+                {projects.map((project) => {
+                  const busy = isBusyProject(project);
+                  const failed = project.scaffold_progress?.status === 'failed';
+                  const task = currentScaffoldTask(project.scaffold_progress);
+                  const progressPct = Math.max(0, Math.min(100, Number(project.scaffold_progress?.progress_pct || (busy ? 8 : 100))));
+                  return (
                   <article
                     key={project.id}
-                    className="setup-plum-card overflow-hidden rounded-[24px] border p-4 transition hover:-translate-y-1 hover:shadow-[0_26px_54px_rgba(112,67,79,0.12),0_14px_30px_rgba(15,23,42,0.06)]"
+                    className={`setup-plum-card overflow-hidden rounded-[24px] border p-4 transition hover:-translate-y-1 hover:shadow-[0_26px_54px_rgba(112,67,79,0.12),0_14px_30px_rgba(15,23,42,0.06)] ${busy ? 'border-amber-200 shadow-[0_22px_50px_rgba(245,158,11,0.12)]' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
@@ -1316,14 +1372,38 @@ export default function Dashboard() {
                           <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
                             {getSourceLabel((project.source_type as SourceType) || 'starter')}
                           </span>
-                          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                            {project.status || 'active'}
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+                            failed
+                              ? 'bg-rose-50 text-rose-700'
+                              : busy
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-emerald-50 text-emerald-700'
+                          }`}>
+                            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : failed ? <X className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
+                            {projectStatusLabel(project)}
                           </span>
                         </div>
                         <h3 className="mt-3 break-words text-lg font-semibold text-slate-950">{project.name}</h3>
                         <p className="mt-2 line-clamp-2 break-words text-sm leading-6 text-slate-500">
                           {project.description || 'Workspace ready for blueprint, pipeline, and implementation.'}
                         </p>
+                        {busy ? (
+                          <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                              <span className="min-w-0 truncate font-semibold text-amber-800">
+                                {project.scaffold_progress?.message || (isScaffoldingProject(project) ? 'Generating starter project...' : 'Preparing workspace context...')}
+                              </span>
+                              <span className="shrink-0 font-mono text-amber-700">{progressPct}%</span>
+                            </div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                              <div className="h-full rounded-full bg-amber-500 transition-all duration-500" style={{ width: `${progressPct}%` }} />
+                            </div>
+                            <div className="mt-2 flex items-center gap-2 text-[11px] font-medium text-amber-700">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span className="truncate">{task?.label || 'Working through setup steps'}</span>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
 
                       <button
@@ -1367,7 +1447,8 @@ export default function Dashboard() {
                       </Link>
                     </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

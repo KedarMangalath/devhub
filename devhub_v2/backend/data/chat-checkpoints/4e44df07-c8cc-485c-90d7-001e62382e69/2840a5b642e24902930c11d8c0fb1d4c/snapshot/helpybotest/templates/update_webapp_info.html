@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block title %}Train Chatbot{% endblock %}
+{% block page_title %}Train Chatbot{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Website Content Training</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">
+                        Provide the text content of your website or any other information you want the chatbot to know. 
+                        The chatbot will use this information to answer user questions accurately.
+                    </p>
+                    
+                    <form method="post" id="trainForm">
+                        {% csrf_token %}
+                        <div class="mb-4">
+                            <label for="web_app_info" class="form-label">Training Data</label>
+                            <textarea class="form-control" id="web_app_info" name="web_app_info" rows="15" placeholder="Paste your website content, FAQs, product details, or any other relevant information here...">{{ web_app_info }}</textarea>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div id="loading" style="display: none;">
+                                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <span class="text-muted">Training in progress...</span>
+                            </div>
+                            <button type="submit" class="btn btn-primary px-5 ms-auto" id="trainBtn">
+                                <i class="fas fa-brain me-2"></i> Train Chatbot
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const trainForm = document.getElementById('trainForm');
+        const trainBtn = document.getElementById('trainBtn');
+        const loading = document.getElementById('loading');
+
+        trainForm.addEventListener('submit', function() {
+            trainBtn.disabled = true;
+            loading.style.display = 'flex';
+        });
+    });
+</script>
+{% endblock %}

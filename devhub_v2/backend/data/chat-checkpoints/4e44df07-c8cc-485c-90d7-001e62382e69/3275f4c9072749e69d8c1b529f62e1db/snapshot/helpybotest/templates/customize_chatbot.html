@@ -1,0 +1,1382 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<!-- Modern UI Libraries -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap">
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+
+<style>
+    :root {
+        --primary: #4f46e5;
+        --primary-hover: #4338ca;
+        --primary-light: rgba(79, 70, 229, 0.08);
+        --primary-lighter: rgba(79, 70, 229, 0.04);
+        --secondary: #6366f1;
+        --text-primary: #111827;
+        --text-secondary: #4b5563;
+        --text-tertiary: #9ca3af;
+        --background: #ffffff;
+        --background-alt: #f9fafb;
+        --card-bg: #ffffff;
+        --border: #e5e7eb;
+        --border-light: #f3f4f6;
+        --success: #10b981;
+        --error: #ef4444;
+        --warning: #f59e0b;
+        --info: #3b82f6;
+    }
+
+    /* Base Styles */
+    body {
+        background-color: var(--background-alt);
+        color: var(--text-primary);
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        margin: 0;
+        padding: 0;
+        line-height: 1.5;
+    }
+
+    .customization-container {
+        max-width: 1480px;
+        margin: 0 auto;
+        padding: 32px 24px;
+    }
+
+    .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 32px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border-light);
+    }
+
+    .page-title {
+        font-size: 24px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0;
+    }
+
+    /* Layout */
+    .customization-layout {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 24px;
+        align-items: start;
+    }
+
+    @media (max-width: 1024px) {
+        .customization-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Preview Panel */
+    .preview-panel {
+        background-color: var(--card-bg);
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        padding: 20px;
+        position: sticky;
+        top: 24px;
+        height: fit-content;
+        transition: all 0.25s ease;
+        overflow: hidden;
+        border: 1px solid var(--border-light);
+    }
+
+    .preview-header {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .preview-header svg {
+        width: 18px;
+        height: 18px;
+        color: var(--primary);
+    }
+
+    .preview-chat {
+        width: 280px;
+        height: 420px;
+        margin: 0 auto;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--border);
+        transition: all 0.25s ease;
+    }
+
+    .preview-chat-header {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        gap: 10px;
+        background-color: var(--primary);
+        color: white;
+        transition: background-color 0.25s ease;
+    }
+
+    .preview-chat-logo {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        background-color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+
+    .preview-chat-logo img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+
+    .preview-chat-title {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+    }
+
+    .preview-chat-body {
+        flex: 1;
+        padding: 14px;
+        background-color: var(--background-alt);
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+    }
+
+    .preview-chat-body::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .preview-chat-body::-webkit-scrollbar-thumb {
+        background-color: var(--border);
+        border-radius: 4px;
+    }
+
+    .preview-chat-message {
+        max-width: 80%;
+        padding: 10px 14px;
+        border-radius: 12px;
+        margin-bottom: 10px;
+        font-size: 13px;
+        line-height: 1.5;
+        animation: fadeIn 0.2s ease;
+    }
+
+    .preview-chat-message.bot {
+        background-color: white;
+        border: 1px solid var(--border);
+        align-self: flex-start;
+        border-bottom-left-radius: 3px;
+        color: var(--text-primary);
+    }
+
+    .preview-chat-message.user {
+        background-color: var(--primary-light);
+        color: var(--primary);
+        align-self: flex-end;
+        border-bottom-right-radius: 3px;
+    }
+
+    .preview-chat-footer {
+        padding: 10px 12px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background-color: white;
+    }
+
+    .preview-chat-input {
+        flex: 1;
+        height: 36px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        padding: 0 14px;
+        font-size: 13px;
+        background-color: var(--background-alt);
+        transition: border-color 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    .preview-chat-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    .preview-send-button {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background-color: var(--primary);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.25s ease;
+    }
+
+    .preview-send-button:hover {
+        background-color: var(--primary-hover);
+        transform: translateY(-1px);
+    }
+
+    .preview-send-button i {
+        font-size: 13px;
+    }
+
+    .preview-toggle {
+        margin-top: 16px;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background-color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+        cursor: pointer;
+        transition: all 0.25s ease;
+        overflow: hidden;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .preview-toggle:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(79, 70, 229, 0.25);
+    }
+
+    .preview-toggle img {
+        max-width: 60%;
+        max-height: 60%;
+        object-fit: contain;
+    }
+
+    /* Settings Panel */
+    .settings-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .settings-card {
+        background-color: var(--card-bg);
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        overflow: hidden;
+        transition: all 0.25s ease;
+        border: 1px solid var(--border-light);
+    }
+
+    .settings-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    }
+
+    .settings-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-light);
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background-color: var(--background-alt);
+    }
+
+    .settings-header i {
+        color: var(--primary);
+        font-size: 14px;
+    }
+
+    .settings-body {
+        padding: 20px;
+    }
+
+    /* Form Elements */
+    .form-group {
+        margin-bottom: 20px;
+    }
+
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 14px;
+        color: var(--text-primary);
+        background-color: var(--background);
+        transition: all 0.25s ease;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    textarea.form-control {
+        min-height: 100px;
+        resize: vertical;
+        line-height: 1.5;
+    }
+
+    .color-picker-group {
+        display: flex;
+        gap: 12px;
+    }
+
+    .color-picker {
+        flex: 1;
+    }
+
+    .color-input-wrapper {
+        position: relative;
+        height: 42px;
+        overflow: hidden;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        transition: all 0.25s ease;
+    }
+
+    .color-input-wrapper:hover {
+        border-color: var(--primary);
+    }
+
+    .color-input {
+        position: absolute;
+        width: 150%;
+        height: 150%;
+        top: -25%;
+        left: -25%;
+        cursor: pointer;
+        opacity: 0;
+    }
+
+    .color-preview {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 500;
+        color: white;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Image Upload - Compact Version */
+    .image-upload-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 16px;
+    }
+
+    .image-upload {
+        background-color: var(--background-alt);
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        text-align: center;
+        transition: all 0.25s ease;
+        cursor: pointer;
+        position: relative;
+        height: 100px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .image-upload:hover {
+        border-color: var(--primary);
+        background-color: var(--primary-lighter);
+    }
+
+    .image-upload-icon {
+        font-size: 20px;
+        color: var(--primary);
+        margin-bottom: 8px;
+    }
+
+    .image-upload-text {
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+        max-width: 120px;
+    }
+
+    .image-preview {
+        position: relative;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        transition: all 0.25s ease;
+        height: 100px;
+        display: none;
+        background-color: var(--background);
+    }
+
+    .image-preview.active {
+        display: block;
+        animation: fadeIn 0.25s ease;
+    }
+
+    .image-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .image-delete {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background-color: rgba(0, 0, 0, 0.6);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        opacity: 0;
+        transition: all 0.25s ease;
+        font-size: 12px;
+    }
+
+    .image-preview:hover .image-delete {
+        opacity: 1;
+    }
+
+    /* Button Customization */
+    .quick-buttons-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .quick-button {
+        padding: 6px 12px;
+        background-color: var(--primary-light);
+        color: var(--primary);
+        border-radius: 16px;
+        font-size: 13px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.25s ease;
+    }
+
+    .quick-button:hover {
+        background-color: rgba(79, 70, 229, 0.15);
+    }
+
+    .quick-button i {
+        cursor: pointer;
+        font-size: 11px;
+        opacity: 0.7;
+        transition: opacity 0.25s ease;
+    }
+
+    .quick-button i:hover {
+        opacity: 1;
+        color: var(--error);
+    }
+
+    .add-button-group {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .add-button-group .form-control {
+        flex: 1;
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+
+    /* Buttons */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.25s ease;
+        border: none;
+        gap: 8px;
+        white-space: nowrap;
+    }
+
+    .btn-primary {
+        background-color: var(--primary);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background-color: var(--primary-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+    }
+
+    .btn-secondary {
+        background-color: var(--primary-light);
+        color: var(--primary);
+    }
+
+    .btn-secondary:hover {
+        background-color: rgba(79, 70, 229, 0.15);
+    }
+
+    .btn-sm {
+        padding: 6px 12px;
+        font-size: 13px;
+        border-radius: 6px;
+    }
+
+    /* Editor Customization */
+    #faq-editor {
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        height: 180px;
+    }
+
+    .ql-toolbar.ql-snow {
+        border: none !important;
+        border-bottom: 1px solid var(--border) !important;
+        background-color: var(--background-alt);
+        padding: 8px !important;
+    }
+
+    .ql-container.ql-snow {
+        border: none !important;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-size: 14px !important;
+    }
+
+    /* Notification */
+    .notification {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 14px 20px;
+        border-radius: 10px;
+        background-color: white;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 1000;
+        transform: translateY(120%);
+        transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        border-left: 4px solid var(--primary);
+        max-width: 320px;
+    }
+
+    .notification.show {
+        transform: translateY(0);
+    }
+
+    .notification.success i {
+        color: var(--success);
+    }
+
+    .notification.error i {
+        color: var(--error);
+        border-left-color: var(--error);
+    }
+
+    /* Tabs for Settings */
+    .settings-tabs {
+        display: flex;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--border);
+        overflow-x: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .settings-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .settings-tab {
+        padding: 12px 20px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.25s ease;
+        white-space: nowrap;
+        border-bottom: 2px solid transparent;
+    }
+
+    .settings-tab.active {
+        color: var(--primary);
+        border-bottom-color: var(--primary);
+    }
+
+    /* Section Dividers */
+    .section-divider {
+        display: flex;
+        align-items: center;
+        margin: 24px 0 16px;
+    }
+
+    .section-divider-line {
+        flex: 1;
+        height: 1px;
+        background-color: var(--border);
+    }
+
+    .section-divider-text {
+        padding: 0 12px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-tertiary);
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.03); }
+        100% { transform: scale(1); }
+    }
+
+    .pulse {
+        animation: pulse 0.4s ease;
+    }
+
+    /* Empty states */
+    .empty-state {
+        padding: 24px;
+        text-align: center;
+        color: var(--text-tertiary);
+        font-size: 14px;
+    }
+
+    .empty-state-icon {
+        font-size: 32px;
+        margin-bottom: 16px;
+        color: var(--border);
+    }
+
+    /* Scrollable containers */
+    .scrollable {
+        max-height: 400px;
+        overflow-y: auto;
+        padding-right: 4px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--border) transparent;
+    }
+
+    .scrollable::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .scrollable::-webkit-scrollbar-thumb {
+        background-color: var(--border);
+        border-radius: 4px;
+    }
+</style>
+
+<div class="notification" id="notification">
+    <i class="fas fa-check-circle"></i>
+    <div>
+        <div style="font-weight: 600; font-size: 14px;">Success</div>
+        <div style="font-size: 13px; color: var(--text-secondary);">Your changes have been saved</div>
+    </div>
+</div>
+
+<div class="customization-container">
+    <div class="page-header">
+        <h1 class="page-title">Customize Your Chatbot</h1>
+        <button type="button" class="btn btn-primary" id="save-all-changes">
+            <i class="fas fa-save"></i> Save Changes
+        </button>
+    </div>
+
+    <div class="customization-layout">
+        <!-- Live Preview Panel -->
+        <div class="preview-panel">
+            <h2 class="preview-header">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+                Live Preview
+            </h2>
+            
+            <div class="preview-chat">
+                <div class="preview-chat-header" id="preview-header">
+                    <div class="preview-chat-logo" id="preview-logo">
+                        <img src="{% if form.instance.logo %}{{ form.instance.logo.url }}{% else %}https://via.placeholder.com/28?text=Logo{% endif %}" alt="Logo">
+                    </div>
+                    <div class="preview-chat-title" id="preview-title">{{ form.header_text.value|default:'Chat Support' }}</div>
+                </div>
+                
+                <div class="preview-chat-body">
+                    <div class="preview-chat-message bot" id="preview-welcome">
+                        {{ form.welcome_message.value|default:'Welcome! How can I help you today?' }}
+                    </div>
+                    <div class="preview-chat-message user">
+                        Can you tell me more about your business?
+                    </div>
+                    <div class="preview-chat-message bot" id="preview-business">
+                        {{ form.business_info.value|default:'We provide excellent services to meet your needs.' }}
+                    </div>
+                </div>
+                
+                <div class="preview-chat-footer">
+                    <input type="text" class="preview-chat-input" placeholder="Type your message...">
+                    <div class="preview-send-button" id="preview-send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="preview-toggle" id="preview-toggle">
+                {% if form.instance.chat_toggle_image %}
+                    <img src="{{ form.instance.chat_toggle_image.url }}" alt="Toggle Chat">
+                {% else %}
+                    <i class="fas fa-comment-dots" style="color: white; font-size: 20px;"></i>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel">
+            <div class="settings-tabs">
+                <div class="settings-tab active" data-tab="appearance">Appearance</div>
+                <div class="settings-tab" data-tab="content">Content</div>
+                <div class="settings-tab" data-tab="buttons">Quick Buttons</div>
+                <div class="settings-tab" data-tab="images">Images</div>
+            </div>
+
+            <form id="customization-form" method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                
+                <!-- Appearance Card -->
+                <div class="settings-card" id="appearance-tab">
+                    <div class="settings-header">
+                        <i class="fas fa-palette"></i> Visual Settings
+                    </div>
+                    <div class="settings-body">
+                        <div class="color-picker-group">
+                            <div class="form-group color-picker">
+                                <label class="form-label">Header Color</label>
+                                <div class="color-input-wrapper">
+                                    <input type="color" name="{{ form.header_color.name }}" id="{{ form.header_color.id_for_label }}" 
+                                           class="color-input" value="{{ form.header_color.value|default:'#4f46e5' }}">
+                                    <div class="color-preview" id="header-color-preview" style="background-color: {{ form.header_color.value|default:'#4f46e5' }}">
+                                        {{ form.header_color.value|default:'#4f46e5' }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group color-picker">
+                                <label class="form-label">Button Color</label>
+                                <div class="color-input-wrapper">
+                                    <input type="color" name="{{ form.send_button_color.name }}" id="{{ form.send_button_color.id_for_label }}" 
+                                           class="color-input" value="{{ form.send_button_color.value|default:'#4f46e5' }}">
+                                    <div class="color-preview" id="button-color-preview" style="background-color: {{ form.send_button_color.value|default:'#4f46e5' }}">
+                                        {{ form.send_button_color.value|default:'#4f46e5' }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Header Text</label>
+                            <input type="text" name="{{ form.header_text.name }}" id="{{ form.header_text.id_for_label }}" 
+                                   class="form-control" value="{{ form.header_text.value|default:'Chat Support' }}" 
+                                   placeholder="Enter header text">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Content Card -->
+                <div class="settings-card" id="content-tab" style="display: none;">
+                    <div class="settings-header">
+                        <i class="fas fa-comment-dots"></i> Chat Content
+                    </div>
+                    <div class="settings-body">
+                        <div class="form-group">
+                            <label class="form-label">Welcome Message</label>
+                            <textarea name="{{ form.welcome_message.name }}" id="{{ form.welcome_message.id_for_label }}" 
+                                      class="form-control" placeholder="Enter welcome message">{{ form.welcome_message.value|default:'Welcome! How can I help you today?' }}</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Business Information</label>
+                            <textarea name="{{ form.business_info.name }}" id="{{ form.business_info.id_for_label }}" 
+                                      class="form-control" placeholder="Enter business information">{{ form.business_info.value|default:'We provide excellent services to meet your needs.' }}</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">FAQ Content</label>
+                            <div id="faq-editor"></div>
+                            <textarea name="{{ form.faq.name }}" id="{{ form.faq.id_for_label }}" style="display: none;">{{ form.faq.value|default:'' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Access Buttons -->
+                <div class="settings-card" id="buttons-tab" style="display: none;">
+                    <div class="settings-header">
+                        <i class="fas fa-bolt"></i> Quick Access Buttons
+                    </div>
+                    <div class="settings-body">
+                        <div id="quick-buttons-container" class="quick-buttons-container">
+                            {% for button in form.instance.quick_access_buttons %}
+                                <div class="quick-button">
+                                    {{ button.name }}
+                                    <i class="fas fa-times remove-button" data-name="{{ button.name }}" data-value="{{ button.value }}"></i>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="section-divider">
+                            <div class="section-divider-line"></div>
+                            <div class="section-divider-text">Add New Button</div>
+                            <div class="section-divider-line"></div>
+                        </div>
+                        
+                        <div class="add-button-group">
+                            <input type="text" id="button-name" class="form-control" placeholder="Button Name">
+                            <input type="text" id="button-value" class="form-control" placeholder="Button Response">
+                            <button type="button" id="add-button" class="btn btn-secondary btn-sm">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
+                        </div>
+                        
+                        <input type="hidden" id="buttons-data" name="buttons_data" value="[]">
+                    </div>
+                </div>
+                
+                <!-- Images Card -->
+                <div class="settings-card" id="images-tab" style="display: none;">
+                    <div class="settings-header">
+                        <i class="fas fa-image"></i> Images & Icons
+                    </div>
+                    <div class="settings-body">
+                        <div class="image-upload-container">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label">Logo</label>
+                                <div class="image-upload" id="logo-upload">
+                                    <input type="file" name="{{ form.logo.name }}" id="{{ form.logo.id_for_label }}" style="display: none;" accept="image/*">
+                                    <div class="image-upload-icon">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                    </div>
+                                    <div class="image-upload-text">Upload logo</div>
+                                </div>
+                                <div class="image-preview {% if form.instance.logo %}active{% endif %}" id="logo-preview">
+                                    <img src="{% if form.instance.logo %}{{ form.instance.logo.url }}{% endif %}" alt="Logo">
+                                    <div class="image-delete" data-image-type="logo">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label">Notice Icon</label>
+                                <div class="image-upload" id="notice-upload">
+                                    <input type="file" name="{{ form.we_are_here_image.name }}" id="{{ form.we_are_here_image.id_for_label }}" style="display: none;" accept="image/*">
+                                    <div class="image-upload-icon">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                    </div>
+                                    <div class="image-upload-text">Upload notice icon</div>
+                                </div>
+                                <div class="image-preview {% if form.instance.we_are_here_image %}active{% endif %}" id="notice-preview">
+                                    <img src="{% if form.instance.we_are_here_image %}{{ form.instance.we_are_here_image.url }}{% endif %}" alt="Notice Icon">
+                                    <div class="image-delete" data-image-type="we_are_here_image">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label class="form-label">Toggle Button</label>
+                                <div class="image-upload" id="toggle-upload">
+                                    <input type="file" name="{{ form.chat_toggle_image.name }}" id="{{ form.chat_toggle_image.id_for_label }}" style="display: none;" accept="image/*">
+                                    <div class="image-upload-icon">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                    </div>
+                                    <div class="image-upload-text">Upload toggle icon</div>
+                                </div>
+                                <div class="image-preview {% if form.instance.chat_toggle_image %}active{% endif %}" id="toggle-preview">
+                                    <img src="{% if form.instance.chat_toggle_image %}{{ form.instance.chat_toggle_image.url }}{% endif %}" alt="Toggle Button">
+                                    <div class="image-delete" data-image-type="chat_toggle_image">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="section-divider" style="margin-top: 24px;">
+                            <div class="section-divider-line"></div>
+                            <div class="section-divider-text">Image Guidelines</div>
+                            <div class="section-divider-line"></div>
+                        </div>
+                        
+                        <ul style="color: var(--text-secondary); font-size: 13px; padding-left: 20px; margin-top: 12px;">
+                            <li>Use square images for best results</li>
+                            <li>Recommended size: 64×64px</li>
+                            <li>PNG format with transparency works best</li>
+                            <li>Maximum file size: 200KB</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <button type="submit" id="submit-form" class="btn btn-primary" style="display: none;">Save Changes</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Include Quill library -->
+<script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Tab Navigation
+        const tabs = document.querySelectorAll('.settings-tab');
+        const tabContents = {
+            'appearance': document.getElementById('appearance-tab'),
+            'content': document.getElementById('content-tab'),
+            'buttons': document.getElementById('buttons-tab'),
+            'images': document.getElementById('images-tab')
+        };
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Remove active class from all tabs
+                tabs.forEach(t => t.classList.remove('active'));
+                
+                // Hide all tab contents
+                Object.values(tabContents).forEach(content => {
+                    if (content) content.style.display = 'none';
+                });
+                
+                // Activate clicked tab
+                this.classList.add('active');
+                
+                // Show corresponding content
+                const tabId = this.dataset.tab;
+                if (tabContents[tabId]) {
+                    tabContents[tabId].style.display = 'block';
+                }
+            });
+        });
+
+        // Initialize Quill editor
+        const quill = new Quill('#faq-editor', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    ['bold', 'italic', 'underline'],
+                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                    ['clean']
+                ]
+            },
+            placeholder: 'Write your FAQ content here...',
+        });
+
+        // Set initial content if there's existing FAQ data
+        const faqContent = `{{ form.faq.value|default:''|escapejs }}`;
+        if (faqContent) {
+            quill.root.innerHTML = faqContent;
+        }
+
+        // Color pickers
+        const headerColor = document.getElementById('{{ form.header_color.id_for_label }}');
+        const sendButtonColor = document.getElementById('{{ form.send_button_color.id_for_label }}');
+        const headerColorPreview = document.getElementById('header-color-preview');
+        const buttonColorPreview = document.getElementById('button-color-preview');
+        const previewHeader = document.getElementById('preview-header');
+        const previewSendBtn = document.getElementById('preview-send-btn');
+        const previewToggle = document.getElementById('preview-toggle');
+
+        // Initialize color pickers
+        headerColor.addEventListener('input', function() {
+            previewHeader.style.backgroundColor = this.value;
+            headerColorPreview.style.backgroundColor = this.value;
+            headerColorPreview.textContent = this.value;
+            previewHeader.classList.add('pulse');
+            setTimeout(() => previewHeader.classList.remove('pulse'), 400);
+        });
+
+        sendButtonColor.addEventListener('input', function() {
+            previewSendBtn.style.backgroundColor = this.value;
+            previewToggle.style.backgroundColor = this.value;
+            buttonColorPreview.style.backgroundColor = this.value;
+            buttonColorPreview.textContent = this.value;
+            previewSendBtn.classList.add('pulse');
+            previewToggle.classList.add('pulse');
+            setTimeout(() => {
+                previewSendBtn.classList.remove('pulse');
+                previewToggle.classList.remove('pulse');
+            }, 400);
+        });
+
+        // Text field updates
+        const headerText = document.getElementById('{{ form.header_text.id_for_label }}');
+        const previewTitle = document.getElementById('preview-title');
+        
+        headerText.addEventListener('input', function() {
+            previewTitle.textContent = this.value || 'Chat Support';
+        });
+
+        const welcomeMessage = document.getElementById('{{ form.welcome_message.id_for_label }}');
+        const previewWelcome = document.getElementById('preview-welcome');
+        
+        welcomeMessage.addEventListener('input', function() {
+            previewWelcome.textContent = this.value || 'Welcome! How can I help you today?';
+        });
+
+        const businessInfo = document.getElementById('{{ form.business_info.id_for_label }}');
+        const previewBusiness = document.getElementById('preview-business');
+        
+        businessInfo.addEventListener('input', function() {
+            previewBusiness.textContent = this.value || 'We provide excellent services to meet your needs.';
+        });
+
+        // Image uploads
+        setupImageUpload('logo', 'logo-upload', 'logo-preview', 'preview-logo');
+        setupImageUpload('notice', 'notice-upload', 'notice-preview');
+        setupImageUpload('toggle', 'toggle-upload', 'toggle-preview', 'preview-toggle');
+
+        function setupImageUpload(type, uploadId, previewId, previewTarget = null) {
+            const uploadDiv = document.getElementById(uploadId);
+            const fileInput = uploadDiv.querySelector('input[type="file"]');
+            const previewDiv = document.getElementById(previewId);
+            
+            uploadDiv.addEventListener('click', function() {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', function() {
+                if (this.files && this.files[0]) {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        previewDiv.querySelector('img').src = e.target.result;
+                        previewDiv.classList.add('active');
+                        uploadDiv.style.display = 'none';
+                        
+                        if (previewTarget) {
+                            if (previewTarget === 'preview-logo') {
+                                document.querySelector(`#${previewTarget} img`).src = e.target.result;
+                            } else if (previewTarget === 'preview-toggle') {
+                                if (document.querySelector(`#${previewTarget} img`)) {
+                                    document.querySelector(`#${previewTarget} img`).src = e.target.result;
+                                } else {
+                                    document.querySelector(`#${previewTarget}`).innerHTML = `<img src="${e.target.result}" alt="Toggle">`;
+                                }
+                            }
+                        }
+                    };
+                    
+                    reader.readAsDataURL(this.files[0]);
+                }
+            });
+        }
+
+        // Image deletion
+        document.querySelectorAll('.image-delete').forEach(deleteBtn => {
+            deleteBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const imageType = this.dataset.imageType;
+                const previewDiv = this.closest('.image-preview');
+                const uploadDiv = document.getElementById(
+                    imageType === 'logo' ? 'logo-upload' : 
+                    imageType === 'we_are_here_image' ? 'notice-upload' : 'toggle-upload'
+                );
+                
+                if (confirm('Are you sure you want to delete this image?')) {
+                    // Send AJAX request to delete image
+                    fetch(`/delete_${imageType}/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': '{{ csrf_token }}',
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Update UI
+                            previewDiv.classList.remove('active');
+                            uploadDiv.style.display = 'flex';
+                            
+                            // Reset preview if needed
+                            if (imageType === 'logo') {
+                                document.querySelector('#preview-logo img').src = 'https://via.placeholder.com/28?text=Logo';
+                            } else if (imageType === 'chat_toggle_image') {
+                                document.querySelector('#preview-toggle').innerHTML = '<i class="fas fa-comment-dots" style="color: white; font-size: 20px;"></i>';
+                            }
+                            
+                            showNotification('Image deleted successfully', 'success');
+                        } else {
+                            showNotification('Failed to delete image', 'error');
+                        }
+                    });
+                }
+            });
+        });
+
+        // Quick access buttons
+        const buttonsContainer = document.getElementById('quick-buttons-container');
+        const buttonNameInput = document.getElementById('button-name');
+        const buttonValueInput = document.getElementById('button-value');
+        const addButtonBtn = document.getElementById('add-button');
+        const buttonsDataInput = document.getElementById('buttons-data');
+        
+        // Track buttons in memory
+        let buttons = [];
+        
+        // Initialize buttons from existing data
+        {% for button in form.instance.quick_access_buttons %}
+            buttons.push({
+                name: "{{ button.name }}",
+                value: "{{ button.value }}"
+            });
+        {% endfor %}
+        
+        updateButtonsData();
+        
+        addButtonBtn.addEventListener('click', function() {
+            const name = buttonNameInput.value.trim();
+            const value = buttonValueInput.value.trim();
+            
+            if (name && value) {
+                // Add to memory
+                buttons.push({ name, value });
+                
+                // Add to UI
+                addButtonToUI(name, value);
+                
+                // Update hidden input
+                updateButtonsData();
+                
+                // Clear inputs
+                buttonNameInput.value = '';
+                buttonValueInput.value = '';
+            } else {
+                showNotification('Please enter both name and value', 'error');
+            }
+        });
+        
+        // Remove button click event (delegated)
+        buttonsContainer.addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-button') || e.target.parentElement.classList.contains('remove-button')) {
+                const buttonElement = e.target.closest('.quick-button');
+                const name = e.target.dataset.name || e.target.parentElement.dataset.name;
+                
+                // Remove from memory
+                buttons = buttons.filter(button => button.name !== name);
+                
+                // Remove from UI with animation
+                buttonElement.style.opacity = '0';
+                setTimeout(() => {
+                    buttonElement.remove();
+                }, 250);
+                
+                // Update hidden input
+                updateButtonsData();
+            }
+        });
+        
+        function addButtonToUI(name, value) {
+            const buttonElement = document.createElement('div');
+            buttonElement.className = 'quick-button';
+            buttonElement.innerHTML = `
+                ${name}
+                <i class="fas fa-times remove-button" data-name="${name}" data-value="${value}"></i>
+            `;
+            buttonElement.style.opacity = '0';
+            buttonsContainer.appendChild(buttonElement);
+            
+            // Trigger animation
+            setTimeout(() => {
+                buttonElement.style.opacity = '1';
+            }, 10);
+        }
+        
+        function updateButtonsData() {
+            buttonsDataInput.value = JSON.stringify(buttons);
+        }
+
+        // Form submission
+        const form = document.getElementById('customization-form');
+        const saveButton = document.getElementById('save-all-changes');
+        
+        saveButton.addEventListener('click', function() {
+            // Update FAQ content before submission
+            const faqTextarea = document.getElementById('{{ form.faq.id_for_label }}');
+            faqTextarea.value = quill.root.innerHTML;
+            
+            // Add loading state
+            saveButton.disabled = true;
+            saveButton.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Saving...';
+            
+            // Submit form via AJAX
+            const formData = new FormData(form);
+            
+            fetch(form.action || window.location.href, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Reset button state
+                saveButton.disabled = false;
+                saveButton.innerHTML = '<i class="fas fa-save"></i> Save Changes';
+                
+                if (data.success) {
+                    showNotification('Your changes have been saved successfully', 'success');
+                } else {
+                    showNotification('Failed to save changes. Please check the form for errors.', 'error');
+                }
+            })
+            .catch(error => {
+                // Reset button state
+                saveButton.disabled = false;
+                saveButton.innerHTML = '<i class="fas fa-save"></i> Save Changes';
+                
+                showNotification('An error occurred. Please try again.', 'error');
+            });
+        });
+
+        // Notification system
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            
+            // Update notification style and content
+            notification.className = `notification ${type}`;
+            if (type === 'error') {
+                notification.style.borderLeftColor = 'var(--error)';
+            } else {
+                notification.style.borderLeftColor = 'var(--success)';
+            }
+            
+            notification.querySelector('i').className = type === 'success' ? 
+                'fas fa-check-circle' : 'fas fa-exclamation-circle';
+            notification.querySelector('div > div:first-child').textContent = type === 'success' ? 'Success' : 'Error';
+            notification.querySelector('div > div:last-child').textContent = message;
+            
+            // Show notification
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+            
+            // Hide after 4 seconds
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 4000);
+        }
+
+        // Initialize form based on visible images
+        document.querySelectorAll('.image-preview.active').forEach(preview => {
+            const imageType = preview.querySelector('.image-delete').dataset.imageType;
+            const uploadDiv = document.getElementById(
+                imageType === 'logo' ? 'logo-upload' : 
+                imageType === 'we_are_here_image' ? 'notice-upload' : 'toggle-upload'
+            );
+            
+            if (uploadDiv) {
+                uploadDiv.style.display = 'none';
+            }
+        });
+
+        // Add chat message simulation
+        const chatInput = document.querySelector('.preview-chat-input');
+        const sendButton = document.getElementById('preview-send-btn');
+        
+        function simulateMessage() {
+            if (chatInput.value.trim()) {
+                const msgContainer = document.querySelector('.preview-chat-body');
+                
+                // Add user message
+                const userMsg = document.createElement('div');
+                userMsg.className = 'preview-chat-message user';
+                userMsg.textContent = chatInput.value.trim();
+                msgContainer.appendChild(userMsg);
+                
+                // Clear input
+                chatInput.value = '';
+                
+                // Scroll to bottom
+                msgContainer.scrollTop = msgContainer.scrollHeight;
+                
+                // Simulate bot response after delay
+                setTimeout(() => {
+                    const botMsg = document.createElement('div');
+                    botMsg.className = 'preview-chat-message bot';
+                    botMsg.textContent = 'Thank you for your message. I\'ll get back to you shortly.';
+                    msgContainer.appendChild(botMsg);
+                    
+                    // Scroll to bottom again
+                    msgContainer.scrollTop = msgContainer.scrollHeight;
+                }, 1000);
+            }
+        }
+        
+        sendButton.addEventListener('click', simulateMessage);
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                simulateMessage();
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -66,13 +66,14 @@ def _deep_docs_progress_path(workspace_path: Path) -> Path:
     return _devhub_meta_dir(workspace_path) / "deep-docs-progress.json"
 
 
-def _write_deep_docs_progress(workspace_path: Path, payload: dict) -> None:
-    path = _deep_docs_progress_path(workspace_path)
+def _scaffold_progress_path(workspace_path: Path) -> Path:
+    return _devhub_meta_dir(workspace_path) / "scaffold-progress.json"
+
+
+def _atomic_write_json(path: Path, payload: dict, prefix: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    progress = dict(payload)
-    progress["updated_at"] = timezone.now().isoformat()
-    serialized = json.dumps(progress)
-    temp_fd, temp_path = tempfile.mkstemp(prefix="deep-docs-", suffix=".json", dir=str(path.parent))
+    serialized = json.dumps(payload)
+    temp_fd, temp_path = tempfile.mkstemp(prefix=prefix, suffix=".json", dir=str(path.parent))
     try:
         with os.fdopen(temp_fd, "w", encoding="utf-8") as handle:
             handle.write(serialized)
@@ -92,6 +93,13 @@ def _write_deep_docs_progress(workspace_path: Path, payload: dict) -> None:
             os.unlink(temp_path)
 
 
+def _write_deep_docs_progress(workspace_path: Path, payload: dict) -> None:
+    path = _deep_docs_progress_path(workspace_path)
+    progress = dict(payload)
+    progress["updated_at"] = timezone.now().isoformat()
+    _atomic_write_json(path, progress, "deep-docs-")
+
+
 def _safe_write_deep_docs_progress(workspace_path: Path, payload: dict) -> None:
     try:
         _write_deep_docs_progress(workspace_path, payload)
@@ -107,6 +115,30 @@ def _read_deep_docs_progress(workspace_path: Path) -> dict | None:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         logger.exception("Failed to read deep docs progress from %s", path)
+        return None
+
+
+def _write_scaffold_progress(workspace_path: Path, payload: dict) -> None:
+    progress = dict(payload)
+    progress["updated_at"] = timezone.now().isoformat()
+    _atomic_write_json(_scaffold_progress_path(workspace_path), progress, "scaffold-")
+
+
+def _safe_write_scaffold_progress(workspace_path: Path, payload: dict) -> None:
+    try:
+        _write_scaffold_progress(workspace_path, payload)
+    except Exception:
+        logger.exception("Failed to write scaffold progress for %s", workspace_path)
+
+
+def _read_scaffold_progress(workspace_path: Path) -> dict | None:
+    path = _scaffold_progress_path(workspace_path)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to read scaffold progress from %s", path)
         return None
 
 

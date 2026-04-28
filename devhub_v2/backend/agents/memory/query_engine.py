@@ -45,6 +45,7 @@ class QueryResult:
     compacted: bool = False
     total_duration_ms: int = 0
     error: str | None = None
+    hit_turn_limit: bool = False
 
     @property
     def success(self) -> bool:
@@ -243,6 +244,7 @@ class QueryEngine:
 
         else:
             # Hit max turns
+            result.hit_turn_limit = True
             result.response = (
                 f"I've reached the maximum number of tool-calling turns ({max_turns}). "
                 "Here's what I accomplished so far:\n\n"

@@ -1,0 +1,432 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register - Helpybo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --surface: #FFFFFF;
+            --background: #F8FAFC;
+            --text-main: #0F172A;
+            --text-muted: #64748B;
+            --border: #E2E8F0;
+            --ring: rgba(79, 70, 229, 0.2);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--background);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Layout */
+        .split-layout {
+            display: flex;
+            width: 100%;
+            min-height: 100vh;
+        }
+
+        /* Left Side - Visuals */
+        .visual-pane {
+            flex: 1.2;
+            position: relative;
+            overflow: hidden;
+            display: none;
+            background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+            color: white;
+            padding: 4rem;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        @media (min-width: 1024px) {
+            .visual-pane {
+                display: flex;
+            }
+        }
+
+        .visual-pane::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: url('data:image/svg+xml,<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" stroke="rgba(255,255,255,0.1)" stroke-width="2" fill="none"/></svg>') repeat;
+            background-size: 100px 100px;
+            opacity: 0.5;
+            z-index: 1;
+        }
+
+        .visual-content {
+            position: relative;
+            z-index: 2;
+            max-width: 480px;
+        }
+
+        .brand-logo {
+            height: 56px;
+            background-color: #FFFFFF;
+            padding: 10px 16px;
+            border-radius: 12px;
+            margin-bottom: 4rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            object-fit: contain;
+            display: inline-block;
+        }
+
+        .visual-text h2 {
+            font-size: 3rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .visual-text p {
+            font-size: 1.125rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        /* Abstract shapes in background */
+        .blob {
+            position: absolute;
+            filter: blur(60px);
+            z-index: 0;
+            border-radius: 50%;
+            animation: float 10s infinite ease-in-out alternate;
+        }
+        .blob-1 {
+            top: -10%; left: -10%;
+            width: 400px; height: 400px;
+            background: #EC4899;
+            opacity: 0.6;
+        }
+        .blob-2 {
+            bottom: -10%; right: -10%;
+            width: 500px; height: 500px;
+            background: #06B6D4;
+            opacity: 0.6;
+            animation-delay: -5s;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(30px, 50px) scale(1.1); }
+        }
+
+        .social-proof {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: auto;
+        }
+
+        .avatars {
+            display: flex;
+        }
+
+        .avatars img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 2px solid #4F46E5;
+            object-fit: cover;
+        }
+
+        .avatars img:not(:first-child) {
+            margin-left: -12px;
+        }
+
+        .social-proof-text {
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        /* Right Side - Form */
+        .form-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            background-color: var(--surface);
+            position: relative;
+        }
+
+        .form-pane::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: radial-gradient(#E2E8F0 1px, transparent 1px);
+            background-size: 24px 24px;
+            opacity: 0.4;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .form-container {
+            width: 100%;
+            max-width: 400px;
+            animation: fadeIn 0.6s ease-out forwards;
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .mobile-logo {
+            height: 56px;
+            margin-bottom: 2rem;
+            display: block;
+            object-fit: contain;
+        }
+        @media (min-width: 1024px) {
+            .mobile-logo {
+                display: none;
+            }
+        }
+
+        .header {
+            margin-bottom: 2.5rem;
+        }
+
+        .header h1 {
+            font-size: 1.875rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        .msg-alert {
+            background-color: #FEE2E2;
+            color: #991B1B;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #F87171;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="password"] {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            font-size: 0.95rem;
+            font-family: inherit;
+            color: var(--text-main);
+            background-color: #F8FAFC;
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            transition: all 0.2s ease;
+        }
+
+        .form-group input[type="text"]:focus,
+        .form-group input[type="password"]:focus {
+            outline: none;
+            border-color: var(--primary);
+            background-color: var(--surface);
+            box-shadow: 0 0 0 4px var(--ring);
+        }
+
+        .form-group input::placeholder {
+            color: #94A3B8;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .checkbox-group label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 0;
+            cursor: pointer;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            border-radius: 0.25rem;
+            border: 1px solid var(--border);
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .text-error {
+            color: #EF4444;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            display: block;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 0.875rem;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2), 0 2px 4px -2px rgba(79, 70, 229, 0.1);
+            margin-top: 1rem;
+        }
+
+        .btn-submit:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3), 0 4px 6px -4px rgba(79, 70, 229, 0.1);
+        }
+
+        .btn-submit:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        .footer-text {
+            position: absolute;
+            bottom: 2rem;
+            text-align: center;
+            width: 100%;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            z-index: 1;
+        }
+
+        @media (max-width: 1023px) {
+            .footer-text {
+                position: relative;
+                bottom: 0;
+                margin-top: 3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="split-layout">
+        <!-- Left Visual Pane -->
+        <div class="visual-pane">
+            <div class="blob blob-1"></div>
+            <div class="blob blob-2"></div>
+
+            <div class="visual-content">
+                <img src="https://raw.githubusercontent.com/traromal/Aromal_TR/refs/heads/main/helpyyyyyyyyyyyyyyy.PNG" alt="Helpybo Logo" class="brand-logo">
+                <div class="visual-text">
+                    <h2>Join Helpybo today.</h2>
+                    <p>Create an account to start automating your customer support and capturing leads 24/7.</p>
+                </div>
+            </div>
+
+            <div class="visual-content social-proof">
+                <div class="avatars">
+                    <img src="https://i.pravatar.cc/100?img=1" alt="User">
+                    <img src="https://i.pravatar.cc/100?img=2" alt="User">
+                    <img src="https://i.pravatar.cc/100?img=3" alt="User">
+                    <img src="https://i.pravatar.cc/100?img=4" alt="User">
+                </div>
+                <div class="social-proof-text">
+                    Trusted by 10,000+ users
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Form Pane -->
+        <div class="form-pane">
+            <div class="form-container">
+                <img src="https://raw.githubusercontent.com/traromal/Aromal_TR/refs/heads/main/helpyyyyyyyyyyyyyyy.PNG" alt="Helpybo Logo" class="mobile-logo">
+
+                <div class="header">
+                    <h1>Create an account</h1>
+                    <p>Please enter your details to register.</p>
+                </div>
+
+                {% if msg %}
+                <div class="msg-alert">
+                    {{ msg | safe }}
+                </div>
+                {% endif %}
+
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="form-group">
+                        <label for="{{ form.username.id_for_label }}">Username</label>
+                        {{ form.username }}
+                    </div>
+
+                    <div class="form-group">
+                        <label for="{{ form.password1.id_for_label }}">Password</label>
+                        {{ form.password1 }}
+                    </div>
+
+                    <div class="form-group">
+                        <label for="{{ form.password2.id_for_label }}">Confirm Password</label>
+                        {{ form.password2 }}
+                    </div>
+
+                    <div class="checkbox-group">
+                        {{ form.is_admin }}
+                        <label for="{{ form.is_admin.id_for_label }}">Admin</label>
+                    </div>
+                    <div class="checkbox-group">
+                        {{ form.is_user }}
+                        <label for="{{ form.is_user.id_for_label }}">User</label>
+                    </div>
+
+                    <span class="text-error">{{ form.errors }}</span>
+
+                    <button type="submit" class="btn-submit">Register</button>
+                </form>
+            </div>
+
+            <div class="footer-text">
+                &copy; 2024 GAUDE Business and Infrastructure Solutions Pvt Ltd.
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -9,7 +9,8 @@
       "Bash(python *)",
       "Bash(python3 *)",
       "Bash(grep -n \"^@csrf_exempt$\\\\|^def \\\\|^@\" \"C:/Users/USER/Desktop/Agentic/devhub_v2/backend/api/views/_endpoints_raw.py\")",
-      "Bash(grep -v \"^[0-9]*:@$\")"
+      "Bash(grep -v \"^[0-9]*:@$\")",
+      "Bash(echo \"exit:$?\")"
     ]
   },
   "enabledMcpjsonServers": [

@@ -12,7 +12,12 @@ SKIP_DIRS = {
 }
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = BASE_DIR / "data"
+
+# DATA_DIR can be overridden via DEVHUB_DATA_DIR env var.
+# Default stays at BASE_DIR/data to keep existing workspaces working.
+_env_data_dir = os.environ.get("DEVHUB_DATA_DIR", "").strip()
+DATA_DIR = Path(_env_data_dir) if _env_data_dir else BASE_DIR / "data"
+
 WORKSPACE_DIR = DATA_DIR / "workspaces"
 PROJECTS_DIR = DATA_DIR / "projects"
 

@@ -1,0 +1,476 @@
+{
+  "cache_version": 24,
+  "file_count": 47,
+  "files": [
+    {
+      "path": "backend/.env",
+      "size": 93,
+      "extension": "",
+      "language": "env",
+      "modified": 1777292074515570600,
+      "depth": 2,
+      "tier": 3,
+      "tier_reason": "non-indexable"
+    },
+    {
+      "path": "backend/package.json",
+      "size": 608,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777292074514972400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/prisma/schema.prisma",
+      "size": 873,
+      "extension": ".prisma",
+      "language": "prisma",
+      "modified": 1777292074523521600,
+      "depth": 3,
+      "tier": 3,
+      "tier_reason": "non-indexable"
+    },
+    {
+      "path": "backend/prisma/seed.ts",
+      "size": 1972,
+      "extension": ".ts",
+      "language": "typescript",
+      "modified": 1777292074524527700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/src/index.ts",
+      "size": 3791,
+      "extension": ".ts",
+      "language": "typescript",
+      "modified": 1777292074524527700,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/tsconfig.json",
+      "size": 209,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777292074515570600,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "frontend/app/ai-symptom-checker/page.tsx",
+      "size": 5001,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777292074531615700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/app/appointments/page.tsx",
+      "size": 6941,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777292074531615700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/app/doctors/page.tsx",
+      "size": 2341,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777292074530619400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/app/globals.css",
+      "size": 204,
+      "extension": ".css",
+      "language": "css",
+      "modified": 1777292074528135000,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/app/layout.tsx",
+      "size": 755,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777292074529617000,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/app/page.tsx",
+      "size": 4312,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777292074530619400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/components/Navbar.tsx",
+      "size": 919,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777292074529617000,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/components/Sidebar.tsx",
+      "size": 2242,
+      "extension": ".tsx",
+      "language": "typescript-react",
+      "modified": 1777292074528135000,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/package.json",
+      "size": 606,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777292074525528300,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "size": 89,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777292074527129800,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "frontend/tailwind.config.ts",
+      "size": 492,
+      "extension": ".ts",
+      "language": "typescript",
+      "modified": 1777292074527129800,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "size": 598,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777292074526585200,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "index.html",
+      "size": 851,
+      "extension": ".html",
+      "language": "html",
+      "modified": 1777291979355193700,
+      "depth": 0,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "package.json",
+      "size": 391,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777292074513464700,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "postcss.config.js",
+      "size": 84,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777291979338996700,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "src/App.jsx",
+      "size": 1283,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979340000400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "src/components/AppShell.jsx",
+      "size": 7046,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979346002700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/domain/AIInsightCard.jsx",
+      "size": 2573,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979346002700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/domain/AppointmentCard.jsx",
+      "size": 5109,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979347508100,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/domain/DoctorCard.jsx",
+      "size": 2964,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979344992900,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/ItemCard.jsx",
+      "size": 4504,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979349040100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/layout/AppShell.jsx",
+      "size": 482,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979341482900,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/layout/Footer.jsx",
+      "size": 5063,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979343482900,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/layout/Navbar.jsx",
+      "size": 6683,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979344992900,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/StatCard.jsx",
+      "size": 4484,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979348029700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/TabbedPanel.jsx",
+      "size": 6906,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979349040100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/TimelineList.jsx",
+      "size": 6496,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979350040000,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/ui/Badge.jsx",
+      "size": 641,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979342482600,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/ui/Button.jsx",
+      "size": 1218,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979343482900,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/ui/Card.jsx",
+      "size": 472,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979341482900,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/index.css",
+      "size": 2021,
+      "extension": ".css",
+      "language": "css",
+      "modified": 1777291979356872400,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/main.jsx",
+      "size": 238,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979355193700,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "src/mockData.js",
+      "size": 24191,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777291979327873600,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "large-source"
+    },
+    {
+      "path": "src/pages/BookingWorkflow.jsx",
+      "size": 16943,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979354194500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/DoctorDirectory.jsx",
+      "size": 6510,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979351038400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/DoctorProfile.jsx",
+      "size": 14729,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979352195400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/LandingPage.jsx",
+      "size": 12386,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979354194500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/MedicalHistory.jsx",
+      "size": 5493,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979351038400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/PatientDashboard.jsx",
+      "size": 11844,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777291979353195500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "tailwind.config.js",
+      "size": 787,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777291979337997400,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "vite.config.js",
+      "size": 166,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777291979337997400,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    }
+  ]
+}

@@ -7,10 +7,12 @@ from django.db import close_old_connections
 from agents.core.base import ai_config_is_usable
 from agents.docs.documentation import generate_codebase_reference_sync
 from agents.memory.store import build_blueprint_context
+from agents.implementation.plan import _count_total_workspace_files
 from core.models import DocumentationRun, Project
 
 from api.blueprint.builders import _enrich_blueprint_document
 from api.codebase.doc_builder import _project_workspace_path
+from api.codebase.scanner import scan_local_folder
 from api.project_utils import DEVHUB_META_DIR, _project_ai_config
 from api.workspace.memory import _render_project_features_summary
 

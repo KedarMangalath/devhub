@@ -1,0 +1,26 @@
+{
+  "id": "25b04d5976dc4cd79bedac285605d31d",
+  "project_id": "4e44df07-c8cc-485c-90d7-001e62382e69",
+  "workspace_path": "C:\\Users\\USER\\Desktop\\Agentic\\devhub_v2\\backend\\data\\projects\\4e44df07-c8cc-485c-90d7-001e62382e69",
+  "source": "chat_agent",
+  "label": "modify the  Chatbot Chat History Preview Knowledge Base Train Appearance Custom Rules Custom Flows A admin Update Chatbot Settings Name admin's Chatbot Chatbot",
+  "created_at": "2026-04-24T05:56:38.895148+00:00",
+  "file_count": 1108,
+  "excluded_dirs": [
+    ".git",
+    ".idea",
+    ".next",
+    ".nuxt",
+    ".venv",
+    ".vscode",
+    "__pycache__",
+    "build",
+    "dist",
+    "env",
+    "node_modules",
+    "out",
+    "target",
+    "vendor",
+    "venv"
+  ]
+}

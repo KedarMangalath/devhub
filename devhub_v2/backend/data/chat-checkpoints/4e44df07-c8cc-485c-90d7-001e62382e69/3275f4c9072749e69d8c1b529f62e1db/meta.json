@@ -1,0 +1,26 @@
+{
+  "id": "3275f4c9072749e69d8c1b529f62e1db",
+  "project_id": "4e44df07-c8cc-485c-90d7-001e62382e69",
+  "workspace_path": "C:\\Users\\USER\\Desktop\\Agentic\\devhub_v2\\backend\\data\\projects\\4e44df07-c8cc-485c-90d7-001e62382e69",
+  "source": "chat_agent",
+  "label": "make it a 2 pane layout, go bacl to the old color palette of blue color",
+  "created_at": "2026-04-23T12:02:52.192423+00:00",
+  "file_count": 1108,
+  "excluded_dirs": [
+    ".git",
+    ".idea",
+    ".next",
+    ".nuxt",
+    ".venv",
+    ".vscode",
+    "__pycache__",
+    "build",
+    "dist",
+    "env",
+    "node_modules",
+    "out",
+    "target",
+    "vendor",
+    "venv"
+  ]
+}

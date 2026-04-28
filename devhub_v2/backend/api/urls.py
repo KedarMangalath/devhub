@@ -4,7 +4,9 @@ from integrations import views as integration_views
 
 from api.views.agent import deep_documentation_progress, deep_documentation_stream, start_agent
 from api.views.chat import project_chat, project_chat_undo
+from api.views.chat_stream import project_chat_agent_stream
 from api.views.import_views import inspect_folder_import, inspect_github_import, pick_local_folder, suggest_project_details
+from api.views.skills import detect_skills, skill_detail, skills_list
 from api.views.projects import (
     create_project,
     delete_project,
@@ -52,6 +54,7 @@ urlpatterns = [
     # Chat
     path('projects/<str:project_id>/chat/', project_chat, name='project_chat'),
     path('projects/<str:project_id>/chat/undo/', project_chat_undo, name='project_chat_undo'),
+    path('projects/<str:project_id>/chat/agent-stream/', project_chat_agent_stream, name='project_chat_agent_stream'),
     path('projects/<str:project_id>/github/', integration_views.project_github_status, name='project_github_status'),
     path('projects/<str:project_id>/github/issues/', integration_views.project_github_issues, name='project_github_issues'),
     path('projects/<str:project_id>/github/pulls/', integration_views.project_github_pulls, name='project_github_pulls'),
@@ -60,6 +63,11 @@ urlpatterns = [
     path('projects/<str:project_id>/agent/start/', start_agent, name='start_agent'),
     path('projects/<str:project_id>/agent/deep-docs/', deep_documentation_stream, name='deep_documentation_stream'),
     path('projects/<str:project_id>/agent/deep-docs/progress/', deep_documentation_progress, name='deep_documentation_progress'),
+
+    # Global Skills
+    path('skills/', skills_list, name='skills_list'),
+    path('skills/detect/', detect_skills, name='detect_skills'),
+    path('skills/<str:slug>/', skill_detail, name='skill_detail'),
 
     # Workspace filesystem
     path('workspace/<str:workspace_id>/fs/', workspace_fs, name='workspace_fs'),

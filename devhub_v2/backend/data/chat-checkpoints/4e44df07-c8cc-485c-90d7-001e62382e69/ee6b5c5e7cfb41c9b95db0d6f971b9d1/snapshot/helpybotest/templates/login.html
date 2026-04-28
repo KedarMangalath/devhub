@@ -1,0 +1,450 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Helpybo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-blue: #0056b3;
+            --light-blue: #007bff;
+            --dark-blue: #004085;
+            --bg-color: #ffffff;
+            --text-main: #2d3748;
+            --text-muted: #718096;
+            --input-bg: #f7fafc;
+            --input-border: #e2e8f0;
+            --focus-glow: rgba(0, 123, 255, 0.3);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            min-height: 100vh;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            perspective: 1000px;
+        }
+
+        /* 2-Pane Layout with Entrance Animations */
+        .left-pane {
+            flex: 1.2;
+            background: linear-gradient(135deg, var(--dark-blue) 0%, var(--primary-blue) 50%, var(--light-blue) 100%);
+            background-size: 200% 200%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            animation: gradientShift 10s ease infinite, slideInLeftPane 1s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            transform-origin: left;
+        }
+
+        .right-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            background-color: #ffffff;
+            animation: slideInRightPane 1s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+            z-index: 10;
+            box-shadow: -20px 0 50px rgba(0,0,0,0.1);
+        }
+
+        /* Keyframes for Panes */
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes slideInLeftPane {
+            0% { transform: scaleX(0); opacity: 0; }
+            100% { transform: scaleX(1); opacity: 1; }
+        }
+        @keyframes slideInRightPane {
+            0% { transform: translateX(100%); opacity: 0; }
+            100% { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Advanced Animated Background Elements */
+        .particles {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            overflow: hidden;
+            z-index: 0;
+        }
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            animation: floatParticle infinite linear;
+        }
+        .p1 { width: 150px; height: 150px; left: -20px; top: -20px; animation-duration: 25s; animation-direction: alternate; }
+        .p2 { width: 300px; height: 300px; right: -50px; bottom: -50px; animation-duration: 30s; animation-direction: alternate-reverse; }
+        .p3 { width: 80px; height: 80px; left: 20%; top: 40%; animation-duration: 15s; }
+        .p4 { width: 120px; height: 120px; right: 20%; top: 20%; animation-duration: 20s; animation-direction: alternate; }
+        .p5 { width: 60px; height: 60px; left: 40%; bottom: 20%; animation-duration: 18s; }
+
+        @keyframes floatParticle {
+            0% { transform: translateY(0) rotate(0deg) scale(1); }
+            33% { transform: translateY(-50px) rotate(120deg) scale(1.1); }
+            66% { transform: translateY(20px) rotate(240deg) scale(0.9); }
+            100% { transform: translateY(0) rotate(360deg) scale(1); }
+        }
+
+        /* Left Content Animations */
+        .left-content {
+            z-index: 1;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .logo-container {
+            margin-bottom: 20px;
+            opacity: 0;
+            animation: popInLogo 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.8s forwards;
+        }
+
+        .logo-container img {
+            max-width: 280px;
+            height: auto;
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3));
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.5s ease;
+        }
+
+        .logo-container img:hover {
+            transform: scale(1.1) rotate(-2deg);
+            filter: drop-shadow(0 15px 30px rgba(0,0,0,0.4));
+        }
+
+        @keyframes popInLogo {
+            0% { transform: scale(0.5) translateY(50px) rotate(10deg); opacity: 0; }
+            100% { transform: scale(1) translateY(0) rotate(0deg); opacity: 1; }
+        }
+
+        .left-content p {
+            font-size: 1.3rem;
+            font-weight: 300;
+            letter-spacing: 1px;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: slideUpFade 0.8s ease-out 1.2s forwards;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        /* Right Pane Form Container */
+        .container {
+            width: 100%;
+            max-width: 440px;
+            padding: 50px;
+            box-sizing: border-box;
+            opacity: 0;
+            animation: formReveal 1s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+        }
+
+        @keyframes formReveal {
+            0% { opacity: 0; transform: translateY(40px) scale(0.95); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .text-muted {
+            color: var(--text-muted);
+            text-align: center;
+            display: block;
+            margin-bottom: 40px;
+            font-size: 16px;
+            font-weight: 400;
+            opacity: 0;
+            animation: slideUpFade 0.8s ease-out 0.8s forwards;
+        }
+
+        /* Form Groups & Inputs */
+        .form-group {
+            margin-bottom: 28px;
+            position: relative;
+            opacity: 0;
+            transform: translateX(30px);
+            animation: slideInRightItem 0.6s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+
+        .form-group:nth-of-type(1) { animation-delay: 1s; }
+        .form-group:nth-of-type(2) { animation-delay: 1.15s; }
+
+        @keyframes slideInRightItem {
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            color: var(--text-main);
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            transition: color 0.3s ease, transform 0.3s ease;
+        }
+
+        .form-group:focus-within label {
+            color: var(--primary-blue);
+            transform: translateX(5px);
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 16px 20px;
+            border: 2px solid var(--input-border);
+            border-radius: 14px;
+            font-size: 15px;
+            background-color: var(--input-bg);
+            color: var(--text-main);
+            transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        input[type="text"]:hover,
+        input[type="password"]:hover {
+            border-color: #cbd5e0;
+            background-color: #fff;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            border-color: var(--light-blue);
+            background-color: #fff;
+            outline: none;
+            box-shadow: 0 0 0 5px var(--focus-glow), 0 10px 20px rgba(0,0,0,0.05);
+            transform: translateY(-2px);
+        }
+
+        /* Remember & Forgot */
+        .remember-forgot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            font-size: 14px;
+            opacity: 0;
+            animation: slideUpFade 0.6s ease-out 1.3s forwards;
+        }
+
+        .remember-forgot label {
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            color: var(--text-muted);
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .remember-forgot label:hover {
+            color: var(--text-main);
+        }
+
+        .remember-forgot input[type="checkbox"] {
+            margin-right: 10px;
+            accent-color: var(--primary-blue);
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .remember-forgot input[type="checkbox"]:checked {
+            transform: scale(1.2) rotate(5deg);
+        }
+
+        .remember-forgot a {
+            color: var(--primary-blue);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            position: relative;
+            padding-bottom: 2px;
+        }
+
+        .remember-forgot a::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            bottom: 0;
+            left: 0;
+            background-color: var(--light-blue);
+            transform: scaleX(0);
+            transform-origin: right;
+            transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        .remember-forgot a:hover {
+            color: var(--light-blue);
+        }
+
+        .remember-forgot a:hover::after {
+            transform: scaleX(1);
+            transform-origin: left;
+        }
+
+        /* Button Animations */
+        .btn {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--light-blue) 100%);
+            background-size: 200% auto;
+            color: white;
+            padding: 16px;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            box-shadow: 0 10px 25px rgba(0, 123, 255, 0.3);
+            opacity: 0;
+            animation: slideUpFade 0.6s ease-out 1.4s forwards, pulseShadow 3s infinite 2s;
+            position: relative;
+            overflow: hidden;
+            font-family: 'Poppins', sans-serif;
+            z-index: 1;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: all 0.6s ease;
+            z-index: -1;
+            animation: shimmer 3s infinite 2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 15px 35px rgba(0, 123, 255, 0.4);
+            background-position: right center;
+        }
+
+        .btn:active {
+            transform: translateY(1px) scale(0.98);
+            box-shadow: 0 5px 15px rgba(0, 123, 255, 0.3);
+        }
+
+        @keyframes shimmer {
+            0% { left: -100%; }
+            20% { left: 100%; }
+            100% { left: 100%; }
+        }
+
+        @keyframes pulseShadow {
+            0% { box-shadow: 0 10px 25px rgba(0, 123, 255, 0.3); }
+            50% { box-shadow: 0 15px 35px rgba(0, 123, 255, 0.5); }
+            100% { box-shadow: 0 10px 25px rgba(0, 123, 255, 0.3); }
+        }
+
+        @keyframes slideUpFade {
+            0% { opacity: 0; transform: translateY(20px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Footer Section */
+        .footer {
+            background: linear-gradient(90deg, var(--dark-blue) 0%, var(--primary-blue) 100%);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 18px 20px;
+            width: 100%;
+            text-align: center;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            font-size: 13px;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+            z-index: 20;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.15);
+            box-sizing: border-box;
+            opacity: 0;
+            animation: slideUpFooter 0.8s cubic-bezier(0.25, 1, 0.5, 1) 1.5s forwards;
+        }
+
+        @keyframes slideUpFooter {
+            0% { opacity: 0; transform: translateY(100%); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            .left-pane { display: none; }
+            .right-pane { width: 100%; box-shadow: none; }
+            .container { padding: 30px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="left-pane">
+        <!-- Advanced Animated Particles -->
+        <div class="particles">
+            <div class="particle p1"></div>
+            <div class="particle p2"></div>
+            <div class="particle p3"></div>
+            <div class="particle p4"></div>
+            <div class="particle p5"></div>
+        </div>
+
+        <div class="left-content">
+            <div class="logo-container">
+                <img src="https://raw.githubusercontent.com/traromal/Aromal_TR/refs/heads/main/helpyyyyyyyyyyyyyyy.PNG" alt="Helpybo Logo">
+            </div>
+            <p>Your intelligent business assistant.</p>
+        </div>
+    </div>
+
+    <div class="right-pane">
+        <div class="container">
+            <span class="text-muted">
+                {% if msg %}
+                    {{ msg | safe }}
+                {% else %}
+                    Welcome back! Please login to your account.
+                {% endif %}
+            </span>
+            <form method="post">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label for="{{ form.username.id_for_label }}">Username</label>
+                    {{ form.username }}
+                </div>
+                <div class="form-group">
+                    <label for="{{ form.password.id_for_label }}">Password</label>
+                    {{ form.password }}
+                </div>
+                <div class="remember-forgot">
+                    <label>
+                        <input type="checkbox" name="remember"> Remember me
+                    </label>
+                    <a href="#">Forgot Password?</a>
+                </div>
+                <button type="submit" class="btn">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Footer Section -->
+    <div class="footer">
+        Powered by Helpybo, copyright@ GAUDE Business and Infrastructure Solutions Pvt Ltd - 2024
+    </div>
+</body>
+</html>

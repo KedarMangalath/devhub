@@ -1,0 +1,226 @@
+{
+  "cache_version": 24,
+  "file_count": 22,
+  "files": [
+    {
+      "path": "backend/api/__init__.py",
+      "size": 0,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228422156300,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/api/apps.py",
+      "size": 142,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228422156300,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/api/models.py",
+      "size": 979,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228424180500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/api/serializers.py",
+      "size": 477,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228424180500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/api/urls.py",
+      "size": 390,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228433761100,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/api/views.py",
+      "size": 565,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228425246600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/manage.py",
+      "size": 451,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228418435600,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/omnia_backend/__init__.py",
+      "size": 0,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228419114700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/omnia_backend/settings.py",
+      "size": 1840,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228419633100,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/omnia_backend/urls.py",
+      "size": 173,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228419633100,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/omnia_backend/wsgi.py",
+      "size": 175,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228422156300,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/requirements.txt",
+      "size": 72,
+      "extension": ".txt",
+      "language": "text",
+      "modified": 1777028228417684400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/seed.py",
+      "size": 1773,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228433761100,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/index.html",
+      "size": 326,
+      "extension": ".html",
+      "language": "html",
+      "modified": 1777028228439986600,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/package.json",
+      "size": 517,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777028228436942400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "size": 86,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777028228439986600,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "size": 9352,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777028228444160500,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "frontend/src/components/AppointmentModal.jsx",
+      "size": 6933,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777028228444464700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/src/index.css",
+      "size": 131,
+      "extension": ".css",
+      "language": "css",
+      "modified": 1777028228442805100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/src/main.jsx",
+      "size": 245,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777028228443411300,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "frontend/tailwind.config.js",
+      "size": 388,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777028228436942400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "frontend/vite.config.js",
+      "size": 139,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777028228436942400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    }
+  ]
+}

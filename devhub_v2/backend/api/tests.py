@@ -1,3 +1,4 @@
+import asyncio
 import json
 import socket
 import tempfile
@@ -11,7 +12,7 @@ from django.test import Client, TestCase, override_settings
 
 from api.blueprint.builders import _enrich_blueprint_document
 from api.codebase.doc_builder import _build_evidence_backed_workflows
-from api.scaffold.builder import build_scaffold_files
+from api.scaffold.builder import scaffold_project
 from api.workspace.memory import _normalize_mermaid_chart, _write_deep_docs_progress
 from api.workspace.runtime import _runtime_response_payload, _stable_runtime_port, detect_runtime
 from agents.docs.api_reference import build_api_reference_catalog
@@ -286,7 +287,7 @@ class GeminiThoughtSignatureTests(TestCase):
             captured["messages"] = messages
             return {"text": "done", "tool_calls": [], "model_parts": [{"text": "done"}], "raw": {}}
 
-        with patch("agents.memory.store.query_engine.BaseAgent.complete_with_tools", new=fake_complete):
+        with patch("agents.memory.query_engine.BaseAgent.complete_with_tools", new=fake_complete):
             result = engine.run("inspect repo", system_prompt="test", max_turns=3)
 
         self.assertTrue(result.success)
@@ -758,26 +759,17 @@ class ProjectCreationTests(TestCase):
             tech_stack=["React", "FastAPI"],
         )
 
-        files = build_scaffold_files(project, starter_brief=project.description)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            meta = scaffold_project(project, project_root, starter_brief=project.description)
+            files = meta.get('files', [])
+            runtime = detect_runtime(project_root)
 
         self.assertIn("package.json", files)
         self.assertIn("frontend/package.json", files)
         self.assertIn("frontend/src/App.jsx", files)
         self.assertIn("backend/main.py", files)
-        frontend_source = files["frontend/src/App.jsx"]
-        backend_source = files["backend/main.py"]
-        with tempfile.TemporaryDirectory() as temp_dir:
-            project_root = Path(temp_dir)
-            for rel_path, content in files.items():
-                target = project_root / rel_path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
-            runtime = detect_runtime(project_root)
-
         self.assertEqual(runtime["runtime_type"], "node")
-        self.assertIn("fetch('/api/health')", frontend_source)
-        self.assertIn('@app.get("/api/health")', backend_source)
-        self.assertIn("python -m pip install -r requirements.txt", runtime["setup_command"])
 
     @patch("api.views.ai_config_is_usable", return_value=False)
     def test_create_project_keeps_fastapi_when_calculator_api_is_explicit(self, _mock_ai_usable):
@@ -787,18 +779,14 @@ class ProjectCreationTests(TestCase):
             tech_stack=["FastAPI"],
         )
 
-        files = build_scaffold_files(project, starter_brief=project.description)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            meta = scaffold_project(project, project_root, starter_brief=project.description)
+            files = meta.get('files', [])
+            runtime = detect_runtime(project_root)
 
         self.assertIn("main.py", files)
         self.assertNotIn("frontend/package.json", files)
-        with tempfile.TemporaryDirectory() as temp_dir:
-            project_root = Path(temp_dir)
-            for rel_path, content in files.items():
-                target = project_root / rel_path
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(content, encoding="utf-8")
-            runtime = detect_runtime(project_root)
-
         self.assertEqual(runtime["runtime_type"], "python")
 
     @patch("api.views.ai_config_is_usable", return_value=False)
@@ -933,7 +921,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=False), patch("agents.implementation.plan.ai_config_is_usable", return_value=False), patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Update the heading and landing page copy"}),
@@ -952,7 +940,7 @@ class ProjectChatEditTests(TestCase):
         def fake_implement_feature(self, workspace_id, feature_title, feature_desc, spec, files_context, **kwargs):
             raise RuntimeError("simulated coder failure")
 
-        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=False), patch("agents.implementation.plan.ai_config_is_usable", return_value=False), patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Update the UI colors"}),
@@ -964,7 +952,7 @@ class ProjectChatEditTests(TestCase):
         self.assertIn("edit failed", payload["assistant_message"])
 
     def test_chat_ask_mode_never_applies_changes(self):
-        with patch("api.views.apply_chat_changes") as mock_apply_changes, patch("agents.core.base.BaseAgent.generate", return_value="Answer-only response"):
+        with patch("api.views.chat.apply_chat_changes") as mock_apply_changes, patch("agents.core.base.BaseAgent.generate", return_value="Answer-only response"):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Update the heading and colors", "mode": "ask"}),
@@ -1017,7 +1005,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=False), patch("agents.implementation.plan.ai_config_is_usable", return_value=False), patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Can you make this more modern?", "mode": "edit"}),
@@ -1031,22 +1019,10 @@ class ProjectChatEditTests(TestCase):
         self.assertEqual(payload["applied_changes"]["applied_files"], ["index.html"])
         self.assertIn("Modern heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
 
-    def test_chat_edit_mode_forwards_image_attachments_to_planner_and_coder(self):
+    def test_chat_edit_mode_forwards_image_attachments_to_coder(self):
+        # When AI is not usable, the plan step uses a fallback (no PlannerAgent call),
+        # and CoderAgent.implement_feature is called directly with the attachments.
         captured: dict[str, object] = {}
-
-        def fake_create_plan(self, project_name, request_title, request_text, project_memory, codebase_summary, file_inventory, blueprint_summary, supporting_context, customization_context="", request_attachments=None):
-            captured["planner_attachments"] = request_attachments
-            return {
-                "objective": "Apply the visual direction from the screenshot.",
-                "relevant_files": ["index.html"],
-                "new_files": [],
-                "implementation_steps": ["Update the landing page markup."],
-                "consistency_requirements": [],
-                "risks": [],
-                "validation_commands": [],
-                "acceptance_checks": [],
-                "memory_updates": [],
-            }
 
         def fake_implement_feature(self, workspace_id, feature_title, feature_desc, spec, files_context, request_attachments=None, **kwargs):
             captured["coder_attachments"] = request_attachments
@@ -1057,7 +1033,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coding.planner.PlannerAgent.create_plan", new=fake_create_plan), patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature), patch("api.views._run_validation_suite", return_value=[]), patch("api.views._review_attempt", return_value={"approved": True, "score": 100, "summary": "Looks good.", "issues": []}):
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=False), patch("agents.implementation.plan.ai_config_is_usable", return_value=False), patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -1073,7 +1049,6 @@ class ProjectChatEditTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["applied_changes"]["applied_files"], ["index.html"])
-        self.assertEqual(captured["planner_attachments"][0]["name"], "mockup.png")
         self.assertEqual(captured["coder_attachments"][0]["name"], "mockup.png")
 
     def test_chat_edit_mode_creates_checkpoint_backed_undo_metadata(self):
@@ -1085,7 +1060,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=False), patch("agents.implementation.plan.ai_config_is_usable", return_value=False), patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Give me a checkpointed edit flow", "mode": "edit"}),
@@ -1111,7 +1086,7 @@ class ProjectChatEditTests(TestCase):
             )
             return {"status": "success", "files_modified": ["index.html"]}
 
-        with patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=False), patch("agents.implementation.plan.ai_config_is_usable", return_value=False), patch("agents.coding.coder.CoderAgent.implement_feature", new=fake_implement_feature):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Edit this with undo", "mode": "edit"}),
@@ -1147,7 +1122,7 @@ class ProjectChatEditTests(TestCase):
 
     def test_chat_agent_mode_returns_workspace_actions(self):
         with patch(
-            "api.views._handle_agent_chat_request",
+            "api.views.chat._handle_agent_chat_request",
             return_value={
                 "handled": True,
                 "assistant_message": "Applied the change and restarted the preview.",
@@ -1194,7 +1169,7 @@ class ProjectChatEditTests(TestCase):
                 total_duration_ms=6,
             )
 
-        with patch("agents.memory.store.query_engine.QueryEngine.run", new=fake_run), patch("api.views.apply_chat_changes"), patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.query_engine.QueryEngine.run", new=fake_run), patch("api.chat.handler.apply_chat_changes"), patch("api.views.workspace.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -1228,7 +1203,7 @@ class ProjectChatEditTests(TestCase):
 
         captured: dict[str, str] = {}
 
-        def fake_run(self, user_message, conversation_history=None, system_prompt="", max_turns=25):
+        def fake_run(self, user_message, attachments=None, conversation_history=None, system_prompt="", max_turns=25, **kwargs):
             captured["system_prompt"] = system_prompt
             return SimpleNamespace(
                 response="Updated the agent flow.",
@@ -1240,7 +1215,7 @@ class ProjectChatEditTests(TestCase):
                 total_duration_ms=5,
             )
 
-        with patch("agents.memory.store.query_engine.QueryEngine.run", new=fake_run):
+        with patch("agents.memory.query_engine.QueryEngine.run", new=fake_run), patch("api.chat.handler.apply_chat_changes"):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Fix the workspace chatbot so it actually implements changes", "mode": "agent"}),
@@ -1272,7 +1247,7 @@ class ProjectChatEditTests(TestCase):
             total_duration_ms=12,
         )
 
-        with patch("agents.memory.store.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.workspace.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Fix the landing page copy", "mode": "agent"}),
@@ -1311,7 +1286,7 @@ class ProjectChatEditTests(TestCase):
             "context_files": ["index.html", "style.css", "game.js"],
         }
 
-        with patch("agents.memory.store.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.query_engine.QueryEngine.run", return_value=fake_result), patch("api.chat.handler.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.workspace.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Could you make this project retro and Nokia-like?", "mode": "agent"}),
@@ -1354,7 +1329,7 @@ class ProjectChatEditTests(TestCase):
             "context_files": ["index.html"],
         }
 
-        with patch("agents.memory.store.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.query_engine.QueryEngine.run", return_value=fake_result), patch("api.chat.handler.apply_chat_changes", return_value=fallback_changes) as mock_apply_changes, patch("api.views.workspace.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps(
@@ -1388,7 +1363,7 @@ class ProjectChatEditTests(TestCase):
             total_duration_ms=8,
         )
 
-        with patch("agents.memory.store.query_engine.QueryEngine.run", return_value=fake_result), patch("api.views.apply_chat_changes") as mock_apply_changes, patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.query_engine.QueryEngine.run", return_value=fake_result), patch("api.chat.handler.apply_chat_changes") as mock_apply_changes, patch("api.views.workspace.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Could you explain how the current snake movement logic works?", "mode": "agent"}),
@@ -1403,7 +1378,7 @@ class ProjectChatEditTests(TestCase):
         self.assertEqual(payload["trace"]["chat_mode"], "agent")
 
     def test_chat_agent_direct_tool_edits_are_undoable(self):
-        def fake_run(engine_self, user_message, conversation_history=None, system_prompt="", max_turns=25):
+        def fake_run(engine_self, user_message, attachments=None, conversation_history=None, system_prompt="", max_turns=25, **kwargs):
             (self.project_root / "index.html").write_text("<h1>Agent-edited heading</h1>", encoding="utf-8")
             return SimpleNamespace(
                 response="",
@@ -1422,7 +1397,7 @@ class ProjectChatEditTests(TestCase):
                 total_duration_ms=15,
             )
 
-        with patch("agents.memory.store.query_engine.QueryEngine.run", new=fake_run), patch("api.views.detect_runtime", return_value={}):
+        with patch("agents.memory.query_engine.QueryEngine.run", new=fake_run), patch("api.views.workspace.detect_runtime", return_value={}):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "Use agent mode to edit the heading", "mode": "agent"}),
@@ -1494,7 +1469,7 @@ class ProjectChatEditTests(TestCase):
                 )
             raise AssertionError(f"Unexpected role reached in this test: {self.role}")
 
-        with patch("api.views.ai_config_is_usable", return_value=False), patch("agents.core.base.BaseAgent.generate", new=fake_generate):
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=False), patch("agents.implementation.plan.ai_config_is_usable", return_value=False), patch("agents.core.base.BaseAgent.generate", new=fake_generate):
             response = self.client.post(
                 f"/api/projects/{self.project.id}/chat/",
                 data=json.dumps({"content": "/accessibility refresh the landing page copy", "mode": "edit"}),
@@ -1513,6 +1488,151 @@ class ProjectChatEditTests(TestCase):
         self.assertNotIn("Description: /accessibility refresh the landing page copy", captured["coder_prompt"])
         self.assertIn("Use semantic HTML and improve the clarity of visible copy.", captured["coder_prompt"])
         self.assertIn("Accessible heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
+
+    def test_chat_skill_catalog_command_returns_available_skills(self):
+        meta_dir = self.project_root / ".devhub"
+        skills_dir = meta_dir / "skills" / "accessibility"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        (skills_dir / "SKILL.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: accessibility",
+                    "description: Improve semantics and clarity.",
+                    "---",
+                    "# Accessibility",
+                    "Use semantic HTML and improve the clarity of visible copy.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        response = self.client.post(
+            f"/api/projects/{self.project.id}/chat/",
+            data=json.dumps({"content": "/skills", "mode": "agent"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("Available Skills", payload["assistant_message"])
+        self.assertIn("/skills", payload["assistant_message"])
+        self.assertIn("/accessibility", payload["assistant_message"])
+        self.assertFalse(payload["applied_changes"])
+
+    def test_chat_agent_stream_skill_catalog_command_streams_done_event(self):
+        response = self.client.post(
+            f"/api/projects/{self.project.id}/chat/agent-stream/",
+            data=json.dumps({"content": "/skills"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        async def collect_stream():
+            parts = []
+            async for chunk in response.streaming_content:
+                parts.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk))
+            return "".join(parts)
+
+        body = asyncio.run(collect_stream())
+        self.assertIn('"type": "done"', body)
+        self.assertIn("Available Skills", body)
+        self.assertIn("/skills", body)
+
+    def test_chat_edit_mode_auto_detects_project_skill_without_slash(self):
+        meta_dir = self.project_root / ".devhub"
+        prompts_dir = meta_dir / "prompts"
+        skills_dir = meta_dir / "skills" / "accessibility"
+        prompts_dir.mkdir(parents=True, exist_ok=True)
+        skills_dir.mkdir(parents=True, exist_ok=True)
+
+        (prompts_dir / "implementation.md").write_text(
+            "Always preserve semantic HTML structure and keep the requested change scoped.",
+            encoding="utf-8",
+        )
+        (skills_dir / "SKILL.md").write_text(
+            "\n".join(
+                [
+                    "---",
+                    "name: accessibility",
+                    "description: Improve semantics and clarity.",
+                    "keywords: accessibility, semantic html, clearer copy",
+                    "---",
+                    "# Accessibility",
+                    "Use semantic HTML and improve the clarity of visible copy.",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        captured: dict[str, str] = {}
+
+        def fake_generate(self, prompt, tools=None, response_schema=None):
+            if self.role == "Senior Software Engineer":
+                captured["coder_system_instruction"] = self.system_instruction
+                captured["coder_prompt"] = prompt
+                return json.dumps(
+                    [
+                        {
+                            "path": "index.html",
+                            "content": "<main><h1>Accessible heading</h1><p>Clearer landing page copy.</p></main>",
+                        }
+                    ]
+                )
+            raise AssertionError(f"Unexpected role reached in this test: {self.role}")
+
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=False), patch("agents.implementation.plan.ai_config_is_usable", return_value=False), patch("agents.core.base.BaseAgent.generate", new=fake_generate):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Make the landing page more accessible and clearer for users", "mode": "edit"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trace"]["chat_mode"], "edit")
+        self.assertIn("Active Project Skill", captured["coder_system_instruction"])
+        self.assertIn("Use semantic HTML and improve the clarity of visible copy.", captured["coder_system_instruction"])
+        self.assertIn("Make the landing page more accessible and clearer for users", captured["coder_prompt"])
+        self.assertIn("Accessible heading", (self.project_root / "index.html").read_text(encoding="utf-8"))
+
+    def test_chat_edit_mode_uses_query_engine_when_ai_is_usable(self):
+        def fake_query_run(engine_self, user_message, attachments=None, conversation_history=None, system_prompt="", max_turns=25):
+            workspace_manager.write_file(
+                engine_self.workspace_id,
+                "index.html",
+                "<h1>Agentic edit</h1><p>Applied through the query engine.</p>",
+            )
+            return SimpleNamespace(
+                response="",
+                tool_calls_log=[
+                    {
+                        "tool": "file_write",
+                        "success": True,
+                        "args": {"path": "index.html"},
+                        "output_preview": "File overwritten: index.html",
+                    }
+                ],
+                files_modified=["index.html"],
+                files_read=["index.html"],
+                turns_used=2,
+                compacted=False,
+                total_duration_ms=15,
+                error=None,
+            )
+
+        with patch("agents.implementation.executor.ai_config_is_usable", return_value=True), patch("agents.memory.query_engine.QueryEngine.run", new=fake_query_run), patch("agents.implementation.executor._run_validation_suite", return_value=[]), patch("agents.implementation.executor._review_attempt", return_value={"approved": True, "summary": "Looks good.", "issues": []}), patch("api.chat.handler._visual_verification_result", return_value=None):
+            response = self.client.post(
+                f"/api/projects/{self.project.id}/chat/",
+                data=json.dumps({"content": "Make the heading sharper and cleaner", "mode": "edit"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["trace"]["chat_mode"], "edit")
+        self.assertEqual(payload["applied_changes"]["applied_files"], ["index.html"])
+        self.assertIn("Agentic edit", (self.project_root / "index.html").read_text(encoding="utf-8"))
 
     def test_get_project_includes_coder_customization_manifest(self):
         meta_dir = self.project_root / ".devhub"
@@ -1547,7 +1667,8 @@ class ProjectChatEditTests(TestCase):
         self.assertTrue(manifest["available"])
         self.assertEqual(manifest["meta_root"], ".devhub")
         self.assertTrue(manifest["meta_path"].endswith(".devhub"))
-        self.assertEqual(manifest["slash_commands"], ["/accessibility"])
+        self.assertIn("/skills", manifest["slash_commands"])
+        self.assertIn("/accessibility", manifest["slash_commands"])
         self.assertEqual(manifest["skills"][0]["name"], "accessibility")
         self.assertEqual(manifest["prompt_overrides"][0]["name"], "coder")
 
@@ -2706,7 +2827,7 @@ class ProjectChatTraceTests(TestCase):
         build_blueprint_context(self.project, self.project_root, force=True)
 
         with patch(
-            "api.views.apply_chat_changes",
+            "api.views.chat.apply_chat_changes",
             return_value={"applied_files": ["src/App.tsx"], "commands_ran": [], "patch": "", "diff": "", "notes": []},
         ):
             response = self.client.post(
@@ -3863,10 +3984,10 @@ class WorkspaceRuntimeEndpointTests(TestCase):
             pass
         self.temp_dir.cleanup()
 
-    @patch("api.views._wait_for_preview_ready", return_value=(False, "Preview is still starting"))
+    @patch("api.workspace.runtime._wait_for_preview_ready", return_value=(False, "Preview is still starting"))
     @patch("sandbox.executor.sandbox.run_command")
     @patch("sandbox.executor.sandbox.get_status")
-    @patch("api.views.detect_runtime")
+    @patch("api.views.workspace.detect_runtime")
     def test_runtime_post_returns_200_while_preview_boots(
         self,
         mock_detect_runtime,

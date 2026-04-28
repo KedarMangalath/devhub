@@ -76,6 +76,7 @@ class ToolRegistry:
     @classmethod
     def default_registry(cls) -> "ToolRegistry":
         """Create a registry pre-loaded with the standard DevHub tools."""
+        from .browser_screenshot import BrowserScreenshotTool
         from .bash_tool import BashTool
         from .file_edit import FileEditTool
         from .file_read import FileReadTool
@@ -83,13 +84,16 @@ class ToolRegistry:
         from .glob_tool import GlobTool
         from .grep_tool import GrepTool
         from .list_dir import ListDirTool
+        from .narrate_tool import NarrateTool
 
         registry = cls()
+        registry.register(NarrateTool())
         registry.register(FileReadTool())
         registry.register(FileEditTool())
         registry.register(FileWriteTool())
         registry.register(GrepTool())
         registry.register(GlobTool())
         registry.register(BashTool())
+        registry.register(BrowserScreenshotTool())
         registry.register(ListDirTool())
         return registry

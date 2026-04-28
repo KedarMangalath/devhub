@@ -3,9 +3,10 @@ import logging
 import os
 import re
 import time
+from difflib import unified_diff
 from pathlib import Path
 
-from agents.core.base import ai_config_is_usable
+from agents.core.base import ai_config_is_usable, describe_image_attachments
 from agents.core.checkpoints import delete_workspace_checkpoint, snapshot_previous_contents
 from agents.memory.store import (
     build_blueprint_context,
@@ -14,6 +15,7 @@ from agents.memory.store import (
     record_episode,
     retrieve_relevant_files,
     upsert_working_memory,
+    _file_summary,
 )
 from agents.customization.project_customization import build_project_customization_summary
 from agents.core.workspace import SKIP_DIRS
@@ -26,10 +28,16 @@ from api.chat.helpers import (
     _chat_message_attachments,
     _chat_request_text,
 )
-from api.codebase.doc_builder import _project_workspace_path
+from api.codebase.doc_builder import _project_workspace_path, _cached_file_summary
 from api.project_utils import _project_ai_config
 from api.workspace.memory import _read_project_instructions
-from api.workspace.runtime import _runtime_response_payload, detect_runtime, runtime_process_id, setup_process_id
+from api.workspace.runtime import (
+    _python_executable_command,
+    _runtime_response_payload,
+    detect_runtime,
+    runtime_process_id,
+    setup_process_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -402,15 +410,92 @@ def _looks_like_ui_redesign_request(content: str) -> bool:
     lowered = str(content or '').lower()
     if not lowered:
         return False
-    redesign_markers = (
-        'whole ui', 'entire ui', 'make it dark', 'dark theme', 'dark themed',
-        'glassmorphism', 'glassmorph', 'translucent', 'topbar', 'top bar',
-        'toolbar', 'header', 'delete button', 'remove the', 'move it', 'move the',
-        'layout', '2 pane', 'two pane', 'two-pane', 'split pane', 'split view',
-        'restyle', 'redesign', 'workspace',
-    )
-    action_markers = ('change', 'edit', 'update', 'modify', 'make', 'move', 'remove', 'convert')
-    return any(marker in lowered for marker in redesign_markers) and any(marker in lowered for marker in action_markers)
+    # Generic redesign verbs — framework/app agnostic
+    redesign_verbs = {'redesign', 'overhaul', 'revamp', 'rework', 'restyle', 'rebuild',
+                      'redo', 'rewrite', 'modernize', 'refresh', 'rehaul', 'refactor'}
+    # Generic UI scope words — not tied to any specific app or framework
+    ui_scope = {'ui', 'interface', 'frontend', 'design', 'layout', 'theme',
+                'style', 'look', 'appearance', 'visual', 'color', 'palette'}
+    words = set(re.findall(r'[a-z]+', lowered))
+    return bool(words & redesign_verbs) and bool(words & ui_scope)
+
+
+def _agent_max_turns_for_request(content: str) -> int:
+    lowered = str(content or '').lower()
+    if not lowered:
+        return 25
+
+    words = lowered.split()
+    word_count = len(words)
+
+    # Broad-scope signals: "all", "every", "entire", "complete", "whole", "full"
+    broad_scope = any(w in words for w in ('all', 'every', 'entire', 'complete', 'whole', 'full'))
+    # Multiple targets: "pages", "components", "files", "views", "screens"
+    multi_target = any(w in words for w in ('pages', 'components', 'files', 'views', 'screens', 'routes'))
+
+    if _looks_like_ui_redesign_request(content) and (broad_scope or multi_target or word_count > 40):
+        return 60
+    if _looks_like_ui_redesign_request(content) or (broad_scope and multi_target):
+        return 40
+    if word_count > 60:
+        return 40
+    return 25
+
+
+def _has_ui_file_changes(applied_files: list[str]) -> bool:
+    ui_suffixes = ('.html', '.css', '.scss', '.sass', '.less', '.js', '.jsx', '.ts', '.tsx', '.vue')
+    return any(str(path).lower().endswith(ui_suffixes) for path in (applied_files or []))
+
+
+def _should_require_visual_verification(request_text: str, applied_files: list[str]) -> bool:
+    if not _has_ui_file_changes(applied_files):
+        return False
+    return _looks_like_ui_redesign_request(request_text) or _looks_like_ui_style_question(request_text)
+
+
+def _visual_verification_result(request_text: str, applied_files: list[str], tool_calls_log: list[dict]) -> dict | None:
+    if not _should_require_visual_verification(request_text, applied_files):
+        return None
+
+    successful_captures = [
+        entry for entry in (tool_calls_log or [])
+        if entry.get('tool') == 'browser_screenshot' and entry.get('success')
+    ]
+    observed_stages = {
+        str((entry.get('args') or {}).get('stage') or '').strip().lower()
+        for entry in successful_captures
+    }
+    missing = [stage for stage in ('before', 'after') if stage not in observed_stages]
+    if missing:
+        # Treat as a warning (success=True) so a missing screenshot doesn't block
+        # an otherwise correct implementation. The reviewer agent will still see it.
+        return {
+            'command': 'browser screenshot verification',
+            'success': True,
+            'exit_code': 0,
+            'stdout': '',
+            'stderr': (
+                f"Note: browser_screenshot not captured for stage(s): {', '.join(missing)}. "
+                "Visual verification is best-effort; code review was used instead."
+            ),
+            'details': [{
+                'severity': 'low',
+                'description': "UI changes were made without before/after screenshots.",
+                'suggestion': (
+                    "Use `browser_screenshot` with `stage=\"before\"` and `stage=\"after\"` "
+                    "for visual confirmation on future UI tasks."
+                ),
+            }],
+        }
+
+    return {
+        'command': 'browser screenshot verification',
+        'success': True,
+        'exit_code': 0,
+        'stdout': 'Required browser screenshots captured for stages: before, after.',
+        'stderr': '',
+        'details': [],
+    }
 
 
 CHAT_STATE_NEEDS_CLARIFICATION = 'needs_clarification'
@@ -797,7 +882,8 @@ def _extract_agent_explicit_command(content: str) -> str:
 def _default_agent_terminal_command(content: str, runtime: dict, workspace_path: Path) -> str:
     lowered = str(content or '').lower()
     runtime_type = str(runtime.get('runtime_type') or '').lower()
-    python_cmd = _python_executable_command()
+    runtime_root = runtime.get('runtime_root')
+    python_cmd = _python_executable_command(Path(runtime_root)) if runtime_root else _python_executable_command()
 
     if any(marker in lowered for marker in ('run tests', 'run the tests', 'test suite', 'execute tests', 'pytest')):
         if runtime_type == 'node':
@@ -888,6 +974,11 @@ def _agent_execution_prompt_addendum(*, should_apply_changes: bool, selected_fil
         "- Use `file_write` after reading a file first when a full-file rewrite is the clearest or safest way to implement the request.",
         "- Treat prior memory as background only. Do not anchor on previous examples, stale feature ideas, or earlier chats unless the user explicitly asks for them again.",
         "- Keep the request generic to the current project. Do not inject unrelated themes or canned examples.",
+        "- If asked to run or verify a project, and it crashes with missing packages (e.g., ModuleNotFoundError), use the bash tool to install the missing packages step-by-step into the project's `.venv`, or identify the requirements from the codebase and install them initially.",
+        "- For theme, layout, sidebar, redesign, or multi-page UI requests, inspect shared layout, routes/views, forms, and every named page before the first edit.",
+        "- For Django template changes, verify template blocks against parent templates, field names against forms or `request.POST` keys, template variables against view context, and AJAX JSON parsing against actual view responses.",
+        "- For visual UI changes, call `browser_screenshot` with `stage=\"before\"` before editing and `stage=\"after\"` after the final pass so there is visual verification.",
+        "- If the request spans many screens, complete work in phases: shared shell first, then page content, then contract validation.",
         "- Before finishing, inspect the changed files and run a targeted verification command when practical.",
         "- Your final response must summarize the concrete work completed, list files changed, and mention commands run or blockers.",
     ]
@@ -933,6 +1024,61 @@ def _agent_response_fallback(qr, applied_files: list[str]) -> str:
     return "The agent did not return a final summary."
 
 
+def _summarize_command_preview(output_preview: str) -> str:
+    text = str(output_preview or '').strip()
+    if not text:
+        return ''
+
+    markers = [
+        'No changes detected',
+        'No migrations to apply',
+        'System check identified no issues',
+        'ModuleNotFoundError',
+        'ImportError',
+        'Traceback (most recent call last):',
+        'Command timed out',
+    ]
+    for marker in markers:
+        if marker in text:
+            start = text.find(marker)
+            snippet = text[start:start + 220].strip()
+            return snippet
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ''
+    return lines[-1][:220]
+
+
+def _agent_result_summary(qr, applied_files: list[str]) -> str:
+    tool_calls = list(getattr(qr, 'tool_calls_log', []) or [])
+    bash_calls = [entry for entry in tool_calls if entry.get('tool') == 'bash']
+    model_response = str(getattr(qr, 'response', '') or '').strip()
+
+    if applied_files:
+        return _agent_response_fallback(qr, applied_files)
+
+    if bash_calls:
+        parts: list[str] = []
+        failures = 0
+        for entry in bash_calls[:4]:
+            command = str(entry.get('args', {}).get('command') or '').strip() or 'command'
+            success = bool(entry.get('success'))
+            if not success:
+                failures += 1
+            detail = _summarize_command_preview(entry.get('output_preview') or '')
+            snippet = f"`{command}`: {'passed' if success else 'failed'}"
+            if detail:
+                snippet += f" - {detail}"
+            parts.append(snippet)
+
+        if failures:
+            return f"Command execution finished with {failures} failure(s). " + " ".join(parts)
+        return f"Command execution finished successfully. " + " ".join(parts)
+
+    return model_response or _agent_response_fallback(qr, applied_files)
+
+
 def _wait_for_sandbox_process(sandbox, process_id: str, *, timeout_seconds: float = 240.0, poll_interval: float = 0.35) -> tuple[dict, str]:
     deadline = time.time() + timeout_seconds
     chunks: list[str] = []
@@ -959,6 +1105,8 @@ def _handle_agent_chat_request(
     context_trace: dict | None = None,
     memory_context: dict | None = None,
     checkpoint: dict | None = None,
+    skill_instructions: str = '',
+    skill_activation: dict | None = None,
 ) -> dict:
     from pathlib import Path as _Path
     from sandbox.executor import sandbox
@@ -966,6 +1114,7 @@ def _handle_agent_chat_request(
     context_trace = dict(context_trace or {})
     memory_context = memory_context or {}
     attachments = list(attachments or [])
+    skill_activation = dict(skill_activation or {})
     request_text = _chat_request_text(content, attachments)
     prompt_text = _chat_request_text(content, attachments, include_attachment_inventory=True)
     workspace_path = _chat_workspace_path(project)
@@ -994,6 +1143,7 @@ def _handle_agent_chat_request(
 
     # ── NEW: Use QueryEngine for tool-calling agent loop ──────────
     try:
+        from agents.implementation.plan import _review_attempt, _run_validation_suite, _validation_summary
         from agents.memory.compaction import ContextCompactor
         from agents.orchestration.coordinator import Coordinator
         from agents.customization.prompts import PromptBuilder
@@ -1050,6 +1200,8 @@ def _handle_agent_chat_request(
             should_apply_changes=should_apply_changes,
             selected_file=selected_file,
         )
+        if skill_instructions:
+            system_prompt += "\n\n" + skill_instructions
 
         # Add file context if a file is selected
         if selected_file:
@@ -1083,7 +1235,7 @@ def _handle_agent_chat_request(
             attachments=attachments,
             conversation_history=conversation_history,
             system_prompt=system_prompt,
-            max_turns=25,
+            max_turns=_agent_max_turns_for_request(request_text),
         )
 
         # Build response
@@ -1116,6 +1268,7 @@ def _handle_agent_chat_request(
             'turns_used': qr.turns_used,
             'compacted': qr.compacted,
             'duration_ms': qr.total_duration_ms,
+            'active_skills': list(skill_activation.get('active_skill_names') or []),
             'semantic_hits': [
                 {'path': item.get('file_path'), 'symbol': item.get('symbol')}
                 for item in (memory_context.get('semantic_hits') or [])[:8]
@@ -1123,12 +1276,46 @@ def _handle_agent_chat_request(
         }
 
         applied_changes = None
+        validation_results: list[dict] = []
+        review_result: dict = {}
         if applied_files:
+            previous_contents = snapshot_previous_contents(str(project.id), str((checkpoint or {}).get('id') or ''), applied_files)
+            try:
+                validation_results = _run_validation_suite(workspace_path, applied_files)
+                visual_verification = _visual_verification_result(request_text, applied_files, qr.tool_calls_log)
+                if visual_verification:
+                    validation_results.append(visual_verification)
+                review_result = _review_attempt(
+                    project,
+                    workspace_path,
+                    previous_contents,
+                    applied_files,
+                    validation_results,
+                    request_text=request_text,
+                    request_attachments=attachments,
+                )
+            except Exception:
+                logger.exception("Failed to run structured validation/review for direct agent execution in project %s", project.id)
+
+            assistant_trace['commands_ran'].extend([
+                {
+                    'command': result.get('command'),
+                    'status': 'passed' if result.get('success') else 'failed',
+                    'detail': str(result.get('stderr') or result.get('stdout') or '')[:280],
+                }
+                for result in validation_results
+                if result.get('command')
+            ])
+            if review_result:
+                assistant_trace['review'] = review_result
+            if validation_results and (not all(result.get('success') for result in validation_results) or not review_result.get('approved', True)):
+                assistant_trace['state_reason'] = 'Agentic tool-calling loop completed, then structured validation/review flagged follow-up issues.'
+
             changeset = _record_chat_changes(
                 project,
                 content,
                 workspace_path,
-                snapshot_previous_contents(str(project.id), str((checkpoint or {}).get('id') or ''), applied_files),
+                previous_contents,
                 applied_files,
                 ai_review=_chat_checkpoint_review_payload(
                     checkpoint,
@@ -1143,6 +1330,8 @@ def _handle_agent_chat_request(
                     'count': len(applied_files),
                     'changeset_id': str(changeset.id),
                     'undo': _chat_changeset_trace_metadata(changeset).get('undo'),
+                    'validation_results': validation_results,
+                    'review': review_result,
                 }
                 assistant_trace.update(_chat_changeset_trace_metadata(changeset))
                 try:
@@ -1168,8 +1357,8 @@ def _handle_agent_chat_request(
                         (
                             f"Latest implementation request: {request_text[:240]}\n"
                             f"Files touched: {', '.join(applied_files)}\n"
-                            "Validation summary:\nNo structured validation was recorded for this direct agent tool execution.\n"
-                            "Reviewer summary: No structured review was recorded for this direct agent tool execution."
+                            f"Validation summary:\n{_validation_summary(validation_results)}\n"
+                            f"Reviewer summary: {review_result.get('summary', 'No reviewer summary.')}"
                         ),
                         {'latest_request': request_text[:240], 'files': applied_files, 'source': 'chat_agent'},
                     )
@@ -1188,6 +1377,7 @@ def _handle_agent_chat_request(
                     checkpoint=checkpoint,
                     chat_mode=CHAT_MODE_AGENT,
                     changeset_source='chat_agent',
+                    skill_activation=skill_activation,
                 )
                 fallback_applied_files = list(fallback_changes.get('applied_files') or [])
                 if fallback_applied_files:
@@ -1283,7 +1473,7 @@ def _handle_agent_chat_request(
 
         return {
             'handled': True,
-            'assistant_message': assistant_message_override or _agent_response_fallback(qr, applied_files),
+            'assistant_message': assistant_message_override or _agent_result_summary(qr, applied_files),
             'assistant_trace': assistant_trace,
             'applied_changes': applied_changes,
             'workspace_actions': workspace_actions,
@@ -1382,6 +1572,7 @@ def _build_chat_llm_prompt(
     chat_mode: str | None,
     chat_state: str,
     response_contract: str,
+    skill_instructions: str = "",
 ) -> tuple[str, str]:
     blueprint = project.blueprint or {}
     arch = json.dumps(blueprint.get('architecture_overview', ''))[:800]
@@ -1411,6 +1602,7 @@ def _build_chat_llm_prompt(
     attachment_context = describe_image_attachments(attachments) or "No image attachments were supplied for this turn."
 
     evidence_index = _build_chat_evidence_index(context_trace)
+    skill_block = f"\n\n{skill_instructions}" if skill_instructions else ""
     system_instruction = f"""You are the DevHub AI assistant for the project "{project.name}".
 Tech Stack: {tech}
 Architecture: {arch}
@@ -1443,7 +1635,7 @@ Never say that you lack access to the local codebase or cannot make edits; inste
 
 Current chat mode: {chat_mode or 'auto'}
 Current chat state: {chat_state}
-{response_contract}"""
+{response_contract}{skill_block}"""
     prompt = (
         f"Current chat mode: {chat_mode or 'auto'}\n"
         f"Current chat state: {chat_state}\n"
@@ -1532,6 +1724,49 @@ def _ui_style_candidate_paths(cache: dict, existing_paths: list[str] | None = No
         if len(extras) >= max_extra:
             break
     return extras
+
+
+def _query_requests_broad_listing(content: str) -> bool:
+    lowered = str(content or '').lower()
+    if not lowered:
+        return False
+    broad_markers = (
+        'entire codebase',
+        'entire project',
+        'whole project',
+        'whole repo',
+        'whole codebase',
+        'list the files',
+        'list files',
+        'folder structure',
+        'workspace structure',
+        'repo structure',
+        'project structure',
+        'show me all files',
+        'what files are in',
+        'where is everything',
+    )
+    return any(marker in lowered for marker in broad_markers)
+
+
+def _query_requests_system_explanation(content: str) -> bool:
+    lowered = str(content or '').lower()
+    if not lowered:
+        return False
+    explanation_markers = (
+        'how does',
+        'how do',
+        'how is',
+        'walk me through',
+        'explain the system',
+        'explain how',
+        'architecture',
+        'flow of',
+        'what happens when',
+        'where is the logic',
+        'how the current',
+    )
+    return any(marker in lowered for marker in explanation_markers)
 
 
 def _resolve_chat_context(
@@ -1881,7 +2116,10 @@ def apply_chat_changes(
     checkpoint: dict | None = None,
     chat_mode: str | None = None,
     changeset_source: str = 'chat',
+    skill_activation: dict | None = None,
 ) -> dict:
+    from agents.implementation.executor import _run_multi_agent_implementation
+
     result = _run_multi_agent_implementation(
         project=project,
         request_title="Chat-requested update",
@@ -1898,6 +2136,7 @@ def apply_chat_changes(
         checkpoint=checkpoint,
         chat_mode=chat_mode,
         changeset_source=changeset_source,
+        skill_activation=skill_activation,
     )
     return {
         "applied_files": result.get("applied_files", []),

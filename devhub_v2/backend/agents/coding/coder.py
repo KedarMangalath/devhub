@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List
+from typing import Callable, List
 
 from agents.core.base import BaseAgent, describe_image_attachments
 from agents.core.workspace import workspace_manager
@@ -131,4 +131,149 @@ Return ONLY the JSON array as instructed.
         return {
             "status": "success",
             "files_modified": applied_changes,
+        }
+
+    def fix_runtime_error(
+        self,
+        workspace_id: str,
+        error_text: str,
+        files_context: List[dict],
+        runtime_type: str = "unknown",
+        on_event: Callable[[dict], None] | None = None,
+    ) -> dict:
+        """Fix a runtime startup error by analyzing the traceback and patching the relevant files."""
+        events: list[dict] = []
+        tool_events: list[dict] = []
+        files_accessed: list[str] = []
+        workspace_actions: list[dict] = []
+
+        def _emit(event: dict) -> None:
+            payload = dict(event or {})
+            events.append(payload)
+            if on_event:
+                try:
+                    on_event(payload)
+                except Exception:
+                    logger.debug("Runtime autofix event callback failed", exc_info=True)
+
+        def _tool_start(tool: str, summary: dict) -> None:
+            event = {"type": "tool_start", "tool": tool, "summary": summary}
+            tool_events.append({
+                "type": "tool_start",
+                "tool": tool,
+                "args_preview": {k: str(v)[:100] for k, v in summary.items()},
+            })
+            _emit(event)
+
+        def _tool_end(tool: str, success: bool, preview: str) -> None:
+            event = {"type": "tool_end", "tool": tool, "success": success, "preview": preview[:200]}
+            tool_events.append({
+                "type": "tool_end",
+                "tool": tool,
+                "success": success,
+                "preview": preview[:200],
+            })
+            _emit(event)
+
+        context_str = "\n\n".join([f"--- FILE: {f['path']} ---\n{f['content']}" for f in files_context])
+        _emit({"type": "thought", "text": "Inspecting the startup traceback and the files it points to."})
+
+        for file_entry in files_context:
+            path = str(file_entry.get("path") or "").strip()
+            if not path:
+                continue
+            files_accessed.append(path)
+            _tool_start("file_read", {"path": path, "label": path})
+            _tool_end("file_read", True, "Loaded traceback context")
+
+        _emit({"type": "thought", "text": "Generating the smallest code change that should unblock startup."})
+
+        prompt = f"""
+## Runtime Startup Error
+
+The {runtime_type} project failed to start with the following error:
+
+```
+{error_text}
+```
+
+## Affected Files
+{context_str}
+
+## Task
+Analyze the error and produce the minimal code changes to fix it.
+
+Common causes and fixes:
+- `ModuleNotFoundError: No module named 'X.Y'` — the sub-module moved to a different package in a newer version; update the import to the new location
+- `ImportError: cannot import name 'X' from 'Y'` — the class/function was renamed, moved, or deprecated; update the import path or usage
+- `AttributeError: module 'X' has no attribute 'Y'` — API change; find the new API and update usage
+
+Return ONLY the JSON array of file changes as instructed. Do not guess — only fix what the traceback directly points to.
+        """
+        print(f"CoderAgent: Fixing runtime error in workspace {workspace_id}...")
+        response_text = self.generate(prompt)
+
+        for fence in ("```json", "```"):
+            if response_text.startswith(fence):
+                response_text = response_text[len(fence):]
+        if response_text.endswith("```"):
+            response_text = response_text.rsplit("```", 1)[0]
+        response_text = response_text.strip()
+
+        try:
+            changes = json.loads(response_text)
+            if not isinstance(changes, list):
+                raise ValueError("Not a JSON array")
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.error("fix_runtime_error: failed to parse LLM output: %s", exc)
+            _emit({"type": "thought", "text": "The runtime fix response could not be parsed into file changes."})
+            return {
+                "status": "failed",
+                "error": "Failed to parse fix from LLM.",
+                "raw_response": response_text[:500],
+                "events": events,
+                "tool_events": tool_events,
+                "files_accessed": files_accessed,
+                "workspace_actions": workspace_actions,
+            }
+
+        applied_changes = []
+        _emit({"type": "thought", "text": "Applying the generated patch to the workspace."})
+        for change in changes:
+            filepath = change.get("path")
+            content = change.get("content")
+            if filepath and content is not None:
+                summary = {"path": filepath, "label": filepath}
+                _tool_start("file_edit", summary)
+                try:
+                    workspace_manager.write_file(workspace_id, filepath, content)
+                    applied_changes.append(filepath)
+                    workspace_actions.append({
+                        "type": "file_edit",
+                        "status": "completed",
+                        "detail": f"Updated {filepath}",
+                    })
+                    _tool_end("file_edit", True, f"Updated {filepath}")
+                    print(f"  [autofix] Wrote {filepath}")
+                except Exception as exc:
+                    logger.error("fix_runtime_error: failed to write %s: %s", filepath, exc)
+                    workspace_actions.append({
+                        "type": "file_edit",
+                        "status": "failed",
+                        "detail": f"Failed to update {filepath}: {exc}",
+                    })
+                    _tool_end("file_edit", False, f"Failed to update {filepath}: {exc}")
+
+        if applied_changes:
+            _emit({"type": "thought", "text": "Patch applied. Restarting the runtime to verify the fix."})
+        else:
+            _emit({"type": "thought", "text": "No workspace files were changed by the runtime fixer."})
+
+        return {
+            "status": "success",
+            "files_modified": applied_changes,
+            "events": events,
+            "tool_events": tool_events,
+            "files_accessed": files_accessed,
+            "workspace_actions": workspace_actions,
         }

@@ -1,0 +1,1915 @@
+{
+  "cache_version": 24,
+  "fingerprint": "1401e85c439fee3601631397e076b72298bc393a",
+  "manifest_file_count": 22,
+  "file_count": 22,
+  "directory_counts": {
+    "backend": 13,
+    "frontend": 9
+  },
+  "root_directories": [
+    ".devhub",
+    "backend",
+    "frontend"
+  ],
+  "manifest": [
+    {
+      "path": "backend/api/__init__.py",
+      "size": 0,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228422156300,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/api/apps.py",
+      "size": 142,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228422156300,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/api/models.py",
+      "size": 979,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228424180500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/api/serializers.py",
+      "size": 477,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228424180500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/api/urls.py",
+      "size": 390,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228433761100,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/api/views.py",
+      "size": 565,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228425246600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/manage.py",
+      "size": 451,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228418435600,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/omnia_backend/__init__.py",
+      "size": 0,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228419114700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "backend/omnia_backend/settings.py",
+      "size": 1840,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228419633100,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/omnia_backend/urls.py",
+      "size": 173,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228419633100,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/omnia_backend/wsgi.py",
+      "size": 175,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228422156300,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/requirements.txt",
+      "size": 72,
+      "extension": ".txt",
+      "language": "text",
+      "modified": 1777028228417684400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "backend/seed.py",
+      "size": 1773,
+      "extension": ".py",
+      "language": "python",
+      "modified": 1777028228433761100,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/index.html",
+      "size": 326,
+      "extension": ".html",
+      "language": "html",
+      "modified": 1777028228439986600,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/package.json",
+      "size": 517,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777028228436942400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "size": 86,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777028228439986600,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "size": 9352,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777028228444160500,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "frontend/src/components/AppointmentModal.jsx",
+      "size": 6933,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777028228444464700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/src/index.css",
+      "size": 131,
+      "extension": ".css",
+      "language": "css",
+      "modified": 1777028228442805100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "frontend/src/main.jsx",
+      "size": 245,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777028228443411300,
+      "depth": 3,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "frontend/tailwind.config.js",
+      "size": 388,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777028228436942400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "frontend/vite.config.js",
+      "size": 139,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777028228436942400,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    }
+  ],
+  "indexed_paths": [
+    "backend/api/__init__.py",
+    "backend/api/apps.py",
+    "backend/api/models.py",
+    "backend/api/serializers.py",
+    "backend/api/urls.py",
+    "backend/api/views.py",
+    "backend/manage.py",
+    "backend/omnia_backend/__init__.py",
+    "backend/omnia_backend/settings.py",
+    "backend/omnia_backend/urls.py",
+    "backend/omnia_backend/wsgi.py",
+    "backend/requirements.txt",
+    "backend/seed.py",
+    "frontend/index.html",
+    "frontend/package.json",
+    "frontend/postcss.config.js",
+    "frontend/src/App.jsx",
+    "frontend/src/components/AppointmentModal.jsx",
+    "frontend/src/index.css",
+    "frontend/src/main.jsx",
+    "frontend/tailwind.config.js",
+    "frontend/vite.config.js"
+  ],
+  "important_files": [
+    {
+      "path": "backend/omnia_backend/urls.py",
+      "size": 173,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 7,
+      "symbol": "",
+      "imports": [
+        "from django.contrib import admin",
+        "from django.urls import path, include"
+      ],
+      "routes": [
+        "admin/",
+        "api/"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `` if present and then trace the request flow through imports and downstream service calls. Routes detected: admin/, api/.",
+      "excerpt": "from django.contrib import admin\nfrom django.urls import path, include\n\nurlpatterns = [\n    path('admin/', admin.site.urls),\n    path('api/', include('api.urls')),\n]\n",
+      "brief": "backend/omnia_backend/urls.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 7 lines. Key imports: from django.contrib import admin, from django.urls import path, include."
+    },
+    {
+      "path": "frontend/vite.config.js",
+      "size": 139,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "build-config",
+      "language": "javascript",
+      "lines": 6,
+      "symbol": "",
+      "imports": [
+        "import { defineConfig } from 'vite'",
+        "import react from '@vitejs/plugin-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project.",
+      "why": "It exists because the build pipeline has repo-specific entrypoints, output rules, plugins, or environment handling that cannot live in default tool settings.",
+      "how": "Start with `` if present, then inspect imported helpers like import { defineConfig } from 'vite', import react from '@vitejs/plugin-react' to see which parts of the build are delegated elsewhere.",
+      "excerpt": "import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\n\nexport default defineConfig({\n  plugins: [react()],\n})\n",
+      "brief": "frontend/vite.config.js (javascript, config)",
+      "summary": "Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project. It has about 6 lines. Key imports: import { defineConfig } from 'vite', import react from '@vitejs/plugin-react'."
+    },
+    {
+      "path": "backend/manage.py",
+      "size": 451,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "config",
+      "language": "python",
+      "lines": 16,
+      "symbol": "main",
+      "imports": [
+        "import os",
+        "import sys",
+        "from django.core.management import execute_from_command_line"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [
+        "!/usr/bin/env python"
+      ],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Configuration file that controls tooling, runtime behavior, or project conventions.",
+      "why": "It exists to keep environment-specific or tool-specific rules out of application logic.",
+      "how": "Start with top-level keys such as the main config fields and compare them with the commands or tools that consume this file.",
+      "excerpt": "#!/usr/bin/env python\nimport os\nimport sys\n\ndef main():\n    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'omnia_backend.settings')\n    try:\n        from django.core.management import execute_from_command_line\n    except ImportError as exc:\n        raise ImportError(\n            \"Couldn't import Django. Are you sure it's installed?\"\n        ) from exc\n    execute_from_command_line(sys.argv)\n\nif __name__ == '__main__':\n    main()\n",
+      "brief": "backend/manage.py (python, config)",
+      "summary": "Configuration file that controls tooling, runtime behavior, or project conventions. It has about 16 lines. Primary symbol: main. Top headings: !/usr/bin/env python. Key imports: import os, import sys, from django.core.management import execute_from_command_line."
+    },
+    {
+      "path": "backend/requirements.txt",
+      "size": 72,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "config",
+      "language": "text",
+      "lines": 3,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Configuration file that controls tooling, runtime behavior, or project conventions.",
+      "why": "It exists to keep environment-specific or tool-specific rules out of application logic.",
+      "how": "Start with top-level keys such as the main config fields and compare them with the commands or tools that consume this file.",
+      "excerpt": "Django==5.0.2\ndjangorestframework==3.14.0\ndjango-cors-headers==4.3.1\n",
+      "brief": "backend/requirements.txt (text, config)",
+      "summary": "Configuration file that controls tooling, runtime behavior, or project conventions. It has about 3 lines."
+    },
+    {
+      "path": "frontend/package.json",
+      "size": 517,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "package-manifest",
+      "language": "json",
+      "lines": 24,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [
+        "name",
+        "private",
+        "version",
+        "type",
+        "scripts",
+        "dependencies",
+        "devDependencies"
+      ],
+      "commands": [],
+      "purpose": "Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace.",
+      "why": "It exists as the control file for install/build/test commands and for declaring the dependency surface this project expects.",
+      "how": "Start with top-level keys like name, private, version, type, scripts, dependencies and then inspect the scripts section to understand day-to-day commands.",
+      "excerpt": "{\n  \"name\": \"omnia-frontend\",\n  \"private\": true,\n  \"version\": \"0.0.0\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"build\": \"vite build\",\n    \"preview\": \"vite preview\"\n  },\n  \"dependencies\": {\n    \"axios\": \"^1.6.7\",\n    \"lucide-react\": \"^0.344.0\",\n    \"react\": \"^18.2.0\",\n    \"react-dom\": \"^18.2.0\"\n  },\n  \"devDependencies\": {\n    \"@vitejs/plugin-react\": \"^4.2.1\",\n    \"autoprefixer\": \"^10.4.18\",\n    \"postcss\": \"^8.4.35\",\n    \"tailwindcss\": \"^3.4.1\",\n    \"vite\": \"^5.1.4\"\n  }\n}\n",
+      "brief": "frontend/package.json (json, config)",
+      "summary": "Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace. It has about 24 lines. Top-level keys: name, private, version, type, scripts, dependencies."
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "size": 9352,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 200,
+      "symbol": "API_BASE",
+      "imports": [
+        "import React, { useState, useEffect } from 'react';",
+        "import axios from 'axios';",
+        "import { Search, MapPin, ShieldPlus, Video, Building2, TestTube, Pill, Star, ChevronRight } from 'lucide-react';",
+        "import AppointmentModal from './components/AppointmentModal';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `API_BASE` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "import React, { useState, useEffect } from 'react';\nimport axios from 'axios';\nimport { Search, MapPin, ShieldPlus, Video, Building2, TestTube, Pill, Star, ChevronRight } from 'lucide-react';\nimport AppointmentModal from './components/AppointmentModal';\n\nconst API_BASE = 'http://localhost:8000/api';\n\nconst iconMap = {\n  Video: Video,\n  Building2: Building2,\n  TestTube: TestTube,\n  Pill: Pill\n};\n\nfunction App() {\n  const [doctors, setDoctors] = useState([]);\n  const [services, setServices] = useState([]);\n  const [isModalOpen, setIsModalOpen] = useState(false);\n  const [selectedDoctor, setSelectedDoctor] = useState(null);\n\n  useEffect(() => {\n    const fetchData = async () => {\n      try {\n        const [docsRes, servRes] = await Promise.all([\n          axios.get(`${API_BASE}/doctors/`),\n          axios.get(`${API_BASE}/services/`)\n        ]);\n        setDoctors(docsRes.data);\n        setServices(servRes.data);\n      } catch (error) {\n        console.error(\"Error fetching data:\", error);\n      }\n    };\n    fetchData();\n  }, []);\n\n  const openModal = (doctor) => {\n    setSelectedDoctor(doctor);\n    setIsModalOpen(true);\n  };\n\n  return (\n    <div className=\"min-h-screen bg-white\">\n      {/* Navigation */}\n      <nav className=\"border-b border-gray-100 sticky top-0 bg-white z-40\">\n        <div className=\"max-w-7xl mx-auto px-4 sm:px-6 lg:px-8\">\n          <div className=\"flex justif",
+      "brief": "frontend/src/App.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 200 lines. Primary symbol: API_BASE. Key imports: import React, { useState, useEffect } from 'react';, import axios from 'axios';, import { Search, MapPin, ShieldPlus, Video, Building2, TestTube, Pill, Star, ChevronRight } from 'lucide-react';, import AppointmentModal from './components/AppointmentModal';."
+    },
+    {
+      "path": "backend/api/urls.py",
+      "size": 390,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 12,
+      "symbol": "",
+      "imports": [
+        "from django.urls import path, include",
+        "from rest_framework.routers import DefaultRouter",
+        "from .views import DoctorViewSet, ServiceViewSet, AppointmentViewSet"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "from django.urls import path, include\nfrom rest_framework.routers import DefaultRouter\nfrom .views import DoctorViewSet, ServiceViewSet, AppointmentViewSet\n\nrouter = DefaultRouter()\nrouter.register(r'doctors', DoctorViewSet)\nrouter.register(r'services', ServiceViewSet)\nrouter.register(r'appointments', AppointmentViewSet)\n\nurlpatterns = [\n    path('', include(router.urls)),\n]\n",
+      "brief": "backend/api/urls.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 12 lines. Key imports: from django.urls import path, include, from rest_framework.routers import DefaultRouter, from .views import DoctorViewSet, ServiceViewSet, AppointmentViewSet."
+    },
+    {
+      "path": "frontend/src/main.jsx",
+      "size": 245,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 10,
+      "symbol": "",
+      "imports": [
+        "import React from 'react'",
+        "import ReactDOM from 'react-dom/client'",
+        "import App from './App.jsx'",
+        "import './index.css'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "import React from 'react'\nimport ReactDOM from 'react-dom/client'\nimport App from './App.jsx'\nimport './index.css'\n\nReactDOM.createRoot(document.getElementById('root')).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>,\n)\n",
+      "brief": "frontend/src/main.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 10 lines. Key imports: import React from 'react', import ReactDOM from 'react-dom/client', import App from './App.jsx', import './index.css'."
+    },
+    {
+      "path": "backend/omnia_backend/settings.py",
+      "size": 1840,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 66,
+      "symbol": "",
+      "imports": [
+        "import os",
+        "from pathlib import Path"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/omnia_backend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "import os\nfrom pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\nSECRET_KEY = 'django-insecure-omnia-scaffold-key'\nDEBUG = True\nALLOWED_HOSTS = ['*']\n\nINSTALLED_APPS = [\n    'django.contrib.admin',\n    'django.contrib.auth',\n    'django.contrib.contenttypes',\n    'django.contrib.sessions',\n    'django.contrib.messages',\n    'django.contrib.staticfiles',\n    'rest_framework',\n    'corsheaders',\n    'api',\n]\n\nMIDDLEWARE = [\n    'corsheaders.middleware.CorsMiddleware',\n    'django.middleware.security.SecurityMiddleware',\n    'django.contrib.sessions.middleware.SessionMiddleware',\n    'django.middleware.common.CommonMiddleware',\n    'django.middleware.csrf.CsrfViewMiddleware',\n    'django.contrib.auth.middleware.AuthenticationMiddleware',\n    'django.contrib.messages.middleware.MessageMiddleware',\n    'django.middleware.clickjacking.XFrameOptionsMiddleware',\n]\n\nROOT_URLCONF = 'omnia_backend.urls'\n\nTEMPLATES = [\n    {\n        'BACKEND': 'django.template.backends.django.DjangoTemplates',\n        'DIRS': [],\n        'APP_DIRS': True,\n        'OPTIONS': {\n            'context_processors': [\n                'django.template.context_processors.debug',\n                'django.template.context_processors.request',\n                'django.contrib.auth.context_processors.auth',\n                'django.contrib.messages.context_processors.messages',\n            ],\n        ",
+      "brief": "backend/omnia_backend/settings.py (python)",
+      "summary": "Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 66 lines. Key imports: import os, from pathlib import Path."
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "size": 86,
+      "tier": 1,
+      "tier_reason": "entry-routing",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 6,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `frontend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}\n",
+      "brief": "frontend/postcss.config.js (javascript)",
+      "summary": "Source file that contributes to the `frontend` area of the repository. It has about 6 lines."
+    },
+    {
+      "path": "frontend/tailwind.config.js",
+      "size": 388,
+      "tier": 1,
+      "tier_reason": "entry-routing",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 21,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `frontend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "/** @type {import('tailwindcss').Config} */\nexport default {\n  content: [\n    \"./index.html\",\n    \"./src/**/*.{js,ts,jsx,tsx}\",\n  ],\n  theme: {\n    extend: {\n      colors: {\n        brand: {\n          50: '#f0f9ff',\n          100: '#e0f2fe',\n          500: '#0ea5e9',\n          600: '#0284c7',\n          900: '#0c4a6e',\n        }\n      }\n    },\n  },\n  plugins: [],\n}\n",
+      "brief": "frontend/tailwind.config.js (javascript)",
+      "summary": "Source file that contributes to the `frontend` area of the repository. It has about 21 lines."
+    },
+    {
+      "path": "backend/omnia_backend/wsgi.py",
+      "size": 175,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 4,
+      "symbol": "",
+      "imports": [
+        "import os",
+        "from django.core.wsgi import get_wsgi_application"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/omnia_backend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "import os\nfrom django.core.wsgi import get_wsgi_application\nos.environ.setdefault('DJANGO_SETTINGS_MODULE', 'omnia_backend.settings')\napplication = get_wsgi_application()\n",
+      "brief": "backend/omnia_backend/wsgi.py (python)",
+      "summary": "Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 4 lines. Key imports: import os, from django.core.wsgi import get_wsgi_application."
+    },
+    {
+      "path": "backend/api/models.py",
+      "size": 979,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 30,
+      "symbol": "Doctor",
+      "imports": [
+        "from django.db import models"
+      ],
+      "routes": [],
+      "data_models": [
+        "Doctor",
+        "Service",
+        "Appointment"
+      ],
+      "role_hints": [
+        "api",
+        "data-model"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `Doctor` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/models.py (python, api, data-model)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 30 lines. Primary symbol: Doctor. Key imports: from django.db import models."
+    },
+    {
+      "path": "backend/api/views.py",
+      "size": 565,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 15,
+      "symbol": "DoctorViewSet",
+      "imports": [
+        "from rest_framework import viewsets",
+        "from .models import Doctor, Service, Appointment",
+        "from .serializers import DoctorSerializer, ServiceSerializer, AppointmentSerializer"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "routing",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `DoctorViewSet` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/views.py (python, routing, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 15 lines. Primary symbol: DoctorViewSet. Key imports: from rest_framework import viewsets, from .models import Doctor, Service, Appointment, from .serializers import DoctorSerializer, ServiceSerializer, AppointmentSerializer."
+    },
+    {
+      "path": "frontend/src/components/AppointmentModal.jsx",
+      "size": 6933,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 134,
+      "symbol": "AppointmentModal",
+      "imports": [
+        "import React, { useState } from 'react';",
+        "import axios from 'axios';",
+        "import { X, Calendar, Clock, User, Mail, FileText } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `AppointmentModal` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "frontend/src/components/AppointmentModal.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 134 lines. Primary symbol: AppointmentModal. Key imports: import React, { useState } from 'react';, import axios from 'axios';, import { X, Calendar, Clock, User, Mail, FileText } from 'lucide-react';."
+    },
+    {
+      "path": "backend/api/apps.py",
+      "size": 142,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 5,
+      "symbol": "ApiConfig",
+      "imports": [
+        "from django.apps import AppConfig"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `ApiConfig` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/apps.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 5 lines. Primary symbol: ApiConfig. Key imports: from django.apps import AppConfig."
+    },
+    {
+      "path": "backend/api/serializers.py",
+      "size": 477,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 17,
+      "symbol": "DoctorSerializer",
+      "imports": [
+        "from rest_framework import serializers",
+        "from .models import Doctor, Service, Appointment"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `DoctorSerializer` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/serializers.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 17 lines. Primary symbol: DoctorSerializer. Key imports: from rest_framework import serializers, from .models import Doctor, Service, Appointment."
+    },
+    {
+      "path": "backend/api/__init__.py",
+      "size": 0,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 0,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/__init__.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 0 lines."
+    },
+    {
+      "path": "frontend/index.html",
+      "size": 326,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "html",
+      "lines": 12,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `frontend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "frontend/index.html (html)",
+      "summary": "Source file that contributes to the `frontend` area of the repository. It has about 12 lines."
+    },
+    {
+      "path": "frontend/src/index.css",
+      "size": 131,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "css",
+      "lines": 7,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `frontend/src` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "frontend/src/index.css (css)",
+      "summary": "Source file that contributes to the `frontend/src` area of the repository. It has about 7 lines."
+    },
+    {
+      "path": "backend/seed.py",
+      "size": 1773,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 25,
+      "symbol": "seed",
+      "imports": [
+        "import os",
+        "import django",
+        "from api.models import Doctor, Service"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `seed` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "backend/seed.py (python)",
+      "summary": "Source file that contributes to the `backend` area of the repository. It has about 25 lines. Primary symbol: seed. Key imports: import os, import django, from api.models import Doctor, Service."
+    },
+    {
+      "path": "backend/omnia_backend/__init__.py",
+      "size": 0,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 0,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/omnia_backend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "backend/omnia_backend/__init__.py (python)",
+      "summary": "Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 0 lines."
+    }
+  ],
+  "all_file_summaries": [
+    {
+      "path": "backend/omnia_backend/urls.py",
+      "size": 173,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 7,
+      "symbol": "",
+      "imports": [
+        "from django.contrib import admin",
+        "from django.urls import path, include"
+      ],
+      "routes": [
+        "admin/",
+        "api/"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `` if present and then trace the request flow through imports and downstream service calls. Routes detected: admin/, api/.",
+      "excerpt": "from django.contrib import admin\nfrom django.urls import path, include\n\nurlpatterns = [\n    path('admin/', admin.site.urls),\n    path('api/', include('api.urls')),\n]\n",
+      "brief": "backend/omnia_backend/urls.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 7 lines. Key imports: from django.contrib import admin, from django.urls import path, include."
+    },
+    {
+      "path": "frontend/vite.config.js",
+      "size": 139,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "build-config",
+      "language": "javascript",
+      "lines": 6,
+      "symbol": "",
+      "imports": [
+        "import { defineConfig } from 'vite'",
+        "import react from '@vitejs/plugin-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project.",
+      "why": "It exists because the build pipeline has repo-specific entrypoints, output rules, plugins, or environment handling that cannot live in default tool settings.",
+      "how": "Start with `` if present, then inspect imported helpers like import { defineConfig } from 'vite', import react from '@vitejs/plugin-react' to see which parts of the build are delegated elsewhere.",
+      "excerpt": "import { defineConfig } from 'vite'\nimport react from '@vitejs/plugin-react'\n\nexport default defineConfig({\n  plugins: [react()],\n})\n",
+      "brief": "frontend/vite.config.js (javascript, config)",
+      "summary": "Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project. It has about 6 lines. Key imports: import { defineConfig } from 'vite', import react from '@vitejs/plugin-react'."
+    },
+    {
+      "path": "backend/manage.py",
+      "size": 451,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "config",
+      "language": "python",
+      "lines": 16,
+      "symbol": "main",
+      "imports": [
+        "import os",
+        "import sys",
+        "from django.core.management import execute_from_command_line"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [
+        "!/usr/bin/env python"
+      ],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Configuration file that controls tooling, runtime behavior, or project conventions.",
+      "why": "It exists to keep environment-specific or tool-specific rules out of application logic.",
+      "how": "Start with top-level keys such as the main config fields and compare them with the commands or tools that consume this file.",
+      "excerpt": "#!/usr/bin/env python\nimport os\nimport sys\n\ndef main():\n    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'omnia_backend.settings')\n    try:\n        from django.core.management import execute_from_command_line\n    except ImportError as exc:\n        raise ImportError(\n            \"Couldn't import Django. Are you sure it's installed?\"\n        ) from exc\n    execute_from_command_line(sys.argv)\n\nif __name__ == '__main__':\n    main()\n",
+      "brief": "backend/manage.py (python, config)",
+      "summary": "Configuration file that controls tooling, runtime behavior, or project conventions. It has about 16 lines. Primary symbol: main. Top headings: !/usr/bin/env python. Key imports: import os, import sys, from django.core.management import execute_from_command_line."
+    },
+    {
+      "path": "backend/requirements.txt",
+      "size": 72,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "config",
+      "language": "text",
+      "lines": 3,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Configuration file that controls tooling, runtime behavior, or project conventions.",
+      "why": "It exists to keep environment-specific or tool-specific rules out of application logic.",
+      "how": "Start with top-level keys such as the main config fields and compare them with the commands or tools that consume this file.",
+      "excerpt": "Django==5.0.2\ndjangorestframework==3.14.0\ndjango-cors-headers==4.3.1\n",
+      "brief": "backend/requirements.txt (text, config)",
+      "summary": "Configuration file that controls tooling, runtime behavior, or project conventions. It has about 3 lines."
+    },
+    {
+      "path": "frontend/package.json",
+      "size": 517,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "package-manifest",
+      "language": "json",
+      "lines": 24,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [
+        "name",
+        "private",
+        "version",
+        "type",
+        "scripts",
+        "dependencies",
+        "devDependencies"
+      ],
+      "commands": [],
+      "purpose": "Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace.",
+      "why": "It exists as the control file for install/build/test commands and for declaring the dependency surface this project expects.",
+      "how": "Start with top-level keys like name, private, version, type, scripts, dependencies and then inspect the scripts section to understand day-to-day commands.",
+      "excerpt": "{\n  \"name\": \"omnia-frontend\",\n  \"private\": true,\n  \"version\": \"0.0.0\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"build\": \"vite build\",\n    \"preview\": \"vite preview\"\n  },\n  \"dependencies\": {\n    \"axios\": \"^1.6.7\",\n    \"lucide-react\": \"^0.344.0\",\n    \"react\": \"^18.2.0\",\n    \"react-dom\": \"^18.2.0\"\n  },\n  \"devDependencies\": {\n    \"@vitejs/plugin-react\": \"^4.2.1\",\n    \"autoprefixer\": \"^10.4.18\",\n    \"postcss\": \"^8.4.35\",\n    \"tailwindcss\": \"^3.4.1\",\n    \"vite\": \"^5.1.4\"\n  }\n}\n",
+      "brief": "frontend/package.json (json, config)",
+      "summary": "Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace. It has about 24 lines. Top-level keys: name, private, version, type, scripts, dependencies."
+    },
+    {
+      "path": "frontend/src/App.jsx",
+      "size": 9352,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 200,
+      "symbol": "API_BASE",
+      "imports": [
+        "import React, { useState, useEffect } from 'react';",
+        "import axios from 'axios';",
+        "import { Search, MapPin, ShieldPlus, Video, Building2, TestTube, Pill, Star, ChevronRight } from 'lucide-react';",
+        "import AppointmentModal from './components/AppointmentModal';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `API_BASE` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "import React, { useState, useEffect } from 'react';\nimport axios from 'axios';\nimport { Search, MapPin, ShieldPlus, Video, Building2, TestTube, Pill, Star, ChevronRight } from 'lucide-react';\nimport AppointmentModal from './components/AppointmentModal';\n\nconst API_BASE = 'http://localhost:8000/api';\n\nconst iconMap = {\n  Video: Video,\n  Building2: Building2,\n  TestTube: TestTube,\n  Pill: Pill\n};\n\nfunction App() {\n  const [doctors, setDoctors] = useState([]);\n  const [services, setServices] = useState([]);\n  const [isModalOpen, setIsModalOpen] = useState(false);\n  const [selectedDoctor, setSelectedDoctor] = useState(null);\n\n  useEffect(() => {\n    const fetchData = async () => {\n      try {\n        const [docsRes, servRes] = await Promise.all([\n          axios.get(`${API_BASE}/doctors/`),\n          axios.get(`${API_BASE}/services/`)\n        ]);\n        setDoctors(docsRes.data);\n        setServices(servRes.data);\n      } catch (error) {\n        console.error(\"Error fetching data:\", error);\n      }\n    };\n    fetchData();\n  }, []);\n\n  const openModal = (doctor) => {\n    setSelectedDoctor(doctor);\n    setIsModalOpen(true);\n  };\n\n  return (\n    <div className=\"min-h-screen bg-white\">\n      {/* Navigation */}\n      <nav className=\"border-b border-gray-100 sticky top-0 bg-white z-40\">\n        <div className=\"max-w-7xl mx-auto px-4 sm:px-6 lg:px-8\">\n          <div className=\"flex justif",
+      "brief": "frontend/src/App.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 200 lines. Primary symbol: API_BASE. Key imports: import React, { useState, useEffect } from 'react';, import axios from 'axios';, import { Search, MapPin, ShieldPlus, Video, Building2, TestTube, Pill, Star, ChevronRight } from 'lucide-react';, import AppointmentModal from './components/AppointmentModal';."
+    },
+    {
+      "path": "backend/api/urls.py",
+      "size": 390,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 12,
+      "symbol": "",
+      "imports": [
+        "from django.urls import path, include",
+        "from rest_framework.routers import DefaultRouter",
+        "from .views import DoctorViewSet, ServiceViewSet, AppointmentViewSet"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "from django.urls import path, include\nfrom rest_framework.routers import DefaultRouter\nfrom .views import DoctorViewSet, ServiceViewSet, AppointmentViewSet\n\nrouter = DefaultRouter()\nrouter.register(r'doctors', DoctorViewSet)\nrouter.register(r'services', ServiceViewSet)\nrouter.register(r'appointments', AppointmentViewSet)\n\nurlpatterns = [\n    path('', include(router.urls)),\n]\n",
+      "brief": "backend/api/urls.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 12 lines. Key imports: from django.urls import path, include, from rest_framework.routers import DefaultRouter, from .views import DoctorViewSet, ServiceViewSet, AppointmentViewSet."
+    },
+    {
+      "path": "frontend/src/main.jsx",
+      "size": 245,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 10,
+      "symbol": "",
+      "imports": [
+        "import React from 'react'",
+        "import ReactDOM from 'react-dom/client'",
+        "import App from './App.jsx'",
+        "import './index.css'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "import React from 'react'\nimport ReactDOM from 'react-dom/client'\nimport App from './App.jsx'\nimport './index.css'\n\nReactDOM.createRoot(document.getElementById('root')).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>,\n)\n",
+      "brief": "frontend/src/main.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 10 lines. Key imports: import React from 'react', import ReactDOM from 'react-dom/client', import App from './App.jsx', import './index.css'."
+    },
+    {
+      "path": "backend/omnia_backend/settings.py",
+      "size": 1840,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 66,
+      "symbol": "",
+      "imports": [
+        "import os",
+        "from pathlib import Path"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/omnia_backend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "import os\nfrom pathlib import Path\n\nBASE_DIR = Path(__file__).resolve().parent.parent\nSECRET_KEY = 'django-insecure-omnia-scaffold-key'\nDEBUG = True\nALLOWED_HOSTS = ['*']\n\nINSTALLED_APPS = [\n    'django.contrib.admin',\n    'django.contrib.auth',\n    'django.contrib.contenttypes',\n    'django.contrib.sessions',\n    'django.contrib.messages',\n    'django.contrib.staticfiles',\n    'rest_framework',\n    'corsheaders',\n    'api',\n]\n\nMIDDLEWARE = [\n    'corsheaders.middleware.CorsMiddleware',\n    'django.middleware.security.SecurityMiddleware',\n    'django.contrib.sessions.middleware.SessionMiddleware',\n    'django.middleware.common.CommonMiddleware',\n    'django.middleware.csrf.CsrfViewMiddleware',\n    'django.contrib.auth.middleware.AuthenticationMiddleware',\n    'django.contrib.messages.middleware.MessageMiddleware',\n    'django.middleware.clickjacking.XFrameOptionsMiddleware',\n]\n\nROOT_URLCONF = 'omnia_backend.urls'\n\nTEMPLATES = [\n    {\n        'BACKEND': 'django.template.backends.django.DjangoTemplates',\n        'DIRS': [],\n        'APP_DIRS': True,\n        'OPTIONS': {\n            'context_processors': [\n                'django.template.context_processors.debug',\n                'django.template.context_processors.request',\n                'django.contrib.auth.context_processors.auth',\n                'django.contrib.messages.context_processors.messages',\n            ],\n        ",
+      "brief": "backend/omnia_backend/settings.py (python)",
+      "summary": "Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 66 lines. Key imports: import os, from pathlib import Path."
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "size": 86,
+      "tier": 1,
+      "tier_reason": "entry-routing",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 6,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `frontend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}\n",
+      "brief": "frontend/postcss.config.js (javascript)",
+      "summary": "Source file that contributes to the `frontend` area of the repository. It has about 6 lines."
+    },
+    {
+      "path": "frontend/tailwind.config.js",
+      "size": 388,
+      "tier": 1,
+      "tier_reason": "entry-routing",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 21,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `frontend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "/** @type {import('tailwindcss').Config} */\nexport default {\n  content: [\n    \"./index.html\",\n    \"./src/**/*.{js,ts,jsx,tsx}\",\n  ],\n  theme: {\n    extend: {\n      colors: {\n        brand: {\n          50: '#f0f9ff',\n          100: '#e0f2fe',\n          500: '#0ea5e9',\n          600: '#0284c7',\n          900: '#0c4a6e',\n        }\n      }\n    },\n  },\n  plugins: [],\n}\n",
+      "brief": "frontend/tailwind.config.js (javascript)",
+      "summary": "Source file that contributes to the `frontend` area of the repository. It has about 21 lines."
+    },
+    {
+      "path": "backend/omnia_backend/wsgi.py",
+      "size": 175,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 4,
+      "symbol": "",
+      "imports": [
+        "import os",
+        "from django.core.wsgi import get_wsgi_application"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/omnia_backend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "import os\nfrom django.core.wsgi import get_wsgi_application\nos.environ.setdefault('DJANGO_SETTINGS_MODULE', 'omnia_backend.settings')\napplication = get_wsgi_application()\n",
+      "brief": "backend/omnia_backend/wsgi.py (python)",
+      "summary": "Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 4 lines. Key imports: import os, from django.core.wsgi import get_wsgi_application."
+    },
+    {
+      "path": "backend/api/models.py",
+      "size": 979,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 30,
+      "symbol": "Doctor",
+      "imports": [
+        "from django.db import models"
+      ],
+      "routes": [],
+      "data_models": [
+        "Doctor",
+        "Service",
+        "Appointment"
+      ],
+      "role_hints": [
+        "api",
+        "data-model"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `Doctor` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/models.py (python, api, data-model)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 30 lines. Primary symbol: Doctor. Key imports: from django.db import models."
+    },
+    {
+      "path": "backend/api/views.py",
+      "size": 565,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 15,
+      "symbol": "DoctorViewSet",
+      "imports": [
+        "from rest_framework import viewsets",
+        "from .models import Doctor, Service, Appointment",
+        "from .serializers import DoctorSerializer, ServiceSerializer, AppointmentSerializer"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "routing",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `DoctorViewSet` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/views.py (python, routing, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 15 lines. Primary symbol: DoctorViewSet. Key imports: from rest_framework import viewsets, from .models import Doctor, Service, Appointment, from .serializers import DoctorSerializer, ServiceSerializer, AppointmentSerializer."
+    },
+    {
+      "path": "frontend/src/components/AppointmentModal.jsx",
+      "size": 6933,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 134,
+      "symbol": "AppointmentModal",
+      "imports": [
+        "import React, { useState } from 'react';",
+        "import axios from 'axios';",
+        "import { X, Calendar, Clock, User, Mail, FileText } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `AppointmentModal` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "frontend/src/components/AppointmentModal.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 134 lines. Primary symbol: AppointmentModal. Key imports: import React, { useState } from 'react';, import axios from 'axios';, import { X, Calendar, Clock, User, Mail, FileText } from 'lucide-react';."
+    },
+    {
+      "path": "backend/api/apps.py",
+      "size": 142,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 5,
+      "symbol": "ApiConfig",
+      "imports": [
+        "from django.apps import AppConfig"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `ApiConfig` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/apps.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 5 lines. Primary symbol: ApiConfig. Key imports: from django.apps import AppConfig."
+    },
+    {
+      "path": "backend/api/serializers.py",
+      "size": 477,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 17,
+      "symbol": "DoctorSerializer",
+      "imports": [
+        "from rest_framework import serializers",
+        "from .models import Doctor, Service, Appointment"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `DoctorSerializer` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/serializers.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 17 lines. Primary symbol: DoctorSerializer. Key imports: from rest_framework import serializers, from .models import Doctor, Service, Appointment."
+    },
+    {
+      "path": "backend/api/__init__.py",
+      "size": 0,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "python",
+      "lines": 0,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "backend/api/__init__.py (python, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 0 lines."
+    },
+    {
+      "path": "frontend/index.html",
+      "size": 326,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "html",
+      "lines": 12,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `frontend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "frontend/index.html (html)",
+      "summary": "Source file that contributes to the `frontend` area of the repository. It has about 12 lines."
+    },
+    {
+      "path": "frontend/src/index.css",
+      "size": 131,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "css",
+      "lines": 7,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `frontend/src` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "frontend/src/index.css (css)",
+      "summary": "Source file that contributes to the `frontend/src` area of the repository. It has about 7 lines."
+    },
+    {
+      "path": "backend/seed.py",
+      "size": 1773,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 25,
+      "symbol": "seed",
+      "imports": [
+        "import os",
+        "import django",
+        "from api.models import Doctor, Service"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `seed` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "backend/seed.py (python)",
+      "summary": "Source file that contributes to the `backend` area of the repository. It has about 25 lines. Primary symbol: seed. Key imports: import os, import django, from api.models import Doctor, Service."
+    },
+    {
+      "path": "backend/omnia_backend/__init__.py",
+      "size": 0,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "python",
+      "lines": 0,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `backend/omnia_backend` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "backend/omnia_backend/__init__.py (python)",
+      "summary": "Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 0 lines."
+    }
+  ],
+  "dependency_graph": {
+    "edges": [
+      {
+        "from": "frontend/src/App.jsx",
+        "to": "frontend/src/components/AppointmentModal.jsx",
+        "reason": "import AppointmentModal from './components/AppointmentModal';"
+      },
+      {
+        "from": "frontend/src/main.jsx",
+        "to": "frontend/src/App.jsx",
+        "reason": "import App from './App.jsx'"
+      }
+    ],
+    "adjacency": {
+      "frontend/src/App.jsx": [
+        "frontend/src/components/AppointmentModal.jsx"
+      ],
+      "frontend/src/main.jsx": [
+        "frontend/src/App.jsx"
+      ]
+    },
+    "reverse_adjacency": {
+      "frontend/src/components/AppointmentModal.jsx": [
+        "frontend/src/App.jsx"
+      ],
+      "frontend/src/App.jsx": [
+        "frontend/src/main.jsx"
+      ]
+    }
+  },
+  "api_reference": [
+    {
+      "group": "Other",
+      "method": "GET",
+      "path": "/admin/",
+      "route_name": "urls",
+      "handler": "urls",
+      "description": "Retrieve admin. Use this when a client needs to load or refresh `admin`.",
+      "summary": "Retrieve admin.",
+      "when_to_use": "Use this when a client needs to load or refresh `admin`.",
+      "behavior_notes": [],
+      "auth_required": false,
+      "access": "No explicit auth or permission decorators were detected in the handler.",
+      "path_params": [],
+      "query_params": [],
+      "request_fields": [],
+      "request_body": null,
+      "response": null,
+      "response_keys": [],
+      "common_errors": [],
+      "status_codes": [],
+      "source": {
+        "url_file": "backend/omnia_backend/urls.py",
+        "view_file": "",
+        "line": null
+      },
+      "route_order": 0,
+      "curl_example": "curl -X GET \"http://localhost:8000/admin/\""
+    },
+    {
+      "group": "Other",
+      "method": "GET",
+      "path": "/api/",
+      "route_name": "include",
+      "handler": "include",
+      "description": "Retrieve include. Use this when a client needs to load or refresh `endpoint`.",
+      "summary": "Retrieve include.",
+      "when_to_use": "Use this when a client needs to load or refresh `endpoint`.",
+      "behavior_notes": [],
+      "auth_required": false,
+      "access": "No explicit auth or permission decorators were detected in the handler.",
+      "path_params": [],
+      "query_params": [],
+      "request_fields": [],
+      "request_body": null,
+      "response": null,
+      "response_keys": [],
+      "common_errors": [],
+      "status_codes": [],
+      "source": {
+        "url_file": "backend/api/urls.py",
+        "view_file": "backend/api/views.py",
+        "line": null
+      },
+      "route_order": 1,
+      "curl_example": "curl -X GET \"http://localhost:8000/api/\""
+    }
+  ],
+  "database_schema": [
+    {
+      "table": "Appointment",
+      "description": "Django model defined in `backend/api/models.py` that persists `Appointment` records for the application domain. It stores 7 mapped fields  and links to `Doctor`. The model tracks lifecycle timing through `created_at`.",
+      "key_fields": [
+        {
+          "name": "doctor",
+          "type": "ForeignKey(Doctor, on_delete=models.CASCADE)",
+          "constraints": "FK(Doctor), NOT NULL, on_delete=models.CASCADE",
+          "description": "References the related `Doctor` record through the ORM association."
+        },
+        {
+          "name": "patient_name",
+          "type": "CharField(max_length=100)",
+          "constraints": "NOT NULL, max_length=100",
+          "description": "Short string field used by the application domain."
+        },
+        {
+          "name": "patient_email",
+          "type": "EmailField",
+          "constraints": "NOT NULL",
+          "description": "Persisted application field defined on the model."
+        },
+        {
+          "name": "date",
+          "type": "DateField",
+          "constraints": "NOT NULL",
+          "description": "Persisted application field defined on the model."
+        },
+        {
+          "name": "time",
+          "type": "TimeField",
+          "constraints": "NOT NULL",
+          "description": "Persisted application field defined on the model."
+        },
+        {
+          "name": "reason",
+          "type": "TextField",
+          "constraints": "NOT NULL",
+          "description": "Free-form text captured for the record."
+        },
+        {
+          "name": "created_at",
+          "type": "DateTimeField(auto_now_add=True)",
+          "constraints": "NOT NULL, auto_now_add=True",
+          "description": "Timestamp used to record when this event or record state was written."
+        }
+      ],
+      "relationships": "`doctor` is a many-to-one relationship from `Appointment` to `Doctor` with `on_delete=models.CASCADE`.",
+      "indexes": []
+    },
+    {
+      "table": "Doctor",
+      "description": "Django model defined in `backend/api/models.py` that persists `Doctor` records for the application domain. It stores 4 mapped fields. It also keeps flexible structured state in `specialty`. Other persisted records point back to it from `Appointment.doctor` gives `Doctor` a one-to-many reverse relation..",
+      "key_fields": [
+        {
+          "name": "name",
+          "type": "CharField(max_length=100)",
+          "constraints": "NOT NULL, max_length=100",
+          "description": "Human-readable label shown in the product and internal workflows."
+        },
+        {
+          "name": "specialty",
+          "type": "CharField(max_length=100)",
+          "constraints": "NOT NULL, max_length=100",
+          "description": "Short string field used by the application domain."
+        },
+        {
+          "name": "experience_years",
+          "type": "IntegerField",
+          "constraints": "NOT NULL",
+          "description": "Numeric field used by the application when counting or scoring data."
+        },
+        {
+          "name": "image_url",
+          "type": "URLField(blank=True, null=True)",
+          "constraints": "blank=True",
+          "description": "Persisted application field defined on the model."
+        }
+      ],
+      "relationships": "`Appointment.doctor` gives `Doctor` a one-to-many reverse relation.",
+      "indexes": []
+    },
+    {
+      "table": "Service",
+      "description": "Django model defined in `backend/api/models.py` that persists `Service` records for the application domain. It stores 3 mapped fields.",
+      "key_fields": [
+        {
+          "name": "name",
+          "type": "CharField(max_length=100)",
+          "constraints": "NOT NULL, max_length=100",
+          "description": "Human-readable label shown in the product and internal workflows."
+        },
+        {
+          "name": "description",
+          "type": "TextField",
+          "constraints": "NOT NULL",
+          "description": "Long-form text describing the record's purpose or requirements."
+        },
+        {
+          "name": "icon_name",
+          "type": "CharField(max_length=50)",
+          "constraints": "NOT NULL, max_length=50",
+          "description": "Short string field used by the application domain."
+        }
+      ],
+      "relationships": "No persisted relationships were clearly detected from the scanned model classes.",
+      "indexes": []
+    }
+  ],
+  "database_mermaid_erd": "erDiagram\n  Appointment {\n    string doctor\n    string patient_name\n    string patient_email\n    string date\n    string time\n    text reason\n    datetime created_at\n  }\n  Doctor {\n    string name\n    string specialty\n    int experience_years\n    string image_url\n  }\n  Service {\n    string name\n    text description\n    string icon_name\n  }\n  Doctor ||--o{ Appointment : doctor",
+  "database_source_files": [
+    "backend/api/models.py"
+  ],
+  "database_model_names": [
+    "Appointment",
+    "Doctor",
+    "Service"
+  ],
+  "graph_summary": "",
+  "graph_architecture_overview": {},
+  "graph_repository_map": [],
+  "graph_key_components": [],
+  "graph_sequence_flows": [],
+  "graph_knowledge_gaps": [],
+  "graph_stats": {},
+  "env_var_names": [],
+  "readme_excerpt": "",
+  "instruction_files": [
+    {
+      "path": ".devhub/DEVHUB.md",
+      "content": "# DevHub Instructions\n\nProject: omnia\nTech Stack: React, Django\nRuntime: fullstack\n\n## Guidance\n- Preserve the existing project structure and runtime conventions.\n- Prefer editing existing files over creating duplicate parallel implementations.\n- Keep Blueprint, Features, Pipeline, and Onboarding aligned with real code changes.\n- Update related UI, logic, styles, and runtime wiring together when behavior changes.\n\n## Product Expectations\n- This project should remain runnable after changes.\n- New features should reflect the current codebase, not a generic starter.\n- Favor minimal, targeted edits and reuse existing architecture patterns.\n\n## Notes\n- Add project-specific architecture rules, conventions, and deployment constraints here over time.\n"
+    }
+  ],
+  "repo_tree": "omnia/\n|- .devhub/\n|- frontend/\n|- backend\n|  |- api\n|  |  |- __init__.py\n|  |  |- apps.py\n|  |  |- models.py\n|  |  |- serializers.py\n|  |  |- urls.py\n|  |  `- views.py\n|  |- omnia_backend\n|  |  |- __init__.py\n|  |  |- settings.py\n|  |  |- urls.py\n|  |  `- wsgi.py\n|  |- manage.py\n|  |- requirements.txt\n|  `- seed.py\n`- frontend\n   |- src\n   |  |- components\n   |  |  `- AppointmentModal.jsx\n   |  |- App.jsx\n   |  |- index.css\n   |  `- main.jsx\n   |- index.html\n   |- package.json\n   |- postcss.config.js\n   |- tailwind.config.js\n   `- vite.config.js",
+  "repo_tree_nodes": [
+    {
+      "name": ".devhub",
+      "path": ".devhub",
+      "type": "directory",
+      "children": [],
+      "child_count": 0
+    },
+    {
+      "name": "backend",
+      "path": "backend",
+      "type": "directory",
+      "children": [
+        {
+          "name": "api",
+          "path": "backend/api",
+          "type": "directory",
+          "children": [
+            {
+              "name": "__init__.py",
+              "path": "backend/api/__init__.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "apps.py",
+              "path": "backend/api/apps.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "models.py",
+              "path": "backend/api/models.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "serializers.py",
+              "path": "backend/api/serializers.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "urls.py",
+              "path": "backend/api/urls.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "views.py",
+              "path": "backend/api/views.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            }
+          ],
+          "child_count": 6
+        },
+        {
+          "name": "omnia_backend",
+          "path": "backend/omnia_backend",
+          "type": "directory",
+          "children": [
+            {
+              "name": "__init__.py",
+              "path": "backend/omnia_backend/__init__.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "settings.py",
+              "path": "backend/omnia_backend/settings.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "urls.py",
+              "path": "backend/omnia_backend/urls.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "wsgi.py",
+              "path": "backend/omnia_backend/wsgi.py",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            }
+          ],
+          "child_count": 4
+        },
+        {
+          "name": "manage.py",
+          "path": "backend/manage.py",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "requirements.txt",
+          "path": "backend/requirements.txt",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "seed.py",
+          "path": "backend/seed.py",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        }
+      ],
+      "child_count": 5
+    },
+    {
+      "name": "frontend",
+      "path": "frontend",
+      "type": "directory",
+      "children": [
+        {
+          "name": "src",
+          "path": "frontend/src",
+          "type": "directory",
+          "children": [
+            {
+              "name": "components",
+              "path": "frontend/src/components",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "AppointmentModal.jsx",
+                  "path": "frontend/src/components/AppointmentModal.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 1
+            },
+            {
+              "name": "App.jsx",
+              "path": "frontend/src/App.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "index.css",
+              "path": "frontend/src/index.css",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "main.jsx",
+              "path": "frontend/src/main.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            }
+          ],
+          "child_count": 4
+        },
+        {
+          "name": "index.html",
+          "path": "frontend/index.html",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "package.json",
+          "path": "frontend/package.json",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "postcss.config.js",
+          "path": "frontend/postcss.config.js",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "tailwind.config.js",
+          "path": "frontend/tailwind.config.js",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "vite.config.js",
+          "path": "frontend/vite.config.js",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        }
+      ],
+      "child_count": 6
+    }
+  ],
+  "compact_summary": "Project: omnia\nFingerprint: 1401e85c439fee3601631397e076b72298bc393a\nManifest files: 22\nIndexed files: 22\nTop directories:\n- backend: 13 files\n- frontend: 9 files\nImportant files:\n- backend/omnia_backend/urls.py: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 7 lines. Key imports: from django.contrib import admin, from django.urls import path, include.\n- frontend/vite.config.js: Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project. It has about 6 lines. Key imports: import { defineConfig } from 'vite', import react from '@vitejs/plugin-react'.\n- backend/manage.py: Configuration file that controls tooling, runtime behavior, or project conventions. It has about 16 lines. Primary symbol: main. Top headings: !/usr/bin/env python. Key imports: import os, import sys, from django.core.management import execute_from_command_line.\n- backend/requirements.txt: Configuration file that controls tooling, runtime behavior, or project conventions. It has about 3 lines.\n- frontend/package.json: Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace. It has about 24 lines. Top-level keys: name, private, version, type, scripts, dependencies.\n- frontend/src/App.jsx: Reusable UI component responsible for part of the interface. It has about 200 lines. Primary symbol: API_BASE. Key imports: import React, { useState, useEffect } from 'react';, import axios from 'axios';, import { Search, MapPin, ShieldPlus, Video, Building2, TestTube, Pill, Star, ChevronRight } from 'lucide-react';, import AppointmentModal from './components/AppointmentModal';.\n- backend/api/urls.py: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 12 lines. Key imports: from django.urls import path, include, from rest_framework.routers import DefaultRouter, from .views import DoctorViewSet, ServiceViewSet, AppointmentViewSet.\n- frontend/src/main.jsx: Reusable UI component responsible for part of the interface. It has about 10 lines. Key imports: import React from 'react', import ReactDOM from 'react-dom/client', import App from './App.jsx', import './index.css'.\n- backend/omnia_backend/settings.py: Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 66 lines. Key imports: import os, from pathlib import Path.\n- frontend/postcss.config.js: Source file that contributes to the `frontend` area of the repository. It has about 6 lines.\n- frontend/tailwind.config.js: Source file that contributes to the `frontend` area of the repository. It has about 21 lines.\n- backend/omnia_backend/wsgi.py: Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 4 lines. Key imports: import os, from django.core.wsgi import get_wsgi_application.\n- backend/api/models.py: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 30 lines. Primary symbol: Doctor. Key imports: from django.db import models.\n- backend/api/views.py: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 15 lines. Primary symbol: DoctorViewSet. Key imports: from rest_framework import viewsets, from .models import Doctor, Service, Appointment, from .serializers import DoctorSerializer, ServiceSerializer, AppointmentSerializer.\n- frontend/src/components/AppointmentModal.jsx: Reusable UI component responsible for part of the interface. It has about 134 lines. Primary symbol: AppointmentModal. Key imports: import React, { useState } from 'react';, import axios from 'axios';, import { X, Calendar, Clock, User, Mail, FileText } from 'lucide-react';.\n- backend/api/apps.py: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 5 lines. Primary symbol: ApiConfig. Key imports: from django.apps import AppConfig.\n- backend/api/serializers.py: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 17 lines. Primary symbol: DoctorSerializer. Key imports: from rest_framework import serializers, from .models import Doctor, Service, Appointment.\n- backend/api/__init__.py: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 0 lines.\n- frontend/index.html: Source file that contributes to the `frontend` area of the repository. It has about 12 lines.\n- frontend/src/index.css: Source file that contributes to the `frontend/src` area of the repository. It has about 7 lines.\n- backend/seed.py: Source file that contributes to the `backend` area of the repository. It has about 25 lines. Primary symbol: seed. Key imports: import os, import django, from api.models import Doctor, Service.\n- backend/omnia_backend/__init__.py: Source file that contributes to the `backend/omnia_backend` area of the repository. It has about 0 lines.\nPersisted backend models:\n- Appointment\n- Doctor\n- Service\nProject instructions:\n- .devhub/DEVHUB.md: # DevHub Instructions  Project: omnia Tech Stack: React, Django Runtime: fullstack  ## Guidance - Preserve the existing project structure and runtime conventions. - Prefer editing existing files over creating duplicate p",
+  "detected_css_frameworks": [
+    {
+      "name": "Tailwind CSS",
+      "evidence_file": "frontend/package.json",
+      "version": "^3.4.1"
+    }
+  ],
+  "detected_test_frameworks": [],
+  "detected_lint_tools": [],
+  "detected_websocket_services": [],
+  "detected_integration_clients": []
+}

@@ -1,0 +1,249 @@
+{% extends 'base.html' %}
+{% block title %}Update Web App Info{% endblock %}
+{% block content %}
+
+<style>
+    .web-app-update-container {
+        max-width: 1400px;
+        margin: 40px auto;
+        padding: 0 30px;
+    }
+
+    .web-app-update-container .page-header {
+        font-size: 28px;
+        font-family: 'Poppins', sans-serif;
+        color: #1d2741;
+        margin-bottom: 30px;
+        font-weight: 500;
+        text-align: center;
+        position: relative;
+    }
+
+    .web-app-update-container .page-header:after {
+        content: '';
+        display: block;
+        width: 60px;
+        height: 3px;
+        background: #4360a9;
+        margin: 15px auto 0;
+        border-radius: 2px;
+    }
+
+    .web-app-update-container .content-card {
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 2px solid rgba(67, 96, 169, 0.3);
+        border-radius: 15px;
+        padding: 35px;
+        margin-bottom: 30px;
+        transition: transform 0.3s ease;
+    }
+
+    .web-app-update-container .content-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .web-app-update-container .form-label {
+        color: #1d2741;
+        font-size: 18px;
+        font-family: 'Poppins', sans-serif;
+        font-weight: 500;
+        margin-bottom: 15px;
+        display: block;
+    }
+
+    .web-app-update-container .form-control {
+        border: 2px solid rgba(67, 96, 169, 0.2);
+        border-radius: 10px;
+        padding: 15px;
+        font-size: 16px;
+        font-family: 'Poppins', sans-serif;
+        color: #1d2741;
+        background: rgba(255, 255, 255, 0.9);
+        transition: all 0.3s ease;
+        width: 100%;
+    }
+
+    .web-app-update-container .form-control:focus {
+        border-color: #4360a9;
+        box-shadow: 0 0 0 0.2rem rgba(67, 96, 169, 0.25);
+        outline: none;
+    }
+
+    .web-app-update-container textarea.form-control {
+        min-height: 400px;
+        resize: vertical;
+        line-height: 1.6;
+    }
+
+    .web-app-update-container .submit-btn {
+        background: #4360a9;
+        color: white;
+        padding: 12px 30px;
+        border-radius: 8px;
+        border: none;
+        font-size: 16px;
+        font-family: 'Poppins', sans-serif;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: block;
+        margin: 25px auto 0;
+        min-width: 200px;
+    }
+
+    .web-app-update-container .submit-btn:hover {
+        background: #324b8c;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(67, 96, 169, 0.3);
+    }
+
+    /* Text Editor Toolbar Styles */
+    .editor-toolbar {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px 8px 0 0;
+        padding: 10px;
+        margin-bottom: -1px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .editor-toolbar button {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 6px 12px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 14px;
+        color: #1d2741;
+    }
+
+    .editor-toolbar button:hover {
+        background: #e9ecef;
+        border-color: #adb5bd;
+    }
+
+    .editor-toolbar select {
+        padding: 6px;
+        border-radius: 4px;
+        border: 1px solid #dee2e6;
+        font-size: 14px;
+    }
+
+    .toolbar-group {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        padding: 0 10px;
+        border-right: 1px solid #dee2e6;
+    }
+
+    .toolbar-group:last-child {
+        border-right: none;
+    }
+
+    @media (max-width: 768px) {
+        .web-app-update-container {
+            padding: 0 15px;
+        }
+        
+        .web-app-update-container .content-card {
+            padding: 20px;
+        }
+
+        .web-app-update-container .page-header {
+            font-size: 24px;
+        }
+
+        .toolbar-group {
+            border-right: none;
+            padding: 5px 0;
+        }
+    }
+</style>
+
+<div class="web-app-update-container">
+    <h2 class="page-header">Update Training Content</h2>
+    
+    <div class="content-card">
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label for="web_app_info" class="form-label">Training Content</label>
+                <div class="editor-toolbar">
+                    <div class="toolbar-group">
+                        <select id="font-size">
+                            <option value="3">Small</option>
+                            <option value="4" selected>Normal</option>
+                            <option value="5">Large</option>
+                            <option value="6">Extra Large</option>
+                        </select>
+                        <select id="font-family">
+                            <option value="Arial">Arial</option>
+                            <option value="Times New Roman">Times New Roman</option>
+                            <option value="Courier New">Courier New</option>
+                            <option value="Poppins">Poppins</option>
+                        </select>
+                    </div>
+                    <div class="toolbar-group">
+                        <button type="button" onclick="formatText('bold')" title="Bold"><i class="fas fa-bold"></i></button>
+                        <button type="button" onclick="formatText('italic')" title="Italic"><i class="fas fa-italic"></i></button>
+                        <button type="button" onclick="formatText('underline')" title="Underline"><i class="fas fa-underline"></i></button>
+                    </div>
+                    <div class="toolbar-group">
+                        <button type="button" onclick="formatText('justifyLeft')" title="Align Left"><i class="fas fa-align-left"></i></button>
+                        <button type="button" onclick="formatText('justifyCenter')" title="Align Center"><i class="fas fa-align-center"></i></button>
+                        <button type="button" onclick="formatText('justifyRight')" title="Align Right"><i class="fas fa-align-right"></i></button>
+                    </div>
+                    <div class="toolbar-group">
+                        <button type="button" onclick="formatText('insertUnorderedList')" title="Bullet List"><i class="fas fa-list-ul"></i></button>
+                        <button type="button" onclick="formatText('insertOrderedList')" title="Numbered List"><i class="fas fa-list-ol"></i></button>
+                    </div>
+                </div>
+                <div contenteditable="true" class="form-control" id="editor" style="min-height: 400px;">{{ chatbot.web_app_info|safe }}</div>
+                <textarea id="web_app_info" name="web_app_info" style="display: none;"></textarea>
+            </div>
+            <button type="submit" class="submit-btn">
+                Update Content
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+// Add Font Awesome if not already included
+if (!document.querySelector('link[href*="font-awesome"]')) {
+    const fontAwesome = document.createElement('link');
+    fontAwesome.rel = 'stylesheet';
+    fontAwesome.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css';
+    document.head.appendChild(fontAwesome);
+}
+
+function formatText(command, value = null) {
+    document.execCommand(command, false, value);
+    document.getElementById('editor').focus();
+}
+
+// Handle font size changes
+document.getElementById('font-size').addEventListener('change', function(e) {
+    formatText('fontSize', e.target.value);
+});
+
+// Handle font family changes
+document.getElementById('font-family').addEventListener('change', function(e) {
+    formatText('fontName', e.target.value);
+});
+
+// Update hidden textarea before form submission
+document.querySelector('form').addEventListener('submit', function(e) {
+    const editorContent = document.getElementById('editor').innerHTML;
+    document.getElementById('web_app_info').value = editorContent;
+});
+</script>
+
+{% endblock %}

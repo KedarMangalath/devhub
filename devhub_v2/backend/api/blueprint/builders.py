@@ -2368,6 +2368,12 @@ def _render_blueprint_design_document(project: Project, blueprint: dict, codebas
 
 
 def _enrich_blueprint_document(project: Project, blueprint: dict, codebase_context: dict, feature_summary: str) -> dict:
+    from api.blueprint.overview import (
+        _project_features_payload,
+        _live_feature_inventory,
+        _live_pipeline_document,
+        _build_blueprint_overview_insights,
+    )
     blueprint = dict(blueprint or {})
     workspace_path = Path(project.local_path) if project.local_path else None
     indexed_endpoints = _blueprint_list(codebase_context.get('api_reference'))

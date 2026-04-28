@@ -325,23 +325,28 @@
   color: #ffffff !important;
 }
 
-:root[data-theme="light"] .devhub-workspace :is([class*="bg-[#0a0a0c]"], [class*="bg-[#0d0d0d]"], [class*="bg-[#101012]"], [class*="bg-[#111111]"], [class*="bg-[#151515]"], [class*="bg-[#181818]"], [class*="bg-[#1b1b1b]"], [class*="bg-[#1f1a1d]"], [class*="bg-[#252526]"], [class*="bg-[#2b1d22]"], [class*="bg-[#3c3c3c]"], [class*="bg-white/5"], [class*="bg-white/10"]) {
+:root[data-theme="light"] .devhub-workspace :is([class*="bg-[#0a0a0c]"], [class*="bg-[#0d0d0d]"], [class*="bg-[#0f0f0f]"], [class*="bg-[#101010]"], [class*="bg-[#101012]"], [class*="bg-[#111111]"], [class*="bg-[#151515]"], [class*="bg-[#181818]"], [class*="bg-[#1b1b1b]"], [class*="bg-[#1f1a1d]"], [class*="bg-[#1f1f1f]"], [class*="bg-[#252526]"], [class*="bg-[#2b1d22]"], [class*="bg-[#3c3c3c]"], [class*="bg-white/5"], [class*="bg-white/10"]),
+:root[data-theme="light"] .devhub-chat-panel :is([class*="bg-[#0a0a0c]"], [class*="bg-[#0d0d0d]"], [class*="bg-[#0f0f0f]"], [class*="bg-[#101010]"], [class*="bg-[#101012]"], [class*="bg-[#111111]"], [class*="bg-[#151515]"], [class*="bg-[#181818]"], [class*="bg-[#1b1b1b]"], [class*="bg-[#1f1a1d]"], [class*="bg-[#1f1f1f]"], [class*="bg-[#252526]"], [class*="bg-[#2b1d22]"], [class*="bg-[#3c3c3c]"], [class*="bg-white/5"], [class*="bg-white/10"]) {
   background: #ffffff !important;
 }
 
-:root[data-theme="light"] .devhub-workspace :is([class*="border-white/10"], [class*="border-[#2a2a2a]"], [class*="border-[#3a2a30]"]) {
+:root[data-theme="light"] .devhub-workspace :is([class*="border-white/10"], [class*="border-[#2a2a2a]"], [class*="border-[#2f2f2f]"], [class*="border-[#3a2a30]"], [class*="border-[#70434f]"]),
+:root[data-theme="light"] .devhub-chat-panel :is([class*="border-white/10"], [class*="border-[#2a2a2a]"], [class*="border-[#2f2f2f]"], [class*="border-[#3a2a30]"], [class*="border-[#70434f]"]) {
   border-color: #e5e7eb !important;
 }
 
-:root[data-theme="light"] .devhub-workspace :is([class*="text-[#e8e8e3]"], [class*="text-[#f3f3ee]"], [class*="text-[#d4d4d4]"], [class*="text-white"]) {
+:root[data-theme="light"] .devhub-workspace :is([class*="text-[#e8e8e3]"], [class*="text-[#e8e4e6]"], [class*="text-[#f3f3ee]"], [class*="text-[#d4d4d4]"], [class*="text-[#d8d8d2]"], [class*="text-[#dbe4ee]"], [class*="text-[#cbd5e1]"], [class*="text-white"]),
+:root[data-theme="light"] .devhub-chat-panel :is([class*="text-[#e8e8e3]"], [class*="text-[#e8e4e6]"], [class*="text-[#f3f3ee]"], [class*="text-[#d4d4d4]"], [class*="text-[#d8d8d2]"], [class*="text-[#dbe4ee]"], [class*="text-[#cbd5e1]"], [class*="text-white"]) {
   color: #0f172a !important;
 }
 
-:root[data-theme="light"] .devhub-workspace :is([class*="text-[#a6a6a0]"], [class*="text-[#9d9d9d]"], [class*="text-[#858585]"], [class*="text-[#75756f]"], [class*="text-[#6b6b6b]"], [class*="text-[#555555]"], [class*="text-[#4a4a65]"]) {
+:root[data-theme="light"] .devhub-workspace :is([class*="text-[#a6a6a0]"], [class*="text-[#9d9d9d]"], [class*="text-[#94a3b8]"], [class*="text-[#858585]"], [class*="text-[#7a8a9e]"], [class*="text-[#75756f]"], [class*="text-[#6b6b6b]"], [class*="text-[#64748b]"], [class*="text-[#555555]"], [class*="text-[#4a4a65]"]),
+:root[data-theme="light"] .devhub-chat-panel :is([class*="text-[#a6a6a0]"], [class*="text-[#9d9d9d]"], [class*="text-[#94a3b8]"], [class*="text-[#858585]"], [class*="text-[#7a8a9e]"], [class*="text-[#75756f]"], [class*="text-[#6b6b6b]"], [class*="text-[#64748b]"], [class*="text-[#555555]"], [class*="text-[#4a4a65]"]) {
   color: #64748b !important;
 }
 
-:root[data-theme="light"] .devhub-workspace :is([class*="hover:bg-white/10"], [class*="hover:bg-white/5"]):hover {
+:root[data-theme="light"] .devhub-workspace :is([class*="hover:bg-white/10"], [class*="hover:bg-white/5"]):hover,
+:root[data-theme="light"] .devhub-chat-panel :is([class*="hover:bg-white/10"], [class*="hover:bg-white/5"]):hover {
   background: #f1f5f9 !important;
 }
 
@@ -785,10 +790,26 @@ body.workspace-resizing iframe {
   border-color: #000000;
 }
 
+:root[data-theme="dark"] .devhub-loading-screen {
+  background: linear-gradient(145deg, #111113 0%, #0d0d10 100%) !important;
+}
+:root[data-theme="dark"] .devhub-loading-icon-bg {
+  background: linear-gradient(135deg, #1e1e22, #141416);
+}
+:root[data-theme="dark"] .devhub-loading-title { color: #e2e8f0; }
+:root[data-theme="dark"] .devhub-loading-subtitle { color: #475569; }
+:root[data-theme="dark"] .devhub-loading-track { background: #1e1e22; }
+
 :root[data-theme="light"] .devhub-loading-screen {
   background: #ffffff !important;
-  color: #0f172a !important;
 }
+:root[data-theme="light"] .devhub-loading-icon-bg {
+  background: linear-gradient(135deg, #f1f5f9, #e2e8f0) !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+}
+:root[data-theme="light"] .devhub-loading-title { color: #1e293b !important; }
+:root[data-theme="light"] .devhub-loading-subtitle { color: #64748b !important; }
+:root[data-theme="light"] .devhub-loading-track { background: #e2e8f0 !important; }
 
 /* ── Workspace loading animation ── */
 @keyframes loader-ring-spin {
@@ -914,4 +935,23 @@ body.workspace-resizing iframe {
 
 .devhub-content-enter {
   animation: content-fade-in 560ms cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
+}
+
+/* ── Sleek Tab Transitions ── */
+@keyframes tab-blur-reveal {
+  from {
+    opacity: 0;
+    filter: blur(10px);
+    transform: translate3d(12px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.sleek-tab-enter {
+  animation: tab-blur-reveal 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  will-change: transform, opacity, filter;
 }

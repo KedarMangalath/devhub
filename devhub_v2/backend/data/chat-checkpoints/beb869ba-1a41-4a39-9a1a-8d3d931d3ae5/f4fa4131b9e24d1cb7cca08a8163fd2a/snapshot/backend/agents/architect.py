@@ -1,0 +1,2 @@
+class ArchitectAgent:
+    pass

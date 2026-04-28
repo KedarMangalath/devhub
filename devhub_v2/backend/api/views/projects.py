@@ -7,6 +7,7 @@ from pathlib import Path
 
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from agents.core.base import ai_config_is_usable
@@ -58,15 +59,169 @@ from api.project_utils import (
     _suggested_stack_from_text,
     _upsert_project_github_link,
 )
-from api.scaffold.builder import scaffold_project
+from api.scaffold.builder import has_project_source_files, scaffold_project
 from api.workspace.memory import (
+    _read_scaffold_progress,
     _read_project_instructions,
     _read_project_memory,
     _render_project_features_summary,
+    _safe_write_scaffold_progress,
 )
 from api.workspace.runtime import detect_runtime
 
 logger = logging.getLogger(__name__)
+
+
+SCAFFOLD_TASKS = [
+    ("spec", "Shape the product brief"),
+    ("plan", "Plan files and data model"),
+    ("code", "Generate the frontend"),
+    ("validate", "Validate and repair"),
+    ("context", "Index workspace context"),
+]
+
+
+def _scaffold_progress_payload(project: Project, status: str, message: str, events: list[dict] | None = None) -> dict:
+    events = list(events or [])
+    event_types = {str(event.get("type") or "") for event in events}
+
+    def task_status(task_id: str) -> str:
+        if status == "failed":
+            if task_id == "context":
+                return "pending"
+            return "failed" if task_id in {"spec", "plan", "code", "validate"} else "pending"
+        if status == "done":
+            return "completed"
+        if task_id == "spec":
+            if "spec_ready" in event_types:
+                return "completed"
+            return "running"
+        if task_id == "plan":
+            if "plan_ready" in event_types:
+                return "completed"
+            return "running" if "spec_ready" in event_types else "pending"
+        if task_id == "code":
+            if "codegen_done" in event_types:
+                return "completed"
+            return "running" if "plan_ready" in event_types or "file_start" in event_types else "pending"
+        if task_id == "validate":
+            if "validate_ok" in event_types:
+                return "completed"
+            return "running" if any(t.startswith("validate") for t in event_types) else "pending"
+        if task_id == "context":
+            return "running" if "validate_ok" in event_types or "codegen_done" in event_types else "pending"
+        return "pending"
+
+    tasks = [
+        {
+            "id": task_id,
+            "label": label,
+            "status": task_status(task_id),
+        }
+        for task_id, label in SCAFFOLD_TASKS
+    ]
+    completed = sum(1 for task in tasks if task["status"] == "completed")
+    running_index = next((idx for idx, task in enumerate(tasks) if task["status"] == "running"), None)
+    progress_pct = 100 if status == "done" else min(96, completed * 20 + (8 if running_index is not None else 0))
+
+    return {
+        "status": status,
+        "title": f"Building {project.name}",
+        "message": message,
+        "progress_pct": progress_pct,
+        "tasks": tasks,
+        "events": events[-24:],
+    }
+
+
+def _run_scaffold_background(project_id: str, project_root: Path, starter_brief: str) -> None:
+    """Run scaffold pipeline in a background thread, then initialize project context."""
+    from django.db import connection as _db_conn
+    progress_events: list[dict] = []
+
+    def _record_progress(event: dict) -> None:
+        event_payload = dict(event or {})
+        event_payload["created_at"] = timezone.now().isoformat()
+        progress_events.append(event_payload)
+        try:
+            project_for_progress = Project.objects.get(id=project_id)
+        except Exception:
+            return
+        _safe_write_scaffold_progress(
+            project_root,
+            _scaffold_progress_payload(
+                project_for_progress,
+                "running",
+                event_payload.get("message") or "Generating starter project...",
+                progress_events,
+            ),
+        )
+
+    try:
+        project = Project.objects.get(id=project_id)
+        _safe_write_scaffold_progress(
+            project_root,
+            _scaffold_progress_payload(project, "running", "Starting project generation...", progress_events),
+        )
+        scaffold_result = scaffold_project(project, project_root, starter_brief=starter_brief, on_event=_record_progress)
+        generated_files = scaffold_result.get("files") if isinstance(scaffold_result, dict) else []
+        if not generated_files or not has_project_source_files(project_root):
+            raise RuntimeError("Scaffolding finished without writing project source files.")
+
+        project.refresh_from_db()
+        project.status = "active"
+        project.save(update_fields=['status'])
+        _safe_write_scaffold_progress(
+            project_root,
+            _scaffold_progress_payload(project, "running", "Indexing the generated workspace...", progress_events),
+        )
+
+        workspace_path = project_root
+        try:
+            index_semantic_memory(project, workspace_path)
+            compress_recent_activity(project)
+            _read_project_memory(project, workspace_path)
+            _read_project_instructions(project, workspace_path)
+            build_blueprint_context(project, workspace_path)
+        except MEMORY_DB_ERRORS:
+            logger.warning("Memory tables not ready for project %s", project_id)
+        except Exception:
+            logger.exception("Failed to init project memory for project %s", project_id)
+
+        try:
+            project.refresh_from_db(fields=['blueprint'])
+            if not project.blueprint:
+                generate_blueprint_sync(project)
+        except MEMORY_DB_ERRORS:
+            logger.warning("Skipped blueprint seed for project %s", project_id)
+        except Exception:
+            logger.exception("Failed blueprint seed for project %s", project_id)
+
+        project.refresh_from_db(fields=['blueprint'])
+        _schedule_project_context_generation(
+            project,
+            include_documentation=False,
+            include_blueprint=not bool(project.blueprint),
+        )
+        _safe_write_scaffold_progress(
+            project_root,
+            _scaffold_progress_payload(project, "done", "Starter project is ready.", progress_events),
+        )
+    except Exception:
+        logger.exception("Scaffold background thread failed for project %s", project_id)
+        try:
+            failed_project = Project.objects.get(id=project_id)
+            Project.objects.filter(id=project_id).update(status="failed")
+            _safe_write_scaffold_progress(
+                project_root,
+                _scaffold_progress_payload(failed_project, "failed", "Scaffolding failed before files were created. Check backend logs for details.", progress_events),
+            )
+        except Exception:
+            pass
+    finally:
+        _db_conn.close()
+
+
 def _read_cached_blueprint_context(workspace_path: Path) -> dict:
     try:
         cache_path = _blueprint_cache_path(workspace_path)
@@ -79,21 +234,45 @@ def _read_cached_blueprint_context(workspace_path: Path) -> dict:
         return {}
 
 def list_projects(request):
-    projects = [
-        {
+    projects = []
+    for project in Project.objects.all().order_by('-registered_at'):
+        workspace_path = Path(project.local_path) if project.local_path else None
+        scaffold_progress = _read_scaffold_progress(workspace_path) if workspace_path else None
+        progress_status = str((scaffold_progress or {}).get('status') or '').lower()
+        source_ready = has_project_source_files(workspace_path) if workspace_path else False
+        if progress_status == "done" and not source_ready:
+            progress_status = "failed"
+            scaffold_progress = {
+                **(scaffold_progress or {}),
+                "status": "failed",
+                "message": "Scaffolding reported done, but no project files were created.",
+                "progress_pct": 100,
+            }
+        documentation_status = str(
+            DocumentationRun.objects.filter(project=project).values_list('status', flat=True).first() or ''
+        ).lower()
+        context_initializing = (
+            project.status == "scaffolding"
+            or progress_status == "running"
+            or documentation_status in {'pending', 'running'}
+        )
+        visible_status = "scaffolding" if progress_status == "running" else ("failed" if progress_status == "failed" else project.status)
+        projects.append({
             'id': str(project.id),
             'name': project.name,
             'description': project.description,
-            'status': project.status,
+            'status': visible_status,
+            'raw_status': project.status,
             'tech_stack': project.tech_stack,
             'registered_at': project.registered_at,
             'local_path': project.local_path,
             'github_url': project.github_url,
             'github_integration': _github_integration_payload(project),
             'source_type': _project_source_type(project),
-        }
-        for project in Project.objects.all().order_by('-registered_at')
-    ]
+            'context_initializing': context_initializing,
+            'scaffold_progress': scaffold_progress,
+            'documentation_status': documentation_status,
+        })
     return JsonResponse({'projects': list(projects)})
 
 
@@ -103,6 +282,7 @@ def create_project(request):
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
     try:
+        scaffold_meta: dict | None = None
         body = _parse_json_body(request)
         name = body.get('name', '').strip()
         starter_brief = body.get('idea', '').strip()
@@ -187,10 +367,31 @@ def create_project(request):
             project.save()
         else:
             project_root = _managed_project_root(project)
-            scaffold_project(project, project_root, starter_brief=starter_brief)
+            project_root.mkdir(parents=True, exist_ok=True)
             project.local_path = str(project_root)
             project.workspace_id = workspace_manager.create_workspace(str(project_root), managed=True)
+            project.status = "scaffolding"
             project.save()
+            thread = threading.Thread(
+                target=_run_scaffold_background,
+                args=(str(project.id), project_root, starter_brief),
+                daemon=True,
+            )
+            thread.start()
+            return JsonResponse({
+                'id': str(project.id),
+                'name': project.name,
+                'description': project.description,
+                'workspace_id': project.workspace_id,
+                'status': 'scaffolding',
+                'blueprint': {},
+                'documentation': {},
+                'context_initializing': True,
+                'github_integration': _github_integration_payload(project),
+                'runtime': None,
+                'scaffold': None,
+                'scaffold_progress': _scaffold_progress_payload(project, "running", "Starting project generation...", []),
+            }, status=201)
 
         try:
             workspace_path = Path(project.local_path)
@@ -204,8 +405,6 @@ def create_project(request):
         except Exception:
             logger.exception("Failed to initialize project memory for project %s", project.id)
 
-        # Seed the first blueprint before returning so the project page never lands
-        # on an empty architecture screen while longer documentation work continues.
         try:
             if not project.blueprint:
                 logger.info("Generating initial blueprint seed for project %s", project.id)
@@ -225,7 +424,14 @@ def create_project(request):
         documentation_run = DocumentationRun.objects.filter(project=project).prefetch_related('sections').first()
         documentation = _documentation_run_payload(documentation_run)
         documentation_status = str(documentation.get('status') or '').lower()
-        context_initializing = (not bool(project.blueprint)) or documentation_status in {'pending', 'running'}
+        scaffold_progress = _read_scaffold_progress(Path(project.local_path)) if project.local_path else None
+        scaffold_status = str((scaffold_progress or {}).get('status') or '').lower()
+        context_initializing = (
+            project.status == "scaffolding"
+            or scaffold_status == "running"
+            or (not bool(project.blueprint))
+            or documentation_status in {'pending', 'running'}
+        )
 
         return JsonResponse({
             'id': str(project.id),
@@ -238,6 +444,8 @@ def create_project(request):
             'context_initializing': context_initializing,
             'github_integration': _github_integration_payload(project),
             'runtime': detect_runtime(Path(project.local_path)),
+            'scaffold': scaffold_meta,
+            'scaffold_progress': scaffold_progress,
         }, status=201)
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=500)
@@ -296,7 +504,7 @@ def _project_coder_customization_payload(project: Project) -> dict:
         "summary": summary[:4000],
         "skills": skills,
         "prompt_overrides": prompt_overrides,
-        "slash_commands": [f"/{item.get('slug') or item.get('name')}" for item in skills[:12]],
+        "slash_commands": ["/skills", *[f"/{item.get('slug') or item.get('name')}" for item in skills[:12]]],
         "suggested_files": suggested_project_customization_files(),
         "can_bootstrap": True,
     }
@@ -313,10 +521,32 @@ def get_project(request, project_id):
                 pass
 
         runtime = None
+        scaffold_progress = None
         features_payload = _project_features_payload(project)
+        source_ready = False
         if project.local_path and Path(project.local_path).is_dir():
             workspace_path = Path(project.local_path)
+            source_ready = has_project_source_files(workspace_path)
             runtime = detect_runtime(workspace_path)
+            scaffold_progress = _read_scaffold_progress(workspace_path)
+            scaffold_status = str((scaffold_progress or {}).get('status') or '').lower()
+            if scaffold_status == "done" and not source_ready:
+                project.status = "scaffolding"
+                project.save(update_fields=['status'])
+                scaffold_progress = _scaffold_progress_payload(
+                    project,
+                    "running",
+                    "Retrying scaffold because no project files were created.",
+                    [],
+                )
+                _safe_write_scaffold_progress(workspace_path, scaffold_progress)
+                retry_thread = threading.Thread(
+                    target=_run_scaffold_background,
+                    args=(str(project.id), workspace_path, project.description or project.name),
+                    daemon=True,
+                )
+                retry_thread.start()
+                scaffold_status = "running"
             try:
                 memory_exists = WorkingMemory.objects.filter(project=project, scope='implementation').exists()
             except MEMORY_DB_ERRORS:
@@ -347,7 +577,15 @@ def get_project(request, project_id):
         documentation_run = DocumentationRun.objects.filter(project=project).prefetch_related('sections').first()
         documentation = _documentation_run_payload(documentation_run)
         documentation_status = str(documentation.get('status') or '').lower()
-        context_initializing = (not bool(project.blueprint)) or documentation_status in {'pending', 'running'}
+        scaffold_status = str((scaffold_progress or {}).get('status') or '').lower()
+        context_initializing = (
+            project.status == "scaffolding"
+            or scaffold_status == "running"
+            or (not source_ready and scaffold_status not in {"failed", "done"})
+            or (source_ready and not bool(project.blueprint))
+            or documentation_status in {'pending', 'running'}
+        )
+        visible_status = "scaffolding" if scaffold_status == "running" else ("failed" if scaffold_status == "failed" else project.status)
 
         return JsonResponse({
             'id': str(project.id),
@@ -359,7 +597,8 @@ def get_project(request, project_id):
             'source_type': source_type,
             'workspace_id': project.workspace_id,
             'tech_stack': project.tech_stack,
-            'status': project.status,
+            'status': visible_status,
+            'raw_status': project.status,
             'blueprint': project.blueprint,
             'features': features_payload,
             'recommended_start_tab': recommended_start_tab,
@@ -370,6 +609,7 @@ def get_project(request, project_id):
             'documentation': documentation,
             'context_initializing': context_initializing,
             'runtime': runtime,
+            'scaffold_progress': scaffold_progress,
             'coder_customization': coder_customization,
         })
     except Project.DoesNotExist:

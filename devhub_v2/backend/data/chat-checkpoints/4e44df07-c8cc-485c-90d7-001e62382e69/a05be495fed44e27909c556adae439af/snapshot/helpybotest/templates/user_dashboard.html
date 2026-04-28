@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}User Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        margin-right: 1rem;
+    }
+    .stat-icon.primary {
+        background: rgba(79, 70, 229, 0.1);
+        color: var(--primary);
+    }
+    .stat-icon.success {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10B981;
+    }
+    .stat-icon.warning {
+        background: rgba(245, 158, 11, 0.1);
+        color: #F59E0B;
+    }
+    .stat-details h3 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0;
+        color: var(--text-main);
+    }
+    .stat-details p {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    .code-block {
+        background: #1F2937;
+        color: #E5E7EB;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        font-family: monospace;
+        font-size: 0.875rem;
+        word-break: break-all;
+        position: relative;
+    }
+    .copy-btn {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        background: rgba(255,255,255,0.1);
+        border: none;
+        color: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        font-size: 0.75rem;
+    }
+    .copy-btn:hover {
+        background: rgba(255,255,255,0.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="stat-card">
+            <div class="stat-icon primary">
+                <i class="fas fa-comments"></i>
+            </div>
+            <div class="stat-details">
+                <h3>{{ total_chats }}</h3>
+                <p>Total Chats</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card">
+            <div class="stat-icon success">
+                <i class="fas fa-user-check"></i>
+            </div>
+            <div class="stat-details">
+                <h3>{{ total_leads }}</h3>
+                <p>Total Leads</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card">
+            <div class="stat-icon warning">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="stat-details">
+                <h3>{{ avg_duration }}</h3>
+                <p>Avg. Chat Duration</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Chat Activity (Last 7 Days)</span>
+            </div>
+            <div class="card-body">
+                <canvas id="chatChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header">
+                Integration
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-3">Copy and paste this script into the <code>&lt;head&gt;</code> of your website to add the chatbot.</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyScript()">Copy</button>
+                    <code id="scriptCode">&lt;script src="{{ request.scheme }}://{{ request.get_host }}{% static 'js/main.js' %}" id="helpybo-script" data-user-id="{{ user.id }}"&gt;&lt;/script&gt;</code>
+                </div>
+                <div id="copyMessage" class="text-success mt-2" style="display: none; font-size: 0.875rem;">
+                    <i class="fas fa-check-circle"></i> Copied to clipboard!
+                </div>
+                
+                <hr class="my-4">
+                
+                <h6 class="fw-semibold mb-3">Quick Actions</h6>
+                <div class="d-grid gap-2">
+                    <a href="{% url 'preview_chatbot' %}" class="btn btn-primary">
+                        <i class="fas fa-eye me-2"></i> Preview Chatbot
+                    </a>
+                    <a href="{% url 'create_or_update_chatbot' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-cog me-2"></i> Settings
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function copyScript() {
+        const code = document.getElementById('scriptCode').innerText;
+        navigator.clipboard.writeText(code).then(() => {
+            const msg = document.getElementById('copyMessage');
+            msg.style.display = 'block';
+            setTimeout(() => {
+                msg.style.display = 'none';
+            }, 3000);
+        });
+    }
+
+    // Chart.js setup
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('chatChart').getContext('2d');
+        
+        // Parse the JSON data passed from the view
+        const dates = JSON.parse('{{ dates_json|escapejs }}');
+        const counts = JSON.parse('{{ counts_json|escapejs }}');
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: 'Chats per Day',
+                    data: counts,
+                    borderColor: '#4F46E5',
+                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        },
+                        grid: {
+                            color: '#E5E7EB'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

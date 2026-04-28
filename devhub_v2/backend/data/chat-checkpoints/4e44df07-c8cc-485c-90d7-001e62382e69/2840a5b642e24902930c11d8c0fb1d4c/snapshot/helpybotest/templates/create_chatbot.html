@@ -1,0 +1,88 @@
+<!-- create_chatbot.html -->
+{% extends 'base.html' %}
+
+{% block title %}
+{% if chatbot %}Update{% else %}Create{% endif %} Chatbot Settings
+{% endblock %}
+
+{% block page_title %}
+{% if chatbot %}Update{% else %}Create{% endif %} Chatbot Settings
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">{% if chatbot %}Update{% else %}Create{% endif %} Chatbot Settings</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="row g-4">
+                            <!-- Left Column -->
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="name" class="form-label">Chatbot Name</label>
+                                    <input type="text" class="form-control" id="name" name="name" value="{{ chatbot.name|default:'' }}" required placeholder="e.g., SupportBot">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="description" class="form-label">Description</label>
+                                    <textarea class="form-control" id="description" name="description" rows="3" placeholder="Brief description of your chatbot's purpose">{{ chatbot.description|default:'' }}</textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="greeting_message" class="form-label">Greeting Message</label>
+                                    <textarea class="form-control" id="greeting_message" name="greeting_message" rows="3" required placeholder="e.g., Hello! How can I help you today?">{{ chatbot.greeting_message|default:'' }}</textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="system_prompt" class="form-label">System Prompt</label>
+                                    <textarea class="form-control" id="system_prompt" name="system_prompt" rows="4" required placeholder="Define the chatbot's persona and rules">{{ chatbot.system_prompt|default:'' }}</textarea>
+                                </div>
+                            </div>
+                            
+                            <!-- Right Column -->
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="role_behavior" class="form-label">Role Behavior</label>
+                                    <select class="form-select" id="role_behavior" name="role_behavior">
+                                        <option value="support" {% if chatbot.role_behavior == 'support' %}selected{% endif %}>Customer Support</option>
+                                        <option value="sales" {% if chatbot.role_behavior == 'sales' %}selected{% endif %}>Sales Assistant</option>
+                                        <option value="informational" {% if chatbot.role_behavior == 'informational' %}selected{% endif %}>Informational Guide</option>
+                                        <option value="technical" {% if chatbot.role_behavior == 'technical' %}selected{% endif %}>Technical Support</option>
+                                        <option value="custom" {% if chatbot.role_behavior == 'custom' %}selected{% endif %}>Custom Persona</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="conversation_behavior" class="form-label">Conversation Behavior</label>
+                                    <select class="form-select" id="conversation_behavior" name="conversation_behavior">
+                                        <option value="friendly" {% if chatbot.conversation_behavior == 'friendly' %}selected{% endif %}>Friendly & Casual</option>
+                                        <option value="professional" {% if chatbot.conversation_behavior == 'professional' %}selected{% endif %}>Professional & Formal</option>
+                                        <option value="concise" {% if chatbot.conversation_behavior == 'concise' %}selected{% endif %}>Direct & Concise</option>
+                                        <option value="empathetic" {% if chatbot.conversation_behavior == 'empathetic' %}selected{% endif %}>Empathetic & Patient</option>
+                                        <option value="enthusiastic" {% if chatbot.conversation_behavior == 'enthusiastic' %}selected{% endif %}>Enthusiastic & Energetic</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="business_info" class="form-label">Business Information</label>
+                                    <textarea class="form-control" id="business_info" name="business_info" rows="3" placeholder="Key details about your business (hours, location, policies)">{{ chatbot.business_info|default:'' }}</textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="faq" class="form-label">Frequently Asked Questions (FAQ)</label>
+                                    <textarea class="form-control" id="faq" name="faq" rows="3" placeholder="Common questions and answers to help the bot respond accurately">{{ chatbot.faq|default:'' }}</textarea>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-end mt-4">
+                            <button type="submit" class="btn btn-primary px-5">
+                                {% if chatbot %}Update Chatbot{% else %}Create Chatbot{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

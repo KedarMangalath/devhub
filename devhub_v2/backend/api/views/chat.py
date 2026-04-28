@@ -1,5 +1,6 @@
 import logging
 import uuid
+from pathlib import Path
 
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
@@ -50,6 +51,7 @@ from api.chat.helpers import (
 )
 from api.project_utils import _project_ai_config
 from api.workspace.memory import _update_project_memory
+from agents.skills.activation import resolve_skill_activation
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,39 @@ def project_chat(request, project_id):
                 return JsonResponse({'error': 'Message or image attachment is required'}, status=400)
             request_text = _chat_request_text(content, attachments)
 
+            # --- Auto-detect relevant global skills ---
+            pinned_skill_slugs = [str(s) for s in (body.get('active_skills') or []) if s]
+            workspace_path = None
+            if project.workspace_id:
+                try:
+                    workspace_path = workspace_manager.get_workspace_path(project.workspace_id)
+                except Exception:
+                    workspace_path = None
+            elif project.local_path:
+                local_candidate = Path(str(project.local_path))
+                workspace_path = local_candidate if local_candidate.exists() else None
+            skill_activation = {
+                'effective_request_text': request_text,
+                'skill_instructions': '',
+                'active_skill_names': [],
+            }
+            effective_request_text = request_text
+            skill_instructions = ''
+            active_skill_names = []
+            try:
+                skill_activation = resolve_skill_activation(
+                    request_text,
+                    workspace_path=workspace_path,
+                    pinned_global_skill_slugs=pinned_skill_slugs,
+                )
+                effective_request_text = str(skill_activation.get('effective_request_text') or request_text).strip()
+                skill_instructions = str(skill_activation.get('skill_instructions') or '')
+                active_skill_names = list(skill_activation.get('active_skill_names') or [])
+            except Exception:
+                logger.debug("Skill detection failed — continuing without skills", exc_info=True)
+                skill_instructions = ''
+                active_skill_names = []
+
             user_trace = {
                 'context_mentions': _dedupe_chat_mentions(
                     _normalize_chat_mentions(context_mentions),
@@ -111,15 +146,44 @@ def project_chat(request, project_id):
             }
             ChatMessage.objects.create(project=project, role='user', content=content, metadata=user_trace)
 
-            should_apply_changes = _should_apply_changes_for_chat_mode(explicit_chat_mode, request_text, apply_changes)
+            command_response = str(skill_activation.get('command_response') or '').strip()
+            if command_response:
+                assistant_trace = {
+                    'approach': 'Handled the request through the workspace skill command router.',
+                    'chat_state': CHAT_STATE_GROUNDED_ANSWER,
+                    'chat_mode': explicit_chat_mode or CHAT_MODE_ASK,
+                    'state_reason': 'Recognized a slash skill command before invoking the coding pipeline.',
+                    'session_id': session_id,
+                    'context_mentions': user_trace['context_mentions'],
+                    'context_sources': [{'label': '@skills', 'detail': 'Returned skill usage guidance or the current skill catalog.'}],
+                    'files_accessed': [],
+                    'commands_ran': [],
+                    'active_skills': active_skill_names,
+                }
+                assistant_metadata = dict(assistant_trace)
+                assistant_metadata['session_id'] = session_id
+                ChatMessage.objects.create(project=project, role='assistant', content=command_response, metadata=assistant_metadata)
+                _, sessions = _group_project_chat_sessions(project)
+                return JsonResponse({
+                    'user_message': content,
+                    'assistant_message': command_response,
+                    'applied_changes': None,
+                    'workspace_actions': [],
+                    'trace': assistant_trace,
+                    'session_id': session_id,
+                    'sessions': sessions,
+                    'active_skills': active_skill_names,
+                })
+
+            should_apply_changes = _should_apply_changes_for_chat_mode(explicit_chat_mode, effective_request_text, apply_changes)
             applied_changes = None
             assistant_trace = {}
             workspace_actions = []
             chat_checkpoint = None
-            memory_context = build_memory_context(project, request_text, selected_file=selected_file)
+            memory_context = build_memory_context(project, effective_request_text, selected_file=selected_file)
             resolved_context_text, context_trace = _resolve_chat_context(
                 project,
-                request_text,
+                effective_request_text,
                 selected_file=selected_file,
                 selected_content=selected_content,
                 context_mentions=context_mentions,
@@ -127,7 +191,7 @@ def project_chat(request, project_id):
             )
             chat_decision = _classify_chat_state(
                 project,
-                request_text,
+                effective_request_text,
                 selected_file,
                 context_mentions,
                 context_trace,
@@ -154,7 +218,7 @@ def project_chat(request, project_id):
                     )
                 agent_result = _handle_agent_chat_request(
                     project,
-                    request_text,
+                    effective_request_text,
                     selected_file=selected_file,
                     selected_content=selected_content,
                     attachments=attachments,
@@ -163,6 +227,8 @@ def project_chat(request, project_id):
                     context_trace=context_trace,
                     memory_context=memory_context,
                     checkpoint=chat_checkpoint,
+                    skill_instructions=skill_instructions,
+                    skill_activation=skill_activation,
                 )
                 if agent_result.get('handled'):
                     applied_changes = agent_result.get('applied_changes')
@@ -171,6 +237,7 @@ def project_chat(request, project_id):
                     assistant_trace = dict(agent_result.get('assistant_trace') or {})
                     assistant_trace['session_id'] = session_id
                     assistant_trace['chat_mode'] = CHAT_MODE_AGENT
+                    assistant_trace.setdefault('active_skills', active_skill_names)
                     if workspace_actions:
                         assistant_trace['workspace_actions'] = workspace_actions
 
@@ -189,6 +256,7 @@ def project_chat(request, project_id):
                         'trace': assistant_trace,
                         'session_id': session_id,
                         'sessions': sessions,
+                        'active_skills': active_skill_names,
                     })
 
             if chat_state == CHAT_STATE_EDIT_REQUEST and project.workspace_id:
@@ -203,13 +271,14 @@ def project_chat(request, project_id):
                 try:
                     applied_changes = apply_chat_changes(
                         project,
-                        request_text,
+                        effective_request_text,
                         selected_file=selected_file,
                         selected_content=selected_content,
                         request_attachments=attachments,
                         checkpoint=chat_checkpoint,
                         chat_mode=explicit_chat_mode or CHAT_MODE_EDIT,
                         changeset_source='chat',
+                        skill_activation=skill_activation,
                     )
                     applied_list = applied_changes['applied_files']
                     ai_response = (
@@ -293,7 +362,7 @@ def project_chat(request, project_id):
 
                         system_instruction, prompt = _build_chat_llm_prompt(
                             project,
-                            request_text,
+                            effective_request_text,
                             attachments,
                             selected_file,
                             selected_content,
@@ -304,6 +373,7 @@ def project_chat(request, project_id):
                             explicit_chat_mode,
                             chat_state,
                             str(chat_decision.get('response_contract') or ''),
+                            skill_instructions=skill_instructions,
                         )
                         agent = BaseAgent(
                             role="DevHub AI Assistant",
@@ -321,6 +391,7 @@ def project_chat(request, project_id):
                             'context_sources': context_trace.get('context_sources') or [],
                             'files_accessed': context_trace.get('files_accessed') or [],
                             'commands_ran': [],
+                            'active_skills': active_skill_names,
                             'semantic_hits': [
                                 {
                                     'path': item.get('file_path'),
@@ -360,6 +431,7 @@ def project_chat(request, project_id):
                 'trace': assistant_trace,
                 'session_id': session_id,
                 'sessions': sessions,
+                'active_skills': active_skill_names,
             })
         except Exception as exc:
             if chat_checkpoint:

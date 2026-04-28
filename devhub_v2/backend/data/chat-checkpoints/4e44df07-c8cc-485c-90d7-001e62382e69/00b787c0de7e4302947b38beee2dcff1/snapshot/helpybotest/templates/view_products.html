@@ -1,0 +1,193 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="card shadow-lg" style="border-radius: 15px; border: none;">
+        <div class="card-body p-3">
+            <h2 class="text-center mb-3" style="color: #2c3c64; font-weight: 600; font-size: 1.5rem;">View Products</h2>
+            
+            <div class="d-flex justify-content-end mb-3">
+                <a href="{% url 'download_products_pdf' %}" class="btn btn-sm" 
+                   style="background-color: #2c3c64; color: white; border-radius: 8px; padding: 8px 15px;">
+                    <i class="fas fa-download me-1"></i>Download as PDF
+                </a>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover" style="min-width: 1200px;">
+                    <thead>
+                        <tr>
+                            <th class="text-white" style="background-color: #2c3c64; border-top-left-radius: 8px; width: 5%;">#</th>
+                            <th class="text-white" style="background-color: #2c3c64; width: 10%;">Name</th>
+                            <th class="text-white" style="background-color: #2c3c64; width: 20%;">Description</th>
+                            <th class="text-white" style="background-color: #2c3c64; width: 10%;">Category</th>
+                            <th class="text-white" style="background-color: #2c3c64; width: 10%;">Price (₹)</th>
+                            <th class="text-white" style="background-color: #2c3c64; width: 10%;">Discount</th>
+                            <th class="text-white" style="background-color: #2c3c64; width: 10%;">Video</th>
+                            <th class="text-white" style="background-color: #2c3c64; width: 10%;">Useful Link</th>
+                            <th class="text-white" style="background-color: #2c3c64; width: 10%;">Image</th>
+                            <th class="text-white" style="background-color: #2c3c64; border-top-right-radius: 8px; width: 10%;">Image URL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for product in products %}
+                        <tr style="border-bottom: 1px solid #e0e0e0;">
+                            <td class="align-middle">{{ forloop.counter0|add:products.start_index }}</td>
+                            <td class="align-middle">{{ product.name }}</td>
+                            <td class="align-middle">{{ product.description }}</td>
+                            <td class="align-middle">{{ product.category.name }}</td>
+                            <td class="align-middle">
+                                {% if product.price %}
+                                    ₹{{ product.price }}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="align-middle">
+                                {% if product.discount %}
+                                    {{ product.discount }}%
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="align-middle">
+                                {% if product.video %}
+                                    <a href="{{ product.video }}" target="_blank" 
+                                       class="btn btn-outline-primary btn-sm py-1 px-2"
+                                       style="color: #2c3c64; border-color: #2c3c64; border-radius: 6px; font-size: 0.875rem;">
+                                        <i class="fas fa-external-link-alt me-1"></i>View
+                                    </a>
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="align-middle">
+                                {% if product.useful_link %}
+                                    <a href="{{ product.useful_link }}" target="_blank" 
+                                       class="btn btn-outline-primary btn-sm py-1 px-2"
+                                       style="color: #2c3c64; border-color: #2c3c64; border-radius: 6px; font-size: 0.875rem;">
+                                        <i class="fas fa-external-link-alt me-1"></i>View
+                                    </a>
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="align-middle">
+                                <img src="{{ product.image.url }}" alt="{{ product.name }}" 
+                                     style="width: 80px; height: 80px; object-fit: cover; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                            </td>
+                            <td class="align-middle">
+                                <a href="{{ product.image.url }}" target="_blank" 
+                                   class="btn btn-outline-primary btn-sm py-1 px-2"
+                                   style="color: #2c3c64; border-color: #2c3c64; border-radius: 6px; font-size: 0.875rem;">
+                                    <i class="fas fa-external-link-alt me-1"></i>View
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- New Pagination -->
+            {% if products.paginator.num_pages > 1 %}
+            <div class="d-flex justify-content-center mt-4">
+                <nav aria-label="Page navigation">
+                    <div class="pagination-container">
+                        {% if products.has_previous %}
+                        <a href="?page={{ products.previous_page_number }}" class="pagination-arrow">
+                            <i class="fas fa-chevron-left"></i>
+                        </a>
+                        {% else %}
+                        <span class="pagination-arrow disabled">
+                            <i class="fas fa-chevron-left"></i>
+                        </span>
+                        {% endif %}
+
+                        <div class="pagination-text">
+                            Page {{ products.number }} of {{ products.paginator.num_pages }}
+                        </div>
+
+                        {% if products.has_next %}
+                        <a href="?page={{ products.next_page_number }}" class="pagination-arrow">
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                        {% else %}
+                        <span class="pagination-arrow disabled">
+                            <i class="fas fa-chevron-right"></i>
+                        </span>
+                        {% endif %}
+                    </div>
+                </nav>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    .table thead th {
+        font-weight: 600;
+        padding: 12px;
+        border: none;
+        font-size: 0.9rem;
+    }
+    
+    .table tbody td {
+        padding: 12px;
+        vertical-align: middle;
+        font-size: 0.9rem;
+    }
+    
+    .table tbody tr:hover {
+        background-color: rgba(44, 60, 100, 0.05);
+    }
+
+    .btn-outline-primary:hover {
+        background-color: #2c3c64;
+        border-color: #2c3c64;
+        color: white;
+    }
+
+    /* New Pagination Styles */
+    .pagination-container {
+        display: flex;
+        align-items: center;
+        background-color: #505A74;
+        padding: 8px 16px;
+        border-radius: 25px;
+        color: white;
+        gap: 15px;
+    }
+
+    .pagination-text {
+        font-size: 14px;
+        font-weight: 500;
+        color: white;
+        padding: 0 10px;
+    }
+
+    .pagination-arrow {
+        color: white;
+        text-decoration: none;
+        padding: 5px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+    }
+
+    .pagination-arrow:hover {
+        color: rgba(255, 255, 255, 0.7);
+        text-decoration: none;
+    }
+
+    .pagination-arrow.disabled {
+        color: rgba(255, 255, 255, 0.5);
+        cursor: not-allowed;
+    }
+
+    .fas {
+        font-size: 12px;
+    }
+</style>
+{% endblock %}

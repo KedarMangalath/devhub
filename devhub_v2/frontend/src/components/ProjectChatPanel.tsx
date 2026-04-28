@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, ChevronDown, Clock, FileText, ImagePlus, Loader2, MessageSquarePlus, PanelLeftClose, PanelRightClose, RotateCcw, Send, Sparkles, Terminal, Wrench, X, Zap } from 'lucide-react';
+import { Bot, ChevronDown, Clock, Code2, ImagePlus, Loader2, MessageSquarePlus, PanelLeftClose, PanelRightClose, RotateCcw, Send, Sparkles, X, Zap } from 'lucide-react';
+import AgentStepTimeline from './AgentStepTimeline';
+import type { AgentStreamEvent } from './AgentStepTimeline';
+import SkillsPanel from './SkillsPanel';
+import SkillCreatorWizard from './SkillCreatorWizard';
 
 const API = 'http://localhost:8000/api';
 
@@ -77,6 +81,21 @@ export type CoderCustomizationPromptOverride = {
   summary: string;
 };
 
+type GlobalSkill = {
+  name: string;
+  slug: string;
+  description: string;
+  rel_path?: string;
+};
+
+type SlashSkillOption = {
+  key: string;
+  command: string;
+  name: string;
+  description: string;
+  source: 'meta' | 'project' | 'global';
+};
+
 export type CoderCustomization = {
   available?: boolean;
   meta_root?: string;
@@ -87,6 +106,15 @@ export type CoderCustomization = {
   slash_commands?: string[];
   suggested_files?: string[];
   can_bootstrap?: boolean;
+};
+
+export type ExternalAgentRun = {
+  id: string;
+  title?: string;
+  content: string;
+  active: boolean;
+  events?: AgentStreamEvent[];
+  metadata?: any;
 };
 
 type Props = {
@@ -105,6 +133,7 @@ type Props = {
   onCustomizationChanged?: () => void;
   onToggleChat?: (open: boolean) => void;
   chatOpen?: boolean;
+  runtimeAgentRun?: ExternalAgentRun | null;
 };
 
 const CHAT_SPECIAL_MENTIONS: MentionOption[] = [
@@ -153,7 +182,7 @@ const skillCommandLabel = (skill: CoderCustomizationSkill) => {
   return base ? `/${base}` : '/skill';
 };
 
-const renderInlineMarkdown = (text: string) => {
+const renderInlineMarkdown = (text: string, isWorkspaceMode = false) => {
   const nodes: any[] = [];
   const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
   let lastIndex = 0;
@@ -166,7 +195,16 @@ const renderInlineMarkdown = (text: string) => {
     }
     const token = match[0];
     if (token.startsWith('`') && token.endsWith('`')) {
-      nodes.push(<code key={`code-${key++}`} className="rounded bg-black/5 px-1.5 py-0.5 font-mono text-[0.95em] text-inherit">{token.slice(1, -1)}</code>);
+      nodes.push(
+        <code
+          key={`code-${key++}`}
+          className={`rounded px-1.5 py-0.5 font-mono text-[0.95em] ${
+            isWorkspaceMode ? 'bg-[#1f1a1d] text-[#d4d4d4]' : 'bg-black/5 text-inherit'
+          }`}
+        >
+          {token.slice(1, -1)}
+        </code>
+      );
     } else if (token.startsWith('**') && token.endsWith('**')) {
       nodes.push(<strong key={`strong-${key++}`} className="font-semibold text-inherit">{token.slice(2, -2)}</strong>);
     } else if (token.startsWith('*') && token.endsWith('*')) {
@@ -199,7 +237,7 @@ const renderInlineMarkdown = (text: string) => {
   return nodes;
 };
 
-const renderMarkdownMessage = (content: string) => {
+const renderMarkdownMessage = (content: string, isWorkspaceMode = false) => {
   const normalized = String(content || '').replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
   const blocks: any[] = [];
@@ -212,8 +250,11 @@ const renderMarkdownMessage = (content: string) => {
   const flushParagraph = () => {
     if (!paragraph.length) return;
     blocks.push(
-      <p key={`p-${blocks.length}`} className="whitespace-pre-wrap break-words">
-        {renderInlineMarkdown(paragraph.join(' '))}
+      <p
+        key={`p-${blocks.length}`}
+        className={`whitespace-pre-wrap break-words ${isWorkspaceMode ? 'text-[#d4d4d4]' : 'text-inherit'}`}
+      >
+        {renderInlineMarkdown(paragraph.join(' '), isWorkspaceMode)}
       </p>
     );
     paragraph = [];
@@ -222,9 +263,12 @@ const renderMarkdownMessage = (content: string) => {
   const flushList = () => {
     if (!listItems.length) return;
     blocks.push(
-      <ul key={`ul-${blocks.length}`} className="list-disc space-y-1 pl-5">
+      <ul
+        key={`ul-${blocks.length}`}
+        className={`list-disc space-y-1 pl-5 ${isWorkspaceMode ? 'text-[#d4d4d4]' : 'text-inherit'}`}
+      >
         {listItems.map((item, index) => (
-          <li key={`li-${index}`}>{renderInlineMarkdown(item)}</li>
+          <li key={`li-${index}`}>{renderInlineMarkdown(item, isWorkspaceMode)}</li>
         ))}
       </ul>
     );
@@ -234,7 +278,14 @@ const renderMarkdownMessage = (content: string) => {
   const flushCode = () => {
     if (!codeLines.length && !codeFence) return;
     blocks.push(
-      <pre key={`pre-${blocks.length}`} className="overflow-x-auto rounded-2xl bg-[#111827] px-4 py-3 text-[12px] leading-6 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <pre
+        key={`pre-${blocks.length}`}
+        className={`overflow-x-auto rounded-2xl px-4 py-3 text-[12px] leading-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
+          isWorkspaceMode
+            ? 'border border-white/10 bg-[#0b1220] text-[#dbeafe]'
+            : 'bg-[#111827] text-slate-100'
+        }`}
+      >
         <code>{codeLines.join('\n')}</code>
       </pre>
     );
@@ -277,13 +328,13 @@ const renderMarkdownMessage = (content: string) => {
       const level = headingMatch[1].length;
       const text = headingMatch[2];
       const className = level === 1
-        ? 'text-xl font-semibold text-slate-900'
+        ? (isWorkspaceMode ? 'text-xl font-semibold text-white' : 'text-xl font-semibold text-slate-900')
         : level === 2
-          ? 'text-lg font-semibold text-slate-900'
-          : 'text-base font-semibold text-slate-900';
+          ? (isWorkspaceMode ? 'text-lg font-semibold text-white' : 'text-lg font-semibold text-slate-900')
+          : (isWorkspaceMode ? 'text-base font-semibold text-white' : 'text-base font-semibold text-slate-900');
       blocks.push(
         <div key={`h-${blocks.length}`} className={className}>
-          {renderInlineMarkdown(text)}
+          {renderInlineMarkdown(text, isWorkspaceMode)}
         </div>
       );
       continue;
@@ -302,8 +353,7 @@ const renderMarkdownMessage = (content: string) => {
   if (inCode) flushCode();
   flushParagraph();
   flushList();
-
-  return <div className="space-y-3">{blocks}</div>;
+  return <div className={`space-y-3 ${isWorkspaceMode ? 'text-[#d4d4d4]' : ''}`}>{blocks}</div>;
 };
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
@@ -325,7 +375,7 @@ const normalizeMessageAttachments = (metadata: any): ChatImageAttachment[] => {
     }));
 };
 
-export default function ProjectChatPanel({ projectId, mode = 'floating', selectedFile, fileContent, treeNodes = [], coderCustomization, onCodeApplied, onAgentAction, onCustomizationChanged, onToggleChat, chatOpen = true }: Props) {
+export default function ProjectChatPanel({ projectId, mode = 'floating', selectedFile, fileContent, treeNodes = [], coderCustomization, onCodeApplied, onAgentAction, onCustomizationChanged, onToggleChat, chatOpen = true, runtimeAgentRun = null }: Props) {
   const [chatExpanded, setChatExpanded] = useState(false);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -338,10 +388,22 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
   const [contextMentions, setContextMentions] = useState<MentionItem[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [bootstrappingKit, setBootstrappingKit] = useState(false);
+  const [agentVisible, setAgentVisible] = useState(true);
+  const [agentExpanded, setAgentExpanded] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const wasChatOpenRef = useRef(false);
   const [chatBehaviorMode, setChatBehaviorMode] = useState<ChatBehaviorMode>(() => (mode === 'workspace' ? 'agent' : 'ask'));
+  const [streamingState, setStreamingState] = useState<{ events: AgentStreamEvent[]; active: boolean } | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+
+  // Global skills state
+  const [showSkillsPanel, setShowSkillsPanel] = useState(false);
+  const [showSkillCreator, setShowSkillCreator] = useState(false);
+  const [pinnedSkillSlugs, setPinnedSkillSlugs] = useState<string[]>([]);
+  const [lastActiveSkills, setLastActiveSkills] = useState<string[]>([]);
+  const [globalSkills, setGlobalSkills] = useState<GlobalSkill[]>([]);
 
   const mentionQuery = currentMentionQuery(chatInput);
   const slashSkillQuery = currentSlashSkillQuery(chatInput);
@@ -353,19 +415,42 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
   const metaPath = String(coderCustomization?.meta_path || '').trim();
   const canBootstrapCustomization = Boolean(coderCustomization?.can_bootstrap);
   const hasCoderCustomization = Boolean(coderCustomization?.available || availableSkills.length || promptOverrides.length);
-  const activePlaceholder = (chatBehaviorMode === 'edit' || chatBehaviorMode === 'agent') && availableSkills.length
-    ? `Start with ${skillCommandLabel(availableSkills[0])} to apply a project skill, or describe the change directly...`
+  const firstSlashCommand = availableSkills.length ? skillCommandLabel(availableSkills[0]) : '/skills';
+  const activePlaceholder = (chatBehaviorMode === 'edit' || chatBehaviorMode === 'agent')
+    ? `Start with ${firstSlashCommand} to apply a skill, or describe the change directly...`
     : currentModeMeta.placeholder;
+  const slashOptionPool: SlashSkillOption[] = [
+    {
+      key: 'skills-catalog',
+      command: '/skills',
+      name: 'Skills Catalog',
+      description: 'List the global and project skills available in this workspace.',
+      source: 'meta',
+    },
+    ...availableSkills.map((skill) => ({
+      key: `project:${skill.path || skill.slug || skill.name}`,
+      command: skillCommandLabel(skill),
+      name: skill.name,
+      description: skill.description,
+      source: 'project' as const,
+    })),
+    ...globalSkills.map((skill) => ({
+      key: `global:${skill.slug}`,
+      command: `/${skill.slug}`,
+      name: skill.name,
+      description: skill.description,
+      source: 'global' as const,
+    })),
+  ].filter((item, index, source) => index === source.findIndex((candidate) => candidate.command === item.command));
   const mentionOptions = [...CHAT_SPECIAL_MENTIONS, ...flattenTreeNodes(treeNodes)]
     .filter((item, index, source) => index === source.findIndex((candidate) => candidate.type === item.type && candidate.value === item.value))
     .filter((item) => !mentionQuery || item.label.toLowerCase().includes(`@${mentionQuery.toLowerCase()}`))
     .slice(0, 12);
-  const skillOptions = availableSkills
+  const skillOptions = slashOptionPool
     .filter((item) => {
       if (slashSkillQuery === null) return false;
-      const command = skillCommandLabel(item).toLowerCase();
       const query = slashSkillQuery.toLowerCase();
-      return command.includes(`/${query}`) || item.name.toLowerCase().includes(query) || item.description.toLowerCase().includes(query);
+      return item.command.toLowerCase().includes(`/${query}`) || item.name.toLowerCase().includes(query) || item.description.toLowerCase().includes(query);
     })
     .slice(0, 8);
 
@@ -397,6 +482,12 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
   }, [chatMessages, chatOpen, mode]);
 
   useEffect(() => {
+    if ((chatOpen || mode === 'standalone') && runtimeAgentRun) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [runtimeAgentRun?.id, runtimeAgentRun?.active, runtimeAgentRun?.events?.length, chatOpen, mode]);
+
+  useEffect(() => {
     const storageKey = `devhub.chat.behavior.${mode}`;
     const stored = window.localStorage.getItem(storageKey);
     if (stored === 'ask' || stored === 'edit' || stored === 'agent') {
@@ -409,6 +500,13 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
   useEffect(() => {
     window.localStorage.setItem(`devhub.chat.behavior.${mode}`, chatBehaviorMode);
   }, [chatBehaviorMode, mode]);
+
+  useEffect(() => {
+    fetch(`${API}/skills/`)
+      .then((response) => response.json())
+      .then((data) => setGlobalSkills(Array.isArray(data?.skills) ? data.skills : []))
+      .catch(() => setGlobalSkills([]));
+  }, []);
 
   const startNewChat = () => {
     setActiveChatSessionId(null);
@@ -443,8 +541,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
     setContextMentions((current) => current.filter((entry) => !(entry.type === item.type && entry.value === item.value)));
   };
 
-  const insertSkillShortcut = (skill: CoderCustomizationSkill) => {
-    const command = skillCommandLabel(skill);
+  const insertSlashCommand = (command: string) => {
     setChatInput((current) => {
       const leadingWhitespace = current.match(/^\s*/)?.[0] ?? '';
       const trimmed = current.trimStart();
@@ -461,6 +558,12 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
       return `${leadingWhitespace}${command} ${trimmed}`;
     });
   };
+
+  const insertSkillShortcut = (skill: CoderCustomizationSkill) => {
+    insertSlashCommand(skillCommandLabel(skill));
+  };
+
+  const pinnedSkillLabel = (slug: string) => globalSkills.find((skill) => skill.slug === slug)?.name || slug;
 
   const bootstrapCustomization = async () => {
     if (bootstrappingKit) return;
@@ -632,6 +735,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
 
   const renderTrace = (trace: any) => {
     if (!trace || typeof trace !== 'object') return null;
+    if (trace.error) return null;
     const contextItems = Array.isArray(trace.context_mentions) ? trace.context_mentions : [];
     const filesAccessed = Array.isArray(trace.files_accessed) ? trace.files_accessed : [];
     const commandsRan = Array.isArray(trace.commands_ran) ? trace.commands_ran : [];
@@ -659,10 +763,26 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
       semanticHits.length ? `${semanticHits.length} hits` : '',
       appliedFiles.length ? `${appliedFiles.length} edits` : '',
     ].filter(Boolean).join(' | ');
+
+    const traceBorder = isWorkspaceMode ? 'border-[#2a2a2a]' : 'border-slate-100';
+    const traceShell = isWorkspaceMode ? 'bg-[#101010] text-[#94a3b8] hover:border-[#3a3a3a]' : 'bg-white text-slate-500 hover:border-slate-200';
+    const traceSummaryText = isWorkspaceMode ? 'text-[#94a3b8]' : 'text-slate-400';
+    const traceBody = isWorkspaceMode ? 'border-white/5 bg-[#0b0b0c]' : 'border-slate-100 bg-slate-50/50';
+    const traceCard = isWorkspaceMode ? 'border-white/8 bg-[#151515] text-[#dbe4ee]' : 'border-white bg-white text-slate-600 shadow-sm';
+    const traceSubtle = isWorkspaceMode ? 'text-[#cbd5e1]' : 'text-slate-500';
+    const traceCode = isWorkspaceMode ? 'text-[#f3f4f6]' : 'text-slate-700';
+    const traceChip = isWorkspaceMode ? 'border-white/10 bg-white/5 text-[#dbe4ee]' : 'border-slate-100 bg-slate-50 text-slate-600';
+    const traceCommandCard = isWorkspaceMode ? 'bg-[#0f172a] text-slate-100' : 'bg-slate-800 text-slate-100';
+    const traceCommandText = isWorkspaceMode ? 'text-[#c7f9cc]' : 'text-emerald-300';
+    const traceCommandDetail = isWorkspaceMode ? 'text-[#94a3b8]' : 'text-slate-400';
+    const traceSuccessChip = isWorkspaceMode ? 'bg-emerald-500/15 text-emerald-200' : 'bg-emerald-100 text-emerald-700';
+    const traceRunningChip = isWorkspaceMode ? 'bg-amber-500/15 text-amber-200' : 'bg-amber-100 text-amber-700';
+    const traceFailedChip = isWorkspaceMode ? 'bg-rose-500/15 text-rose-200' : 'bg-rose-100 text-rose-700';
+    const traceAppliedFileChip = isWorkspaceMode ? 'border border-emerald-500/15 bg-emerald-500/10 text-emerald-200' : 'border border-emerald-100 bg-emerald-50 text-emerald-700';
     
     return (
       <>
-        {(planObjective || planSteps.length || planFiles.length || planCommands.length) && (
+        {(planObjective || planSteps.length > 0 || planFiles.length > 0 || planCommands.length > 0) && (
           <div className={`mt-3 ml-7 rounded-2xl border px-3.5 py-3 shadow-sm ${isWorkspaceMode ? 'border-[#2a2a2a] bg-[#101010] text-[#dbe4ee]' : 'border-slate-200 bg-white text-slate-700'}`}>
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -701,7 +821,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
             )}
           </div>
         )}
-        {(reviewSummary || reviewIssues.length || reviewScore !== null) && (
+        {(reviewSummary || reviewIssues.length > 0 || reviewScore !== null) && (
           <div className={`mt-3 ml-7 rounded-2xl border px-3.5 py-3 shadow-sm ${isWorkspaceMode ? 'border-[#2a2a2a] bg-[#101010] text-[#dbe4ee]' : 'border-slate-200 bg-white text-slate-700'}`}>
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -754,68 +874,39 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
             </button>
           </div>
         )}
-        {/* Tool Events Timeline (from new QueryEngine) */}
+        {/* Agent Step Timeline */}
         {Array.isArray(trace.tool_events) && trace.tool_events.length > 0 && (
-          <div className={`mt-3 ml-7 rounded-2xl border px-3.5 py-3 shadow-sm ${isWorkspaceMode ? 'border-[#2a2a2a] bg-[#101010] text-[#dbe4ee]' : 'border-slate-200 bg-white text-slate-700'}`}>
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div className="flex items-center gap-2">
-                <Zap className={`h-3.5 w-3.5 ${isWorkspaceMode ? 'text-amber-300' : 'text-amber-500'}`} />
-                <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${isWorkspaceMode ? 'text-[#64748b]' : 'text-slate-400'}`}>Agent Tool Execution</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {typeof trace.turns_used === 'number' && (
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isWorkspaceMode ? 'bg-[#70434f]/25 text-[#d9a4b2]' : 'bg-[#f5ecf0] text-[#70434f]'}`}>
-                    {trace.turns_used} turns
-                  </span>
-                )}
-                {typeof trace.duration_ms === 'number' && (
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${isWorkspaceMode ? 'bg-white/10 text-[#94a3b8]' : 'bg-slate-100 text-slate-500'}`}>
-                    <Clock className="inline h-3 w-3 mr-1 -mt-px" />
-                    {trace.duration_ms > 1000 ? `${(trace.duration_ms / 1000).toFixed(1)}s` : `${trace.duration_ms}ms`}
-                  </span>
-                )}
-                {trace.compacted && (
-                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${isWorkspaceMode ? 'bg-[#70434f]/25 text-[#d9a4b2]' : 'bg-[#f5ecf0] text-[#70434f]'}`}>
-                    compacted
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="space-y-1">
-              {trace.tool_events.filter((ev: any) => ev.type === 'tool_end').map((ev: any, idx: number) => (
-                <div key={idx} className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 ${isWorkspaceMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md ${ev.success ? (isWorkspaceMode ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-600') : (isWorkspaceMode ? 'bg-rose-500/20 text-rose-300' : 'bg-rose-100 text-rose-600')}`}>
-                    {ev.tool === 'bash' ? <Terminal className="h-3 w-3" /> : <Wrench className="h-3 w-3" />}
-                  </span>
-                  <span className={`text-[11px] font-semibold ${isWorkspaceMode ? 'text-white' : 'text-slate-800'}`}>{ev.tool}</span>
-                  <span className={`flex-1 truncate text-[10px] ${isWorkspaceMode ? 'text-[#94a3b8]' : 'text-slate-400'}`}>{ev.preview?.slice(0, 80)}</span>
-                  <span className={`shrink-0 text-[10px] font-medium ${ev.success ? (isWorkspaceMode ? 'text-emerald-300' : 'text-emerald-600') : (isWorkspaceMode ? 'text-rose-300' : 'text-rose-600')}`}>
-                    {ev.success ? 'ok' : 'x'}
-                  </span>
-                </div>
-              ))}
-            </div>
+          <div className="mt-3 ml-7">
+            <AgentStepTimeline
+              rawEvents={trace.tool_events}
+              durationMs={typeof trace.duration_ms === 'number' ? trace.duration_ms : undefined}
+              turnsUsed={typeof trace.turns_used === 'number' ? trace.turns_used : undefined}
+              compacted={Boolean(trace.compacted)}
+              activeSkills={Array.isArray(trace.active_skills) ? trace.active_skills : undefined}
+              isWorkspaceMode={isWorkspaceMode}
+            />
           </div>
         )}
-        <details className={`mt-3 ml-7 rounded-2xl border text-[11px] transition-colors shadow-sm w-fit min-w-[200px] max-w-full ${isWorkspaceMode ? 'border-[#2a2a2a] bg-[#101010] text-[#94a3b8] hover:border-[#3a3a3a]' : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'}`}>
+        {(trace.approach || contextItems.length > 0 || filesAccessed.length > 0 || commandsRan.length > 0 || semanticHits.length > 0 || workspaceActions.length > 0 || appliedFiles.length > 0) && (
+        <details className={`mt-3 ml-7 w-fit min-w-[200px] max-w-full rounded-2xl border text-[11px] transition-colors shadow-sm ${traceBorder} ${traceShell}`}>
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-3.5 py-2.5 font-medium tracking-wide">
-          <span className="uppercase tracking-[0.16em] text-[10px] text-slate-400">Trace Logs</span>
-          <span className="truncate text-[10px] text-slate-400">{traceSummary || 'View reasoning'}</span>
+          <span className={`text-[10px] uppercase tracking-[0.16em] ${traceSummaryText}`}>Trace Logs</span>
+          <span className={`truncate text-[10px] ${traceSummaryText}`}>{traceSummary || 'View reasoning'}</span>
         </summary>
-        <div className="space-y-2 border-t border-slate-100 px-3 py-3 bg-slate-50/50 rounded-b-2xl">
+        <div className={`space-y-2 rounded-b-2xl border-t px-3 py-3 ${traceBody}`}>
           {trace.approach && (
-            <div className="rounded-xl border border-white bg-white px-3 py-2.5 leading-relaxed text-slate-600 shadow-sm">
+            <div className={`rounded-xl border px-3 py-2.5 leading-relaxed ${traceCard}`}>
               {trace.approach}
             </div>
           )}
           {contextItems.length > 0 && (
-            <details className="rounded-xl border border-white bg-white px-3 py-2.5 shadow-sm">
-              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <details className={`rounded-xl border px-3 py-2.5 shadow-sm ${traceCard}`}>
+              <summary className={`cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] ${traceSummaryText}`}>
                 Context • {contextItems.length}
               </summary>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {contextItems.map((item: any, index: number) => (
-                  <span key={`${item.type || 'mention'}-${item.value || index}`} className="rounded-full border border-slate-100 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600">
+                  <span key={`${item.type || 'mention'}-${item.value || index}`} className={`rounded-full border px-2.5 py-1 text-[10px] font-medium ${traceChip}`}>
                     @{item.value || item.type || 'context'}
                   </span>
                 ))}
@@ -823,85 +914,92 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
             </details>
           )}
           {filesAccessed.length > 0 && (
-            <details className="rounded-xl border border-white bg-white px-3 py-2.5 shadow-sm">
-              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <details className={`rounded-xl border px-3 py-2.5 shadow-sm ${traceCard}`}>
+              <summary className={`cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] ${traceSummaryText}`}>
                 Files Accessed • {filesAccessed.length}
               </summary>
               <div className="mt-2.5 space-y-1.5">
                 {filesAccessed.slice(0, 10).map((item: any, index: number) => (
-                  <div key={`${item.path || 'file'}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
-                    <code className="block break-all text-[10px] font-medium text-slate-700">{item.path || 'unknown file'}</code>
-                    {item.reason && <p className="mt-1 text-[10px] leading-5 text-slate-500">{item.reason}</p>}
+                  <div key={`${item.path || 'file'}-${index}`} className={`rounded-lg border px-2.5 py-2 ${traceChip}`}>
+                    <code className={`block break-all text-[10px] font-medium ${traceCode}`}>{item.path || 'unknown file'}</code>
+                    {item.reason && <p className={`mt-1 text-[10px] leading-5 ${traceSubtle}`}>{item.reason}</p>}
                   </div>
                 ))}
               </div>
             </details>
           )}
           {commandsRan.length > 0 && (
-            <details className="rounded-xl border border-white bg-white px-3 py-2.5 shadow-sm">
-              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <details className={`rounded-xl border px-3 py-2.5 shadow-sm ${traceCard}`}>
+              <summary className={`cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] ${traceSummaryText}`}>
                 Commands Ran • {commandsRan.length}
               </summary>
               <div className="mt-2.5 space-y-1.5">
                 {commandsRan.slice(0, 8).map((item: any, index: number) => (
-                  <div key={`${item.command || 'command'}-${index}`} className="rounded-lg bg-slate-800 px-2.5 py-2 text-slate-100">
-                    <code className="block whitespace-pre-wrap break-words text-[10px] text-emerald-300">{item.command || 'unknown command'}</code>
-                    {item.detail && <p className="mt-1 text-[10px] leading-5 text-slate-400">{item.detail}</p>}
+                  <div key={`${item.command || 'command'}-${index}`} className={`rounded-lg px-2.5 py-2 ${traceCommandCard}`}>
+                    <code className={`block whitespace-pre-wrap break-words text-[10px] ${traceCommandText}`}>{item.command || 'unknown command'}</code>
+                    {item.detail && <p className={`mt-1 text-[10px] leading-5 ${traceCommandDetail}`}>{item.detail}</p>}
                   </div>
                 ))}
               </div>
             </details>
           )}
           {workspaceActions.length > 0 && (
-            <details className="rounded-xl border border-white bg-white px-3 py-2.5 shadow-sm">
-              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <details className={`rounded-xl border px-3 py-2.5 shadow-sm ${traceCard}`}>
+              <summary className={`cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] ${traceSummaryText}`}>
                 Workspace Actions | {workspaceActions.length}
               </summary>
               <div className="mt-2.5 space-y-1.5">
                 {workspaceActions.slice(0, 8).map((item: any, index: number) => (
-                  <div key={`${item.type || 'action'}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
+                  <div key={`${item.type || 'action'}-${index}`} className={`rounded-lg border px-2.5 py-2 ${traceChip}`}>
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">{item.type || 'action'}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${item.status === 'failed' ? 'bg-rose-100 text-rose-700' : item.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      <span className={`text-[10px] font-semibold uppercase tracking-[0.12em] ${traceSubtle}`}>{item.type || 'action'}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        item.status === 'failed'
+                          ? traceFailedChip
+                          : item.status === 'running'
+                            ? traceRunningChip
+                            : traceSuccessChip
+                      }`}>
                         {item.status || 'completed'}
                       </span>
                     </div>
-                    {item.command && <code className="mt-1 block whitespace-pre-wrap break-words text-[10px] font-medium text-slate-700">{item.command}</code>}
-                    {item.detail && <p className="mt-1 text-[10px] leading-5 text-slate-500">{item.detail}</p>}
+                    {item.command && <code className={`mt-1 block whitespace-pre-wrap break-words text-[10px] font-medium ${traceCode}`}>{item.command}</code>}
+                    {item.detail && <p className={`mt-1 text-[10px] leading-5 ${traceSubtle}`}>{item.detail}</p>}
                   </div>
                 ))}
               </div>
             </details>
           )}
           {semanticHits.length > 0 && (
-            <details className="rounded-xl border border-white bg-white px-3 py-2.5 shadow-sm">
-              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <details className={`rounded-xl border px-3 py-2.5 shadow-sm ${traceCard}`}>
+              <summary className={`cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] ${traceSummaryText}`}>
                 Search Hits • {semanticHits.length}
               </summary>
               <div className="mt-2.5 space-y-1.5">
                 {semanticHits.slice(0, 8).map((item: any, index: number) => (
-                  <div key={`${item.path || 'hit'}-${index}`} className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
-                    <code className="block break-all text-[10px] font-medium text-slate-700">{item.path || 'unknown'}</code>
-                    {item.symbol && <p className="mt-1 text-[10px] leading-5 text-slate-500">Symbol: {item.symbol}</p>}
+                  <div key={`${item.path || 'hit'}-${index}`} className={`rounded-lg border px-2.5 py-2 ${traceChip}`}>
+                    <code className={`block break-all text-[10px] font-medium ${traceCode}`}>{item.path || 'unknown'}</code>
+                    {item.symbol && <p className={`mt-1 text-[10px] leading-5 ${traceSubtle}`}>Symbol: {item.symbol}</p>}
                   </div>
                 ))}
               </div>
             </details>
           )}
           {appliedFiles.length > 0 && (
-            <details className="rounded-xl border border-white bg-white px-3 py-2.5 shadow-sm">
-              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <details className={`rounded-xl border px-3 py-2.5 shadow-sm ${traceCard}`}>
+              <summary className={`cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.14em] ${traceSummaryText}`}>
                 Edits Applied • {appliedFiles.length}
               </summary>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {appliedFiles.map((item: string) => (
-                  <span key={item} className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-medium text-emerald-700 border border-emerald-100">{item}</span>
+                  <span key={item} className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${traceAppliedFileChip}`}>{item}</span>
                 ))}
               </div>
             </details>
           )}
         </div>
         </details>
+        )}
       </>
     );
   };
@@ -930,6 +1028,109 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
     );
   };
 
+  const sendAgentStream = async (content: string, pendingAttachments: ChatImageAttachment[]) => {
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    setStreamingState({ events: [], active: true });
+
+    try {
+      const response = await fetch(`${API}/projects/${projectId}/chat/agent-stream/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          content,
+          session_id: activeChatSessionId,
+          selected_file: selectedFile,
+          selected_content: selectedFile ? fileContent : '',
+          context_mentions: contextMentions,
+          attachments: pendingAttachments,
+          active_skills: pinnedSkillSlugs,
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`Agent stream failed: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          let event: AgentStreamEvent;
+          try {
+            event = JSON.parse(part.slice(6)) as AgentStreamEvent;
+          } catch {
+            continue;
+          }
+          if (event.type === 'done') {
+            setActiveChatSessionId((event as any).session_id ?? activeChatSessionId ?? null);
+            if ((event as any).sessions) setChatSessions((event as any).sessions);
+            setChatMessages((current) => [
+              ...current,
+              {
+                role: 'assistant',
+                content: (event as any).response ?? '',
+                metadata: {
+                  ...((event as any).trace ?? {}),
+                  hit_turn_limit: (event as any).hit_turn_limit ?? false,
+                  partial_summary: (event as any).partial_summary ?? null,
+                },
+                session_id: (event as any).session_id ?? activeChatSessionId,
+              },
+            ]);
+            if (Array.isArray((event as any).active_skills) && (event as any).active_skills.length > 0) {
+              setLastActiveSkills((event as any).active_skills);
+            } else {
+              setLastActiveSkills([]);
+            }
+            if ((event as any).applied_changes?.applied_files?.length && onCodeApplied) {
+              onCodeApplied((event as any).applied_changes.applied_files);
+            }
+            if ((event as any).workspace_actions?.length && onAgentAction) {
+              onAgentAction((event as any).workspace_actions);
+            }
+            setStreamingState(null);
+          } else if (event.type === 'error') {
+            setChatMessages((current) => [
+              ...current,
+              { role: 'assistant', content: `Agent error: ${(event as any).error}`, metadata: { error: 'agent_stream_error' } },
+            ]);
+            setStreamingState(null);
+          } else if (event.type !== 'keepalive') {
+            setStreamingState((prev) =>
+              prev ? { ...prev, events: [...prev.events, event] } : { events: [event], active: true }
+            );
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        setChatMessages((current) => [
+          ...current,
+          { role: 'assistant', content: 'Stream connection failed.', metadata: { error: 'connection_failed' } },
+        ]);
+      }
+      setStreamingState(null);
+    }
+  };
+
+  const continuePreviousTask = async (partialSummary: string) => {
+    if (chatSending || streamingState?.active) return;
+    const continuationMessage = `Continue the task. Context from the previous run: ${partialSummary} Pick up exactly where you left off and complete the remaining work.`;
+    setChatMessages((current) => [...current, { role: 'user', content: '▶ Continue', metadata: { chat_mode: 'agent', is_continuation: true }, session_id: activeChatSessionId }]);
+    setChatSending(false);
+    await sendAgentStream(continuationMessage, []);
+  };
+
   const sendChat = async () => {
     if ((!chatInput.trim() && chatAttachments.length === 0) || chatSending) return;
     const content = chatInput.trim();
@@ -939,7 +1140,13 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
     setAttachmentError('');
     setChatSending(true);
     setChatMessages((current) => [...current, { role: 'user', content, metadata: { context_mentions: contextMentions, selected_file: selectedFile, chat_mode: chatBehaviorMode, attachments: pendingAttachments }, session_id: activeChatSessionId }]);
-    
+
+    if (chatBehaviorMode === 'agent') {
+      setChatSending(false);
+      await sendAgentStream(content, pendingAttachments);
+      return;
+    }
+
     try {
       const response = await fetch(`${API}/projects/${projectId}/chat/`, {
         method: 'POST',
@@ -952,6 +1159,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
           selected_content: selectedFile ? fileContent : '',
           context_mentions: contextMentions,
           attachments: pendingAttachments,
+          active_skills: pinnedSkillSlugs,
         }),
       });
       const data = await response.json();
@@ -961,7 +1169,12 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
       setActiveChatSessionId(data.session_id ?? activeChatSessionId ?? null);
       setChatSessions(data.sessions ?? []);
       setChatMessages((current) => [...current, { role: 'assistant', content: data.assistant_message ?? 'No response.', metadata: data.trace ?? {}, session_id: data.session_id ?? activeChatSessionId }]);
-      
+      if (Array.isArray(data.active_skills) && data.active_skills.length > 0) {
+        setLastActiveSkills(data.active_skills);
+      } else {
+        setLastActiveSkills([]);
+      }
+
       if (data.applied_changes?.applied_files?.length && onCodeApplied) {
         onCodeApplied(data.applied_changes.applied_files);
       }
@@ -982,10 +1195,10 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
   }
 
   const wrapperClasses = mode === 'standalone'
-    ? 'devhub-chat-panel flex h-full w-full flex-col bg-white text-slate-900'
+    ? 'devhub-chat-panel relative flex h-full w-full flex-col bg-white text-slate-900'
     : mode === 'workspace'
-      ? 'devhub-chat-panel flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#111111] text-[#e8e8e3]'
-      : `devhub-chat-panel pointer-events-auto flex flex-col overflow-hidden border border-slate-200/60 bg-white shadow-2xl ${chatExpanded ? 'fixed inset-4 z-50 rounded-3xl' : 'rounded-2xl'}`;
+      ? 'devhub-chat-panel relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[#111111] text-[#e8e8e3]'
+      : `devhub-chat-panel relative pointer-events-auto flex flex-col overflow-hidden border border-slate-200/60 bg-white shadow-2xl ${chatExpanded ? 'fixed inset-4 z-50 rounded-3xl' : 'rounded-2xl'}`;
 
   const wrapperStyles = mode === 'standalone' || mode === 'workspace'
     ? undefined
@@ -995,122 +1208,124 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
 
   return (
     <div className={wrapperClasses} style={wrapperStyles}>
-      {/* Header */}
-      {(mode === 'floating' || isWorkspaceMode) && (
-        <div className={`flex shrink-0 items-center justify-between gap-3 px-4 py-3 ${isWorkspaceMode ? 'border-b border-white/10 bg-[#0d0d0d]' : 'border-b border-slate-100'}`}>
-          <div className="flex items-center gap-2">
-            <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${isWorkspaceMode ? 'bg-[#2b1d22] ring-1 ring-white/10' : 'bg-black shadow-sm'}`}>
-              <Sparkles className="h-3.5 w-3.5 text-white" />
-            </div>
-            <div>
-              <h3 className={`text-[13px] font-medium ${isWorkspaceMode ? 'text-white' : 'text-slate-900'}`}>Coding Agent</h3>
-              {isWorkspaceMode && (
-                <p className="text-[10px] text-[#9ca3af]">Workspace-aware help, edits, and file context</p>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            {mode === 'floating' && (
-              <button
-                type="button"
-                onClick={() => setChatExpanded((c) => !c)}
-                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-900"
-                title={chatExpanded ? 'Minimize' : 'Expand'}
-              >
-                {chatExpanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => onToggleChat?.(false)}
-              className={`rounded-md p-1.5 ${isWorkspaceMode ? 'text-[#9ca3af] hover:bg-white/5 hover:text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-900'}`}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Toolbar */}
-      <div className={`relative flex shrink-0 items-center gap-2 px-4 py-3 ${mode === 'standalone' ? 'pt-8 pb-4' : ''} ${isWorkspaceMode ? 'flex-wrap border-b border-white/10 bg-[#111111]' : ''}`}>
-        {/* We only show title on standalone mode in the top bar to keep it anchored if they want */}
-        {mode === 'standalone' && (
-          <div className="mr-4 flex items-center gap-2.5 border-r border-slate-200 pr-5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-black shadow-sm">
-              <Sparkles className="h-3.5 w-3.5 text-white" />
-            </div>
-            <h3 className="text-sm font-semibold text-slate-900">Chat</h3>
-          </div>
-        )}
-
-        <div className={`flex items-center rounded-lg p-1 ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b]' : 'border border-slate-200 bg-slate-50/80 shadow-sm'}`}>
-          {(Object.entries(CHAT_MODE_META) as [ChatBehaviorMode, (typeof CHAT_MODE_META)[ChatBehaviorMode]][]).map(([value, meta]) => {
-            const active = chatBehaviorMode === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setChatBehaviorMode(value)}
-                className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition ${isWorkspaceMode ? (active ? 'bg-[#8c5462] text-white shadow-sm' : 'text-[#b9adb1] hover:bg-white/5 hover:text-white') : (active ? 'bg-black text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-900')}`}
-                title={meta.helper}
-              >
-                {meta.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          type="button"
-          onClick={startNewChat}
-          className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b] text-white hover:bg-[#242424]' : 'bg-black text-white shadow-sm hover:bg-slate-800'}`}
-        >
-          <MessageSquarePlus className="h-3.5 w-3.5" />
-          New Chat
-        </button>
+      {/* ══ ROW 1: HEADER ═══════════════════════════════════════════════════ */}
+      <div className={`flex shrink-0 items-center justify-between gap-2 px-4 py-2.5 ${isWorkspaceMode ? 'border-b border-white/5 bg-[#0d0d0d]' : 'border-b border-slate-100 bg-white'}`}>
         
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowSessions(!showSessions)}
-            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b] text-[#d1d5db] hover:bg-[#242424]' : 'border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50'}`}
-          >
-            History <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-          </button>
-          {showSessions && chatSessions.length > 0 && (
-            <div className={`absolute left-0 top-full z-10 mt-1.5 w-48 rounded-xl p-1.5 ${isWorkspaceMode ? 'border border-[#2a2a2a] bg-[#101010] shadow-[0_18px_40px_rgba(0,0,0,0.45)]' : 'border border-slate-150 bg-white shadow-lg'}`}>
-              <div className="max-h-60 overflow-y-auto hidden-scrollbar">
-                {chatSessions.map((session) => {
-                  const isActive = activeChatSessionId === session.session_id;
-                  return (
-                    <button
-                      key={session.session_id}
-                      type="button"
-                      onClick={() => { fetchChatHistory(session.session_id); setShowSessions(false); }}
-                      className={`block w-full truncate rounded-md px-2.5 py-2 text-left text-[11px] font-medium ${isWorkspaceMode ? (isActive ? 'bg-white/10 text-white' : 'text-[#cbd5e1] hover:bg-white/5 hover:text-white') : (isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900')}`}
-                      title={session.title}
-                    >
-                      {session.title}
-                    </button>
-                  );
-                })}
+        {/* Left Side: Only show in floating/standalone mode */}
+        <div className="flex flex-1 min-w-0 items-center gap-2">
+          {!isWorkspaceMode && (
+            <>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#f2efea] border border-[#e8e4de]">
+                <Code2 className="h-4 w-4 text-[#8c5462]" />
               </div>
-            </div>
+              <div className="min-w-0">
+                <div className="truncate text-[12.5px] font-semibold leading-tight text-[#191714]">
+                  DevHub Coding Agent
+                </div>
+                <div className="mt-0.5 truncate font-mono text-[9.5px] text-[#c4bfb8]">
+                  {projectId ? projectId.slice(0, 8) : 'local'}
+                </div>
+              </div>
+            </>
           )}
         </div>
-        
-        <div className="flex-1" />
-        
-        {selectedFile && mode !== 'floating' && (
-          <div className={`flex items-center gap-1.5 text-[11px] ${isWorkspaceMode ? 'text-[#94a3b8]' : 'text-slate-500'}`}>
-            <FileText className="h-3.5 w-3.5" />
-            <span className={`font-medium ${isWorkspaceMode ? 'text-white' : 'text-slate-700'}`}>{selectedFile.split(/[\\/]/).pop()}</span>
+
+        {/* Right Side: Actions */}
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={startNewChat}
+            className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px] font-medium transition ${isWorkspaceMode ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-[#888] hover:bg-slate-100 hover:text-slate-900'}`}
+          >
+            <MessageSquarePlus className="h-3 w-3" />
+            <span className="hidden sm:inline">New Chat</span>
+          </button>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowSessions(!showSessions)}
+              className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px] font-medium transition ${isWorkspaceMode ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-[#888] hover:bg-slate-100 hover:text-slate-900'}`}
+            >
+              <Clock className="h-3 w-3" />
+              <span className="hidden sm:inline">History</span>
+              <ChevronDown className="h-3 w-3 opacity-70" />
+            </button>
+            {showSessions && (
+              <div className={`absolute right-0 top-full z-10 mt-1.5 w-48 rounded-xl p-1.5 shadow-xl ${isWorkspaceMode ? 'border border-[#2a2a2a] bg-[#101010]' : 'border border-slate-200 bg-white'}`}>
+                {chatSessions.length > 0 ? (
+                  <div className="max-h-60 overflow-y-auto hidden-scrollbar">
+                    {chatSessions.map((session) => {
+                      const isActive = activeChatSessionId === session.session_id;
+                      return (
+                        <button
+                          key={session.session_id}
+                          type="button"
+                          onClick={() => { fetchChatHistory(session.session_id); setShowSessions(false); }}
+                          className={`block w-full truncate rounded-md px-2.5 py-2 text-left text-[11px] font-medium ${isWorkspaceMode ? (isActive ? 'bg-white/10 text-white' : 'text-[#cbd5e1] hover:bg-white/5 hover:text-white') : (isActive ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900')}`}
+                          title={session.title}
+                        >
+                          {session.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={`px-3 py-4 text-center text-xs ${isWorkspaceMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    No history to show.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Skills button */}
+          <button
+            type="button"
+            onClick={() => { setShowSkillsPanel((v) => !v); setShowSkillCreator(false); }}
+            title="Global Skills"
+            className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[11.5px] font-medium transition ${
+              showSkillsPanel
+                ? (isWorkspaceMode ? 'bg-[#70434f]/30 text-[#d9a4b2]' : 'bg-[#f5ecf0] text-[#8c5462]')
+                : (isWorkspaceMode ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-[#888] hover:bg-slate-100 hover:text-slate-900')
+            }`}
+          >
+            <Zap className="h-3 w-3" />
+            <span className="hidden sm:inline">Skills</span>
+            {pinnedSkillSlugs.length > 0 && (
+              <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${isWorkspaceMode ? 'bg-[#d9a4b2]/30 text-[#d9a4b2]' : 'bg-[#d9a4b2]/20 text-[#8c5462]'}`}>
+                {pinnedSkillSlugs.length}
+              </span>
+            )}
+          </button>
+
+          <div className={`mx-1.5 h-3.5 w-[1px] ${isWorkspaceMode ? 'bg-white/10' : 'bg-slate-200'}`} />
+
+          {/* Collapse/Close Actions */}
+          {mode === 'floating' && (
+            <button
+              type="button"
+              onClick={() => setChatExpanded((c) => !c)}
+              className={`flex items-center justify-center rounded-md p-1.5 transition ${isWorkspaceMode ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-900'}`}
+              title={chatExpanded ? 'Minimize' : 'Expand'}
+            >
+              {chatExpanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelRightClose className="h-4 w-4" />}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => onToggleChat?.(false)}
+            className={`flex items-center justify-center rounded-md p-1.5 transition ${isWorkspaceMode ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-900'}`}
+            title="Close Panel"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
-      <div className={`flex-1 min-h-0 overflow-x-hidden overflow-y-auto ${isWorkspaceMode ? 'bg-[#111111]' : 'bg-white'} ${mode === 'standalone' ? 'px-8 sm:px-12 lg:px-24 xl:px-40' : 'px-4'} py-4`}>
+      <div className={`flex-1 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto ${isWorkspaceMode ? 'bg-[#111111]' : 'bg-white'} ${mode === 'standalone' ? 'px-8 sm:px-12 lg:px-24 xl:px-40' : 'px-4'} py-4`}>
         <div className={`w-full ${isWorkspaceMode ? 'space-y-4' : 'mx-auto max-w-3xl space-y-6'}`}>
           {!isWorkspaceMode && (
           <>
@@ -1171,7 +1386,7 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                     </div>
                   )}
                   <p className={`mt-3 text-[11px] leading-5 ${isWorkspaceMode ? 'text-[#94a3b8]' : 'text-slate-500'}`}>
-                    Start a request with a slash skill like {slashCommands[0] || '/skill'} to apply project-specific instructions before planning and coding.
+                    Start a request with a slash skill like {slashCommands[0] || '/skills'} to apply project-specific instructions before planning and coding.
                   </p>
                 </>
               ) : (
@@ -1237,30 +1452,95 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
               )}
               {message.content && (
                 <div className={`${message.role === 'assistant' ? (isWorkspaceMode ? 'pl-7 text-[#d8d8d2]' : 'pl-7') : 'whitespace-pre-wrap break-words'}`}>
-                  {message.role === 'assistant' ? renderMarkdownMessage(message.content) : message.content}
+                  {message.role === 'assistant' ? renderMarkdownMessage(message.content, isWorkspaceMode) : message.content}
                 </div>
               )}
               {message.role === 'assistant' && renderTrace(message.metadata)}
+              {message.role === 'assistant' && message.metadata?.hit_turn_limit && index === chatMessages.length - 1 && (
+                <div className={`mt-3 pl-7 flex items-start gap-3 ${isWorkspaceMode ? 'text-[#d8d8d2]' : 'text-slate-700'}`}>
+                  <div className={`rounded-lg border px-3 py-2 text-[12px] leading-5 ${isWorkspaceMode ? 'border-[#4a4a4a] bg-[#222]' : 'border-slate-200 bg-slate-50'}`}>
+                    <p className={`mb-2 font-medium ${isWorkspaceMode ? 'text-[#fbbf24]' : 'text-amber-700'}`}>
+                      Turn limit reached — task may be incomplete
+                    </p>
+                    <p className={`mb-3 text-[11px] ${isWorkspaceMode ? 'text-[#a0a0a0]' : 'text-slate-500'}`}>
+                      {message.metadata.partial_summary || 'The agent ran out of turns before finishing. Click Continue to resume from where it stopped.'}
+                    </p>
+                    <button
+                      onClick={() => continuePreviousTask(message.metadata.partial_summary || '')}
+                      disabled={chatSending || Boolean(streamingState?.active)}
+                      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-semibold transition-all ${
+                        isWorkspaceMode
+                          ? 'bg-[#1a3a5c] text-[#60a5fa] hover:bg-[#1e4a75] disabled:opacity-40'
+                          : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40'
+                      }`}
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+          {runtimeAgentRun && (
+            <div
+              key={runtimeAgentRun.id}
+              className={isWorkspaceMode
+                ? 'w-full rounded-[18px] border border-[#70434f] bg-[#181818] px-4 py-3 text-[13px] leading-7 text-[#e8e4e6] shadow-[0_14px_34px_rgba(0,0,0,0.32)]'
+                : 'pr-4 w-full text-[14px] leading-relaxed text-slate-800'}
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <div className={`flex h-5 w-5 items-center justify-center rounded ${isWorkspaceMode ? 'bg-[#0f172a]' : 'bg-black'} text-white`}>
+                  <Sparkles className="h-3 w-3" />
+                </div>
+                <span className={`text-xs font-semibold ${isWorkspaceMode ? 'text-white' : 'text-slate-900'}`}>
+                  {runtimeAgentRun.title || 'Runtime Recovery'}
+                </span>
+              </div>
+              {runtimeAgentRun.content && (
+                <div className={isWorkspaceMode ? 'pl-7 text-[#d4d4d4]' : 'pl-7'}>
+                  {renderMarkdownMessage(runtimeAgentRun.content, isWorkspaceMode)}
+                </div>
+              )}
+              {Array.isArray(runtimeAgentRun.events) && runtimeAgentRun.events.length > 0 && (
+                <div className="mt-3 pl-7">
+                  <AgentStepTimeline
+                    liveEvents={runtimeAgentRun.events}
+                    isLive={runtimeAgentRun.active}
+                    isWorkspaceMode={isWorkspaceMode}
+                  />
+                </div>
+              )}
+              {!runtimeAgentRun.active && renderTrace(runtimeAgentRun.metadata)}
+            </div>
+          )}
+          {/* Live streaming agent message */}
+          {streamingState && (
+            <div className={isWorkspaceMode ? 'w-full rounded-[18px] border border-[#70434f] bg-[#181818] px-4 py-3 text-[13px] leading-7 text-[#e8e4e6] shadow-[0_14px_34px_rgba(0,0,0,0.32)]' : 'pr-4 w-full text-[14px] leading-relaxed text-slate-800'}>
+              <div className="mb-2 flex items-center gap-2">
+                <div className={`flex h-5 w-5 items-center justify-center rounded ${isWorkspaceMode ? 'bg-[#0f172a]' : 'bg-black'} text-white`}>
+                  <Sparkles className="h-3 w-3" />
+                </div>
+                <span className={`text-xs font-semibold ${isWorkspaceMode ? 'text-white' : 'text-slate-900'}`}>DevHub</span>
+              </div>
+              <div className="pl-7">
+                <AgentStepTimeline
+                  liveEvents={streamingState.events}
+                  isLive={streamingState.active}
+                  isWorkspaceMode={isWorkspaceMode}
+                />
+              </div>
+            </div>
+          )}
+          {/* Non-agent thinking spinner */}
           {chatSending && (
             <div className={`rounded-2xl border px-4 py-3 ml-7 ${isWorkspaceMode ? 'border-[#2a2a2a] bg-[#101010]' : 'border-slate-200 bg-slate-50/80'}`}>
               <div className="flex items-center gap-2.5">
                 <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${isWorkspaceMode ? 'bg-[#2b1d22]' : 'bg-black'}`}>
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
                 </div>
-                <span className={`text-[13px] font-medium ${isWorkspaceMode ? 'text-white' : 'text-slate-900'}`}>
-                  {chatBehaviorMode === 'agent' ? 'Agent is reading, searching, and editing...' : 'Thinking...'}
-                </span>
+                <span className={`text-[13px] font-medium ${isWorkspaceMode ? 'text-white' : 'text-slate-900'}`}>Thinking...</span>
               </div>
-              {chatBehaviorMode === 'agent' && (
-                <div className={`mt-2 flex items-center gap-3 pl-8 text-[11px] ${isWorkspaceMode ? 'text-[#64748b]' : 'text-slate-400'}`}>
-                  <span className="flex items-center gap-1"><Wrench className="h-3 w-3" /> Tools</span>
-                  <span className="flex items-center gap-1"><FileText className="h-3 w-3" /> Files</span>
-                  <span className="flex items-center gap-1"><Terminal className="h-3 w-3" /> Commands</span>
-                  <span className="animate-pulse">...</span>
-                </div>
-              )}
             </div>
           )}
           <div ref={chatEndRef} />
@@ -1325,13 +1605,44 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
               ))}
             </div>
           )}
+          {/* Active / pinned skill badges */}
+          {(pinnedSkillSlugs.length > 0 || lastActiveSkills.length > 0) && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5">
+              {pinnedSkillSlugs.map((slug) => (
+                <button
+                  key={slug}
+                  type="button"
+                  onClick={() => setPinnedSkillSlugs((prev) => prev.filter((s) => s !== slug))}
+                  title="Unpin skill"
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition hover:opacity-80 ${isWorkspaceMode ? 'border-[#d9a4b2]/30 bg-[#70434f]/20 text-[#d9a4b2]' : 'border-[#d9a4b2]/40 bg-[#f5ecf0] text-[#8c5462]'}`}
+                >
+                  <Zap className="h-2.5 w-2.5" />
+                  {pinnedSkillLabel(slug)}
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              ))}
+              {lastActiveSkills.filter((s) => !pinnedSkillSlugs.includes(s)).map((name) => (
+                <span
+                  key={name}
+                  title="Auto-activated for this message"
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${isWorkspaceMode ? 'border-white/10 bg-white/5 text-[#64748b]' : 'border-slate-200 bg-slate-50 text-slate-400'}`}
+                >
+                  <Zap className="h-2.5 w-2.5" />
+                  {name}
+                </span>
+              ))}
+            </div>
+          )}
+
           {attachmentError && (
             <p className={`mb-2 text-[11px] ${isWorkspaceMode ? 'text-amber-300' : 'text-amber-700'}`}>{attachmentError}</p>
           )}
-          <div className="relative flex min-w-0">
+          <div className={`relative flex min-w-0 flex-col rounded-2xl border transition-all ${inputFocused ? (isWorkspaceMode ? 'border-[#8c5462]/60 bg-[#151515] shadow-[0_0_15px_rgba(140,84,98,0.1)]' : 'border-[#8c5462]/40 bg-white shadow-sm') : (isWorkspaceMode ? 'border-white/10 bg-[#111111]' : 'border-slate-200 bg-slate-50/50')}`}>
             <textarea
               value={chatInput}
               onChange={(event) => setChatInput(event.target.value)}
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
                   event.preventDefault();
@@ -1339,12 +1650,51 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
                 }
               }}
               placeholder={activePlaceholder}
-              className={`min-h-[72px] w-full resize-none rounded-[20px] py-4 pl-4 pr-12 text-[13px] outline-none transition-all placeholder:font-light ${isWorkspaceMode ? 'border border-white/10 bg-[#1b1b1b] text-white placeholder:text-[#75686d] focus:border-[#8c5462]/70 focus:bg-[#202020]' : 'border border-slate-200 bg-[#fbfbfc] text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-slate-300 focus:bg-white focus:shadow-[0_4px_24px_rgba(15,23,42,0.06)]'}`}
+              className={`min-h-[64px] w-full resize-none bg-transparent px-4 py-3.5 text-[13px] outline-none placeholder:font-light ${isWorkspaceMode ? 'text-[#e8e8e3] placeholder:text-[#6b6b6b]' : 'text-slate-900 placeholder:text-slate-400'}`}
               rows={2}
             />
-            <button onClick={sendChat} disabled={(!chatInput.trim() && chatAttachments.length === 0) || chatSending} className={`absolute bottom-2 right-2 flex h-10 w-10 items-center justify-center rounded-2xl transition disabled:opacity-30 ${isWorkspaceMode ? 'bg-[#8c5462] text-white shadow-[0_10px_24px_rgba(112,67,79,0.22)] hover:bg-[#70434f]' : 'bg-black text-white shadow-sm hover:bg-slate-800'}`}>
-              <Send className="h-4 w-4" />
-            </button>
+
+            <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+              {/* Mentions inside input */}
+              <div className="flex flex-wrap gap-1.5 flex-1">
+                {CHAT_SPECIAL_MENTIONS.slice(0, 3).map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() => insertMention(item)}
+                    className={`rounded px-2 py-0.5 text-[10.5px] font-semibold transition-colors ${isWorkspaceMode ? 'bg-white/5 text-[#858585] hover:bg-white/10 hover:text-[#d4d4d4]' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Mode dropdown */}
+              <div className="relative group">
+                <select
+                  value={chatBehaviorMode}
+                  onChange={(e) => setChatBehaviorMode(e.target.value as ChatBehaviorMode)}
+                  className={`appearance-none rounded-lg border px-3 py-1.5 text-[11px] font-bold outline-none transition-colors cursor-pointer pr-6 ${isWorkspaceMode ? 'border-[#8c5462]/40 bg-[#2b1d22] text-[#d9a4b2] hover:bg-[#3a2a30]' : 'border-[#8c5462]/30 bg-rose-50 text-[#8c5462] hover:bg-rose-100 shadow-sm'}`}
+                >
+                  <option value="ask" className={isWorkspaceMode ? 'bg-[#181818] text-[#d4d4d4]' : 'bg-white text-slate-800'}>Ask Mode</option>
+                  <option value="edit" className={isWorkspaceMode ? 'bg-[#181818] text-[#d4d4d4]' : 'bg-white text-slate-800'}>Edit Files</option>
+                  <option value="agent" className={isWorkspaceMode ? 'bg-[#181818] text-[#d4d4d4]' : 'bg-white text-slate-800'}>Auto Agent</option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                  <ChevronDown className={`h-3 w-3 ${isWorkspaceMode ? 'text-[#d9a4b2]' : 'text-[#8c5462]'}`} />
+                </div>
+              </div>
+
+              {/* Send Button */}
+              <button
+                onClick={sendChat}
+                disabled={(!chatInput.trim() && chatAttachments.length === 0) || chatSending}
+                className={`flex h-[28px] w-[28px] shrink-0 items-center justify-center rounded-lg transition disabled:opacity-40 ${isWorkspaceMode ? 'bg-[#8c5462] text-white hover:bg-[#70434f]' : (!chatInput.trim() && chatAttachments.length === 0 ? 'bg-slate-200 text-slate-400' : 'bg-[#8c5462] text-white hover:bg-[#70434f] shadow-sm')}`}
+              >
+                {chatSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5 ml-0.5" />}
+              </button>
+            </div>
+
             {mentionQuery !== null && mentionOptions.length > 0 && (
               <div className={`absolute bottom-[calc(100%+8px)] left-0 right-0 max-h-56 overflow-y-auto rounded-2xl p-1.5 ${isWorkspaceMode ? 'border border-[#2f2f2f] bg-[#101010] shadow-[0_18px_40px_rgba(0,0,0,0.45)]' : 'border border-slate-200 bg-white shadow-lg'}`}>
                 {mentionOptions.map((item) => (
@@ -1364,49 +1714,57 @@ export default function ProjectChatPanel({ projectId, mode = 'floating', selecte
               <div className={`absolute bottom-[calc(100%+8px)] left-0 right-0 max-h-56 overflow-y-auto rounded-2xl p-1.5 ${isWorkspaceMode ? 'border border-[#2f2f2f] bg-[#101010] shadow-[0_18px_40px_rgba(0,0,0,0.45)]' : 'border border-slate-200 bg-white shadow-lg'}`}>
                 {skillOptions.map((skill) => (
                   <button
-                    key={skill.path || skill.slug || skill.name}
+                    key={skill.key}
                     type="button"
-                    onClick={() => insertSkillShortcut(skill)}
+                    onClick={() => insertSlashCommand(skill.command)}
                     className={`flex w-full items-start justify-between gap-3 rounded-xl px-3 py-2 text-left text-xs ${isWorkspaceMode ? 'text-[#d1d5db] hover:bg-white/5' : 'text-slate-700 hover:bg-slate-50'}`}
                   >
                     <span className="min-w-0">
-                      <span className="block truncate font-medium">{skillCommandLabel(skill)}</span>
+                      <span className="block truncate font-medium">{skill.command}</span>
                       <span className={`mt-0.5 block truncate text-[10px] ${isWorkspaceMode ? 'text-[#64748b]' : 'text-slate-400'}`}>{skill.description}</span>
                     </span>
-                    <span className={`shrink-0 text-[10px] ${isWorkspaceMode ? 'text-[#64748b]' : 'text-slate-400'}`}>skill</span>
+                    <span className={`shrink-0 text-[10px] ${isWorkspaceMode ? 'text-[#64748b]' : 'text-slate-400'}`}>{skill.source}</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
-          
-          <div className={`mt-3 flex items-center justify-between gap-4 text-[10.5px] font-medium ${isWorkspaceMode ? 'text-[#64748b]' : 'text-slate-400'}`}>
-            <div className="flex flex-wrap gap-3">
-              {CHAT_SPECIAL_MENTIONS.slice(0, 3).map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => insertMention(item)}
-                  className={`transition-colors ${isWorkspaceMode ? 'hover:text-[#cbd5e1]' : 'hover:text-slate-600'}`}
-                >
-                  {item.label}
-                </button>
-              ))}
-              {availableSkills.slice(0, 2).map((skill) => (
-                <button
-                  key={skill.path || skill.slug || skill.name}
-                  type="button"
-                  onClick={() => insertSkillShortcut(skill)}
-                  className={`transition-colors ${isWorkspaceMode ? 'hover:text-[#cbd5e1]' : 'hover:text-slate-600'}`}
-                >
-                  {skillCommandLabel(skill)}
-                </button>
-              ))}
-            </div>
-            <span className="text-right">{currentModeMeta.label} mode | DevHub AI Assistant</span>
+          <div className="mt-2 flex justify-end">
+            <span className={`text-[9.5px] font-medium ${isWorkspaceMode ? 'text-[#555]' : 'text-[#d8d3cc]'}`}>
+              DevHub AI Assistant
+            </span>
           </div>
         </div>
       </div>
+
+      {/* ══ SKILLS PANEL OVERLAY ════════════════════════════════════════════ */}
+      {(showSkillsPanel || showSkillCreator) && (
+        <div className="absolute inset-0 z-20 p-3">
+          {showSkillCreator ? (
+            <SkillCreatorWizard
+              isWorkspaceMode={isWorkspaceMode}
+              onClose={() => { setShowSkillCreator(false); setShowSkillsPanel(true); }}
+              onCreated={(slug) => {
+                setPinnedSkillSlugs((prev) => prev.includes(slug) ? prev : [...prev, slug]);
+                setShowSkillCreator(false);
+                setShowSkillsPanel(false);
+              }}
+            />
+          ) : (
+            <SkillsPanel
+              isWorkspaceMode={isWorkspaceMode}
+              pinnedSlugs={pinnedSkillSlugs}
+              onPinToggle={(slug) =>
+                setPinnedSkillSlugs((prev) =>
+                  prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
+                )
+              }
+              onCreateClick={() => { setShowSkillCreator(true); setShowSkillsPanel(false); }}
+              onClose={() => setShowSkillsPanel(false)}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

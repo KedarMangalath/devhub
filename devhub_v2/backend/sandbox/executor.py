@@ -1,7 +1,10 @@
+import collections
 import hashlib
+import json
 import os
 import queue
 import re
+import shlex
 import shutil
 import subprocess
 import threading
@@ -11,6 +14,43 @@ from typing import Callable, Dict, List
 from urllib.parse import urlparse
 
 import psutil
+
+# Optional winpty for proper PTY on Windows (installed via pywinpty).
+try:
+    import winpty as _winpty
+    _WINPTY_AVAILABLE = True
+except ImportError:
+    _winpty = None
+    _WINPTY_AVAILABLE = False
+
+_PID_REGISTRY = Path(__file__).parent.parent / "data" / ".sandbox_pids.json"
+
+
+def _read_pid_registry() -> dict:
+    try:
+        return json.loads(_PID_REGISTRY.read_text()) if _PID_REGISTRY.exists() else {}
+    except Exception:
+        return {}
+
+
+def _write_pid_registry(registry: dict) -> None:
+    try:
+        _PID_REGISTRY.parent.mkdir(parents=True, exist_ok=True)
+        _PID_REGISTRY.write_text(json.dumps(registry))
+    except Exception:
+        pass
+
+
+def _kill_pid(pid: int) -> None:
+    try:
+        proc = psutil.Process(pid)
+        for child in proc.children(recursive=True):
+            child.kill()
+        proc.kill()
+    except psutil.NoSuchProcess:
+        pass
+    except Exception:
+        pass
 
 
 CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -32,6 +72,7 @@ class ProcessHandle:
         self.metadata = metadata or {}
         self.cleanup_hook = cleanup_hook
         self.output_queue = queue.Queue()
+        self.recent_output: collections.deque = collections.deque(maxlen=400)
         self.running = True
         self.start_time = time.time()
 
@@ -49,7 +90,9 @@ class ProcessHandle:
         try:
             for line in iter(stream.readline, b""):
                 if line:
-                    self.output_queue.put(line.decode("utf-8", errors="replace"))
+                    decoded = line.decode("utf-8", errors="replace")
+                    self.output_queue.put(decoded)
+                    self.recent_output.append(decoded)
         except Exception:
             pass
         finally:
@@ -95,6 +138,78 @@ class ProcessHandle:
         self.running = False
 
 
+class PtyProcessHandle:
+    """
+    Windows PTY-backed terminal handle using pywinpty.
+    Gives cmd.exe / PowerShell a real console so interactive input/output works.
+    Drop-in replacement for ProcessHandle when kind='terminal' on Windows.
+    """
+
+    def __init__(self, cmd: str, work_dir: str):
+        self.cmd = cmd
+        self.work_dir = work_dir
+        self.metadata = {"backend": "local_pty"}
+        self.output_queue: queue.Queue = queue.Queue()
+        self.recent_output: collections.deque = collections.deque(maxlen=400)
+        self.running = True
+        self.start_time = time.time()
+        self.process = None  # no Popen process — keep for interface compat
+
+        self._pty = _winpty.PtyProcess.spawn(
+            cmd,
+            cwd=work_dir,
+            env=dict(os.environ),
+            dimensions=(24, 220),
+        )
+        self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+        self._reader_thread.start()
+
+    def _read_loop(self):
+        try:
+            while self._pty.isalive():
+                try:
+                    chunk = self._pty.read(4096)
+                except EOFError:
+                    break
+                except Exception:
+                    break
+                if chunk:
+                    self.output_queue.put(chunk)
+                    self.recent_output.append(chunk)
+        except Exception:
+            pass
+        finally:
+            self.running = False
+
+    def get_new_output(self) -> List[str]:
+        output: List[str] = []
+        try:
+            while True:
+                output.append(self.output_queue.get(block=False))
+        except queue.Empty:
+            pass
+        return output
+
+    def is_running(self):
+        if not self._pty.isalive():
+            self.running = False
+            return False
+        return True
+
+    def write_input(self, data: str):
+        try:
+            self._pty.write(data)
+        except Exception:
+            pass
+
+    def kill(self):
+        try:
+            self._pty.terminate(force=True)
+        except Exception:
+            pass
+        self.running = False
+
+
 class SandboxManager:
     """Manages background process execution for the DevHub IDE terminal and runtime."""
 
@@ -103,6 +218,13 @@ class SandboxManager:
         self.mode = (os.environ.get("DEVHUB_SANDBOX_MODE") or "local").strip().lower()
         if self.mode not in {"local", "docker"}:
             self.mode = "local"
+
+        # Kill any processes from a previous run (orphan prevention on Django reload)
+        registry = _read_pid_registry()
+        for process_id, pid in registry.items():
+            _kill_pid(pid)
+        if registry:
+            _write_pid_registry({})
 
         self.docker_bin = (os.environ.get("DEVHUB_SANDBOX_DOCKER_BIN") or "docker").strip() or "docker"
         self.docker_image = (
@@ -155,11 +277,21 @@ class SandboxManager:
                     preview_url=preview_url,
                 )
             else:
-                process, display_cmd, metadata, cleanup_hook = self._spawn_local_process(
-                    cmd,
-                    work_dir,
-                    env or {},
-                )
+                if kind == "terminal":
+                    terminal_result = self._spawn_local_terminal_process(cmd, work_dir, env or {})
+                    # PTY path returns a PtyProcessHandle directly; pipe path returns a 4-tuple.
+                    if isinstance(terminal_result, PtyProcessHandle):
+                        pty_handle = terminal_result
+                        pty_handle.metadata["kind"] = kind
+                        self.processes[process_id] = pty_handle
+                        return pty_handle
+                    process, display_cmd, metadata, cleanup_hook = terminal_result
+                else:
+                    process, display_cmd, metadata, cleanup_hook = self._spawn_local_process(
+                        cmd,
+                        work_dir,
+                        env or {},
+                    )
 
             metadata = dict(metadata)
             metadata["kind"] = kind
@@ -174,12 +306,16 @@ class SandboxManager:
                 cleanup_hook=cleanup_hook,
             )
             self.processes[process_id] = handle
+            registry = _read_pid_registry()
+            registry[process_id] = handle.process.pid
+            _write_pid_registry(registry)
             return handle
         except Exception as exc:
             raise RuntimeError(f"Failed to start process: {exc}") from exc
 
     def _spawn_local_process(self, cmd: str, work_dir: str, env: dict) -> tuple[subprocess.Popen, str, dict, Callable[[], None] | None]:
         run_env = os.environ.copy()
+        run_env.pop("DJANGO_SETTINGS_MODULE", None)
         run_env.update(env)
         process = subprocess.Popen(
             cmd,
@@ -192,6 +328,36 @@ class SandboxManager:
             creationflags=CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
         )
         return process, cmd, {"backend": "local"}, None
+
+    def _spawn_local_terminal_process(self, cmd: str, work_dir: str, env: dict):
+        command = str(cmd or "").strip()
+
+        # On Windows, use a real PTY via pywinpty so cmd.exe / PowerShell
+        # behaves interactively (input echo, arrow keys, colour output).
+        if os.name == "nt" and _WINPTY_AVAILABLE:
+            shell_cmd = command if command else "cmd.exe"
+            return PtyProcessHandle(shell_cmd, work_dir)
+
+        run_env = os.environ.copy()
+        run_env.pop("DJANGO_SETTINGS_MODULE", None)
+        run_env.update(env)
+
+        if os.name == "nt":
+            terminal_cmd = shlex.split(command, posix=False) if command else ["cmd.exe"]
+        else:
+            terminal_cmd = shlex.split(command, posix=True) if command else [run_env.get("SHELL") or "/bin/sh"]
+
+        process = subprocess.Popen(
+            terminal_cmd,
+            cwd=work_dir,
+            env=run_env,
+            shell=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            creationflags=CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+        return process, " ".join(terminal_cmd), {"backend": "local"}, None
 
     def _spawn_docker_process(
         self,
@@ -338,6 +504,13 @@ class SandboxManager:
             return []
         return self.processes[process_id].get_new_output()
 
+    def get_recent_output(self, process_id: str, lines: int = 200) -> str:
+        """Return the last N lines buffered (non-draining) — used by the auto-healer."""
+        handle = self.processes.get(process_id)
+        if not handle:
+            return ""
+        return "".join(list(handle.recent_output)[-lines:])
+
     def get_status(self, process_id: str) -> dict:
         handle = self.processes.get(process_id)
         if not handle:
@@ -351,7 +524,7 @@ class SandboxManager:
             "work_dir": handle.work_dir,
             "uptime_seconds": int(time.time() - handle.start_time),
             "backend": handle.metadata.get("backend", self.mode),
-            "returncode": handle.process.poll() if not running else None,
+            "returncode": (None if running or handle.process is None else handle.process.poll()),
         }
         if handle.metadata.get("container_name"):
             status["container_name"] = handle.metadata["container_name"]
@@ -362,9 +535,14 @@ class SandboxManager:
         return status
 
     def send_input(self, process_id: str, input_str: str):
-        if process_id in self.processes and self.processes[process_id].is_running():
-            proc = self.processes[process_id].process
-            if proc.stdin:
+        handle = self.processes.get(process_id)
+        if not handle or not handle.is_running():
+            return
+        if isinstance(handle, PtyProcessHandle):
+            handle.write_input(input_str)
+        else:
+            proc = handle.process
+            if proc and proc.stdin:
                 proc.stdin.write(input_str.encode("utf-8"))
                 proc.stdin.flush()
 
@@ -372,6 +550,9 @@ class SandboxManager:
         if process_id in self.processes:
             self.processes[process_id].kill()
             del self.processes[process_id]
+        registry = _read_pid_registry()
+        registry.pop(process_id, None)
+        _write_pid_registry(registry)
 
     def cleanup(self):
         for pid, handle in list(self.processes.items()):

@@ -1,0 +1,415 @@
+{
+  "edges": [
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/LandingPage.jsx",
+      "reason": "import LandingPage from './pages/LandingPage'"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/PatientDashboard.jsx",
+      "reason": "import PatientDashboard from './pages/PatientDashboard'"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/DoctorDirectory.jsx",
+      "reason": "import DoctorDirectory from './pages/DoctorDirectory'"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/DoctorProfile.jsx",
+      "reason": "import DoctorProfile from './pages/DoctorProfile'"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/BookingWorkflow.jsx",
+      "reason": "import BookingWorkflow from './pages/BookingWorkflow'"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/MedicalHistory.jsx",
+      "reason": "import MedicalHistory from './pages/MedicalHistory'"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/components/layout/AppShell.jsx",
+      "reason": "import AppShell from './components/layout/AppShell'"
+    },
+    {
+      "from": "src/main.jsx",
+      "to": "src/App.jsx",
+      "reason": "import App from './App'"
+    },
+    {
+      "from": "src/components/AppShell.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { patient_profile } from '../mockData';"
+    },
+    {
+      "from": "src/components/layout/Navbar.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { patient_profile } from '../../mockData'"
+    },
+    {
+      "from": "src/components/layout/Navbar.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../ui/Button'"
+    },
+    {
+      "from": "src/pages/BookingWorkflow.jsx",
+      "to": "src/components/layout/AppShell.jsx",
+      "reason": "import AppShell from '../components/layout/AppShell'"
+    },
+    {
+      "from": "src/pages/BookingWorkflow.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../components/ui/Button'"
+    },
+    {
+      "from": "src/pages/BookingWorkflow.jsx",
+      "to": "src/components/ui/Card.jsx",
+      "reason": "import Card from '../components/ui/Card'"
+    },
+    {
+      "from": "src/pages/BookingWorkflow.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { getDoctorById } from '../mockData'"
+    },
+    {
+      "from": "src/pages/DoctorDirectory.jsx",
+      "to": "src/components/layout/AppShell.jsx",
+      "reason": "import AppShell from '../components/layout/AppShell'"
+    },
+    {
+      "from": "src/pages/DoctorDirectory.jsx",
+      "to": "src/components/domain/DoctorCard.jsx",
+      "reason": "import DoctorCard from '../components/domain/DoctorCard'"
+    },
+    {
+      "from": "src/pages/DoctorDirectory.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../components/ui/Button'"
+    },
+    {
+      "from": "src/pages/DoctorDirectory.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { doctors, specialties } from '../mockData'"
+    },
+    {
+      "from": "src/pages/DoctorProfile.jsx",
+      "to": "src/components/layout/AppShell.jsx",
+      "reason": "import AppShell from '../components/layout/AppShell'"
+    },
+    {
+      "from": "src/pages/DoctorProfile.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../components/ui/Button'"
+    },
+    {
+      "from": "src/pages/DoctorProfile.jsx",
+      "to": "src/components/ui/Badge.jsx",
+      "reason": "import Badge from '../components/ui/Badge'"
+    },
+    {
+      "from": "src/pages/DoctorProfile.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { getDoctorById, testimonials } from '../mockData'"
+    },
+    {
+      "from": "src/pages/LandingPage.jsx",
+      "to": "src/components/layout/AppShell.jsx",
+      "reason": "import AppShell from '../components/layout/AppShell'"
+    },
+    {
+      "from": "src/pages/LandingPage.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../components/ui/Button'"
+    },
+    {
+      "from": "src/pages/LandingPage.jsx",
+      "to": "src/components/domain/DoctorCard.jsx",
+      "reason": "import DoctorCard from '../components/domain/DoctorCard'"
+    },
+    {
+      "from": "src/pages/LandingPage.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { doctors, specialties, testimonials } from '../mockData'"
+    },
+    {
+      "from": "src/pages/MedicalHistory.jsx",
+      "to": "src/components/layout/AppShell.jsx",
+      "reason": "import AppShell from '../components/layout/AppShell'"
+    },
+    {
+      "from": "src/pages/MedicalHistory.jsx",
+      "to": "src/components/domain/AppointmentCard.jsx",
+      "reason": "import AppointmentCard from '../components/domain/AppointmentCard'"
+    },
+    {
+      "from": "src/pages/MedicalHistory.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../components/ui/Button'"
+    },
+    {
+      "from": "src/pages/MedicalHistory.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { getPatientAppointments } from '../mockData'"
+    },
+    {
+      "from": "src/pages/PatientDashboard.jsx",
+      "to": "src/components/layout/AppShell.jsx",
+      "reason": "import AppShell from '../components/layout/AppShell'"
+    },
+    {
+      "from": "src/pages/PatientDashboard.jsx",
+      "to": "src/components/domain/AppointmentCard.jsx",
+      "reason": "import AppointmentCard from '../components/domain/AppointmentCard'"
+    },
+    {
+      "from": "src/pages/PatientDashboard.jsx",
+      "to": "src/components/domain/AIInsightCard.jsx",
+      "reason": "import AIInsightCard from '../components/domain/AIInsightCard'"
+    },
+    {
+      "from": "src/pages/PatientDashboard.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { patient_profile, getPatientAppointments, ai_insights } from '../mockData'"
+    },
+    {
+      "from": "src/components/domain/AppointmentCard.jsx",
+      "to": "src/components/ui/Card.jsx",
+      "reason": "import Card from '../ui/Card'"
+    },
+    {
+      "from": "src/components/domain/AppointmentCard.jsx",
+      "to": "src/components/ui/Badge.jsx",
+      "reason": "import Badge from '../ui/Badge'"
+    },
+    {
+      "from": "src/components/domain/AppointmentCard.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../ui/Button'"
+    },
+    {
+      "from": "src/components/domain/AppointmentCard.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { getDoctorById } from '../../mockData'"
+    },
+    {
+      "from": "src/components/domain/DoctorCard.jsx",
+      "to": "src/components/ui/Card.jsx",
+      "reason": "import Card from '../ui/Card'"
+    },
+    {
+      "from": "src/components/domain/DoctorCard.jsx",
+      "to": "src/components/ui/Badge.jsx",
+      "reason": "import Badge from '../ui/Badge'"
+    },
+    {
+      "from": "src/components/domain/DoctorCard.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../ui/Button'"
+    },
+    {
+      "from": "src/components/domain/AIInsightCard.jsx",
+      "to": "src/components/ui/Card.jsx",
+      "reason": "import Card from '../ui/Card'"
+    },
+    {
+      "from": "src/components/domain/AIInsightCard.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import Button from '../ui/Button'"
+    },
+    {
+      "from": "src/components/ItemCard.jsx",
+      "to": "src/components/ui/Card.jsx",
+      "reason": "import { Card } from './ui/Card'"
+    },
+    {
+      "from": "src/components/ItemCard.jsx",
+      "to": "src/components/ui/Button.jsx",
+      "reason": "import { Button } from './ui/Button'"
+    },
+    {
+      "from": "src/components/ItemCard.jsx",
+      "to": "src/components/ui/Badge.jsx",
+      "reason": "import { Badge } from './ui/Badge'"
+    },
+    {
+      "from": "src/components/layout/AppShell.jsx",
+      "to": "src/components/layout/Navbar.jsx",
+      "reason": "import Navbar from './Navbar';"
+    },
+    {
+      "from": "src/components/layout/AppShell.jsx",
+      "to": "src/components/layout/Footer.jsx",
+      "reason": "import Footer from './Footer';"
+    }
+  ],
+  "adjacency": {
+    "src/App.jsx": [
+      "src/pages/LandingPage.jsx",
+      "src/pages/PatientDashboard.jsx",
+      "src/pages/DoctorDirectory.jsx",
+      "src/pages/DoctorProfile.jsx",
+      "src/pages/BookingWorkflow.jsx",
+      "src/pages/MedicalHistory.jsx",
+      "src/components/layout/AppShell.jsx"
+    ],
+    "src/main.jsx": [
+      "src/App.jsx"
+    ],
+    "src/components/AppShell.jsx": [
+      "src/mockData.js"
+    ],
+    "src/components/layout/Navbar.jsx": [
+      "src/mockData.js",
+      "src/components/ui/Button.jsx"
+    ],
+    "src/pages/BookingWorkflow.jsx": [
+      "src/components/layout/AppShell.jsx",
+      "src/components/ui/Button.jsx",
+      "src/components/ui/Card.jsx",
+      "src/mockData.js"
+    ],
+    "src/pages/DoctorDirectory.jsx": [
+      "src/components/layout/AppShell.jsx",
+      "src/components/domain/DoctorCard.jsx",
+      "src/components/ui/Button.jsx",
+      "src/mockData.js"
+    ],
+    "src/pages/DoctorProfile.jsx": [
+      "src/components/layout/AppShell.jsx",
+      "src/components/ui/Button.jsx",
+      "src/components/ui/Badge.jsx",
+      "src/mockData.js"
+    ],
+    "src/pages/LandingPage.jsx": [
+      "src/components/layout/AppShell.jsx",
+      "src/components/ui/Button.jsx",
+      "src/components/domain/DoctorCard.jsx",
+      "src/mockData.js"
+    ],
+    "src/pages/MedicalHistory.jsx": [
+      "src/components/layout/AppShell.jsx",
+      "src/components/domain/AppointmentCard.jsx",
+      "src/components/ui/Button.jsx",
+      "src/mockData.js"
+    ],
+    "src/pages/PatientDashboard.jsx": [
+      "src/components/layout/AppShell.jsx",
+      "src/components/domain/AppointmentCard.jsx",
+      "src/components/domain/AIInsightCard.jsx",
+      "src/mockData.js"
+    ],
+    "src/components/domain/AppointmentCard.jsx": [
+      "src/components/ui/Card.jsx",
+      "src/components/ui/Badge.jsx",
+      "src/components/ui/Button.jsx",
+      "src/mockData.js"
+    ],
+    "src/components/domain/DoctorCard.jsx": [
+      "src/components/ui/Card.jsx",
+      "src/components/ui/Badge.jsx",
+      "src/components/ui/Button.jsx"
+    ],
+    "src/components/domain/AIInsightCard.jsx": [
+      "src/components/ui/Card.jsx",
+      "src/components/ui/Button.jsx"
+    ],
+    "src/components/ItemCard.jsx": [
+      "src/components/ui/Card.jsx",
+      "src/components/ui/Button.jsx",
+      "src/components/ui/Badge.jsx"
+    ],
+    "src/components/layout/AppShell.jsx": [
+      "src/components/layout/Navbar.jsx",
+      "src/components/layout/Footer.jsx"
+    ]
+  },
+  "reverse_adjacency": {
+    "src/pages/LandingPage.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/PatientDashboard.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/DoctorDirectory.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/DoctorProfile.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/BookingWorkflow.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/MedicalHistory.jsx": [
+      "src/App.jsx"
+    ],
+    "src/components/layout/AppShell.jsx": [
+      "src/App.jsx",
+      "src/pages/BookingWorkflow.jsx",
+      "src/pages/DoctorDirectory.jsx",
+      "src/pages/DoctorProfile.jsx",
+      "src/pages/LandingPage.jsx",
+      "src/pages/MedicalHistory.jsx",
+      "src/pages/PatientDashboard.jsx"
+    ],
+    "src/App.jsx": [
+      "src/main.jsx"
+    ],
+    "src/mockData.js": [
+      "src/components/AppShell.jsx",
+      "src/components/layout/Navbar.jsx",
+      "src/pages/BookingWorkflow.jsx",
+      "src/pages/DoctorDirectory.jsx",
+      "src/pages/DoctorProfile.jsx",
+      "src/pages/LandingPage.jsx",
+      "src/pages/MedicalHistory.jsx",
+      "src/pages/PatientDashboard.jsx",
+      "src/components/domain/AppointmentCard.jsx"
+    ],
+    "src/components/ui/Button.jsx": [
+      "src/components/layout/Navbar.jsx",
+      "src/pages/BookingWorkflow.jsx",
+      "src/pages/DoctorDirectory.jsx",
+      "src/pages/DoctorProfile.jsx",
+      "src/pages/LandingPage.jsx",
+      "src/pages/MedicalHistory.jsx",
+      "src/components/domain/AppointmentCard.jsx",
+      "src/components/domain/DoctorCard.jsx",
+      "src/components/domain/AIInsightCard.jsx",
+      "src/components/ItemCard.jsx"
+    ],
+    "src/components/ui/Card.jsx": [
+      "src/pages/BookingWorkflow.jsx",
+      "src/components/domain/AppointmentCard.jsx",
+      "src/components/domain/DoctorCard.jsx",
+      "src/components/domain/AIInsightCard.jsx",
+      "src/components/ItemCard.jsx"
+    ],
+    "src/components/domain/DoctorCard.jsx": [
+      "src/pages/DoctorDirectory.jsx",
+      "src/pages/LandingPage.jsx"
+    ],
+    "src/components/ui/Badge.jsx": [
+      "src/pages/DoctorProfile.jsx",
+      "src/components/domain/AppointmentCard.jsx",
+      "src/components/domain/DoctorCard.jsx",
+      "src/components/ItemCard.jsx"
+    ],
+    "src/components/domain/AppointmentCard.jsx": [
+      "src/pages/MedicalHistory.jsx",
+      "src/pages/PatientDashboard.jsx"
+    ],
+    "src/components/domain/AIInsightCard.jsx": [
+      "src/pages/PatientDashboard.jsx"
+    ],
+    "src/components/layout/Navbar.jsx": [
+      "src/components/layout/AppShell.jsx"
+    ],
+    "src/components/layout/Footer.jsx": [
+      "src/components/layout/AppShell.jsx"
+    ]
+  }
+}

@@ -202,6 +202,10 @@ def _suggest_project_details(idea: str, source_type: str, tech_stack: list[str])
             response_schema=True,
         )
         parsed = agent.parse_json(response)
+        if isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict):
+            parsed = parsed[0]
+        if not isinstance(parsed, dict):
+            parsed = {}
         return {
             'name': str(parsed.get('name') or fallback['name']).strip() or fallback['name'],
             'description': str(parsed.get('description') or fallback['description']).strip() or fallback['description'],

@@ -1,0 +1,26 @@
+{
+  "id": "d601d64ed2d34195b82e7e986c3d1958",
+  "project_id": "66fba2de-e77c-47f6-b3e9-237ab5735e6a",
+  "workspace_path": "C:\\Users\\USER\\AppData\\Local\\Temp\\tmp__repft_",
+  "source": "chat_edit",
+  "label": "Change the App component greeting.",
+  "created_at": "2026-04-24T09:56:45.172535+00:00",
+  "file_count": 12,
+  "excluded_dirs": [
+    ".git",
+    ".idea",
+    ".next",
+    ".nuxt",
+    ".venv",
+    ".vscode",
+    "__pycache__",
+    "build",
+    "dist",
+    "env",
+    "node_modules",
+    "out",
+    "target",
+    "vendor",
+    "venv"
+  ]
+}

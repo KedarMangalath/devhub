@@ -1,0 +1,1 @@
+[{"role": "human", "content": "hello", "timestamp": "2024-10-30 15:45:32.422036"}, {"role": "ai", "content": "welcome", "timestamp": "2024-10-30 15:45:32.422036"}, {"role": "human", "content": "hello", "timestamp": "2024-10-30 15:45:32.422036", "ip_address": "127.0.0.1"}, {"role": "ai", "content": "welcome", "timestamp": "2024-10-30 15:45:32.422036", "ip_address": "chatbot"}]

@@ -3,11 +3,12 @@ import {
   ChevronDown, ChevronRight, ChevronLeft, Code2, ExternalLink, File, FileCode,
   FileJson, FileText, Folder, FolderOpen, Globe, Loader2,
   Maximize2, Minimize2, MessageSquare, Play, RefreshCw, RotateCcw, Save,
-  Square, TerminalSquare, Wrench, X, AlertTriangle,
+  Square, TerminalSquare, Wrench, X, AlertTriangle, Sparkles, PanelLeftOpen, Plus
 } from 'lucide-react';
-import ProjectChatPanel, { type CoderCustomization } from './ProjectChatPanel';
+import ProjectChatPanel, { type CoderCustomization, type ExternalAgentRun } from './ProjectChatPanel';
 import { CodeEditor } from './Editor';
 import { Terminal } from './Terminal';
+import type { AgentStreamEvent } from './AgentStepTimeline';
 
 // Strip ANSI escape codes for clean text display
 const stripAnsi = (str: string) =>
@@ -30,8 +31,129 @@ type RuntimeState = {
     exists?: boolean; running?: boolean; command?: string;
     uptime_seconds?: number; backend?: string; container_name?: string;
   };
+  secondary_statuses?: Array<{
+    runtime_type?: string;
+    run_command?: string | null;
+    preview_url?: string | null;
+    process_id?: string;
+    status?: {
+      exists?: boolean; running?: boolean; command?: string;
+      uptime_seconds?: number; backend?: string; container_name?: string;
+    };
+  }>;
   sandbox?: { mode?: string; image?: string | null; runtime?: string | null; network?: string | null };
+  heal?: {
+    heal_type?: 'code_fix' | 'dependency';
+    status?: 'agent_started' | 'agent_running' | 'rate_limited' | 'installing' | 'restarting' | 'restarted' | 'failed' | string;
+    run_id?: string;
+    module?: string;
+    package?: string;
+    message?: string;
+    error?: string;
+    healed?: boolean;
+    files_modified?: string[];
+    files_accessed?: string[];
+    workspace_actions?: any[];
+    tool_events?: any[];
+    events?: AgentStreamEvent[];
+    restarted?: boolean;
+    updated_at?: number;
+  };
 };
+
+type HealStatus = NonNullable<RuntimeState['heal']>;
+
+const HEAL_ACTIVE_STATUSES = new Set(['agent_started', 'agent_running', 'installing', 'restarting']);
+const HEAL_ERROR_STATUSES = new Set(['failed', 'agent_error', 'rate_limited', 'no_files_found', 'restart_failed', 'heal-rate-limit-exceeded']);
+
+function isHealActive(heal: RuntimeState['heal'] | null | undefined) {
+  return Boolean(heal?.status && HEAL_ACTIVE_STATUSES.has(heal.status));
+}
+
+function isHealError(heal: RuntimeState['heal'] | null | undefined) {
+  return Boolean(heal?.status && HEAL_ERROR_STATUSES.has(heal.status));
+}
+
+function healStatusMessage(heal: RuntimeState['heal'] | null | undefined) {
+  if (!heal) return '';
+  const status = heal.status || '';
+  const fileCount = heal.files_modified?.length ?? 0;
+  const packageName = heal.package || heal.module;
+
+  if (heal.heal_type === 'dependency') {
+    if (status === 'installing') return 'Installing missing dependency';
+    if (status === 'restarting') return packageName ? `Installed ${packageName}; restarting` : 'Dependency installed; restarting';
+    if (status === 'restarted') return packageName ? `Installed ${packageName}; restarted` : 'Dependency installed; restarted';
+    if (status === 'heal-rate-limit-exceeded' || status === 'rate_limited') return 'Dependency healing paused after repeated failures';
+    if (status === 'failed') return packageName ? `Failed to install ${packageName}` : 'Dependency install failed';
+    return heal.message || 'Checking runtime dependency';
+  }
+
+  if (status === 'agent_started' || status === 'agent_running') return 'AI fixing runtime code error';
+  if (status === 'restarting') return fileCount ? `AI fixed ${fileCount} file${fileCount === 1 ? '' : 's'}; restarting` : 'AI fix applied; restarting';
+  if (status === 'restarted') return fileCount ? `AI fixed ${fileCount} file${fileCount === 1 ? '' : 's'}; restarted` : 'AI fix applied; restarted';
+  if (status === 'no_files_found') return 'Auto-fix could not find the failing project file';
+  if (status === 'no_changes') return 'AI did not change files';
+  if (status === 'rate_limited') return 'Auto-fix paused after repeated crashes';
+  if (status === 'agent_error' || status === 'failed') return 'AI auto-fix failed';
+  if (status === 'restart_failed') return 'Restart after auto-fix failed';
+  return heal.message || 'Checking runtime error';
+}
+
+function healLogLine(heal: HealStatus) {
+  const message = healStatusMessage(heal);
+  const details: string[] = [];
+  if (heal.files_modified?.length) details.push(`files: ${heal.files_modified.join(', ')}`);
+  if (heal.package && heal.package !== heal.module) details.push(`package: ${heal.package}`);
+  if (heal.error) details.push(`error: ${heal.error}`);
+  return `[DevHub] ${message}${details.length ? ` (${details.join('; ')})` : ''}\n`;
+}
+
+function healAgentContent(heal: RuntimeState['heal'] | null | undefined) {
+  if (!heal) return '';
+  const fileCount = heal.files_modified?.length ?? 0;
+  if (isHealActive(heal)) {
+    return 'Runtime recovery is in progress. DevHub is inspecting the startup failure, applying a fix, and will restart the project automatically.';
+  }
+  if (heal.status === 'restarted') {
+    return fileCount
+      ? `Runtime recovery completed. DevHub updated ${fileCount} file${fileCount === 1 ? '' : 's'} and restarted the project automatically.`
+      : 'Runtime recovery completed and the project restarted automatically.';
+  }
+  if (heal.status === 'restarting') {
+    return fileCount
+      ? `Runtime recovery applied a fix to ${fileCount} file${fileCount === 1 ? '' : 's'} and is restarting the project.`
+      : 'Runtime recovery applied a fix and is restarting the project.';
+  }
+  if (heal.status === 'no_changes') {
+    return 'Runtime recovery finished without applying a file change.';
+  }
+  return `Runtime recovery stopped. ${heal.error || heal.message || healStatusMessage(heal)}`.trim();
+}
+
+function buildRuntimeAgentRun(heal: RuntimeState['heal'] | null | undefined): ExternalAgentRun | null {
+  if (!heal) return null;
+
+  const filesAccessed = Array.isArray(heal.files_accessed) ? heal.files_accessed : [];
+  const metadata = {
+    approach: heal.heal_type === 'dependency'
+      ? 'DevHub detected a missing dependency during startup, installed it, and restarted the runtime.'
+      : 'DevHub traced the startup crash, reviewed the affected files, applied a patch, and restarted the runtime.',
+    chat_mode: 'runtime_recovery',
+    files_accessed: filesAccessed.map((path) => ({ path, reason: 'Read from the startup traceback context' })),
+    workspace_actions: Array.isArray(heal.workspace_actions) ? heal.workspace_actions : [],
+    applied_files: Array.isArray(heal.files_modified) ? heal.files_modified : [],
+  };
+
+  return {
+    id: String(heal.run_id || heal.updated_at || `runtime-heal-${Date.now()}`),
+    title: 'Runtime Recovery',
+    content: healAgentContent(heal),
+    active: isHealActive(heal),
+    events: Array.isArray(heal.events) ? heal.events : [],
+    metadata,
+  };
+}
 
 type FileNode = {
   name: string;
@@ -39,6 +161,21 @@ type FileNode = {
   path: string;
   children?: FileNode[];
   loaded?: boolean;
+};
+
+type TerminalSession = {
+  processId: string;
+  command: string;
+  title: string;
+  output: string;
+  running: boolean;
+};
+
+type AppOutputSession = {
+  processId: string;
+  title: string;
+  output: string;
+  running: boolean;
 };
 
 type Props = {
@@ -53,6 +190,7 @@ type Props = {
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onRuntimeRunningChange?: (running: boolean) => void;
+  autoRun?: boolean;
 };
 
 // --- File-icon helpers --------------------------------------------------------
@@ -95,6 +233,22 @@ const normalizeNode = (item: any): FileNode => ({
   children: item.type === 'directory' ? [] : undefined,
   loaded: item.type === 'directory' ? false : undefined,
 });
+
+const looksLikeBackendCommand = (command: string) =>
+  /\b(manage\.py|uvicorn|gunicorn|flask|fastapi|django|rails|php artisan|go run|cargo run)\b/i.test(command);
+
+const looksLikeFrontendCommand = (command: string) =>
+  /\b(vite|next|react-scripts|npm run dev|pnpm dev|yarn dev|webpack|astro|nuxt|ng serve)\b/i.test(command);
+
+function runtimeOutputLabel(runtimeLike: { run_command?: string | null; runtime_type?: string }, index = 0, primary = false) {
+  const command = String(runtimeLike.run_command || '');
+  const runtimeType = String(runtimeLike.runtime_type || '').toLowerCase();
+  if (looksLikeFrontendCommand(command)) return primary ? 'Frontend' : `Frontend ${index + 1}`;
+  if (looksLikeBackendCommand(command)) return primary ? 'Backend' : `Backend ${index + 1}`;
+  if (runtimeType === 'node') return primary ? 'Node App' : `Node App ${index + 1}`;
+  if (runtimeType === 'python') return primary ? 'Python App' : `Python App ${index + 1}`;
+  return primary ? 'App' : `App ${index + 1}`;
+}
 
 const insertChildren = (nodes: FileNode[], targetPath: string, children: FileNode[]): FileNode[] =>
   nodes.map((node) => {
@@ -170,7 +324,10 @@ export default function CodeWorkspace({
   workspaceId, projectId, projectName, projectPath, coderCustomization,
   onProjectChanged, projectSidebarCollapsed: _projectSidebarCollapsed, onToggleProjectSidebar,
   isFullscreen = false, onToggleFullscreen, onRuntimeRunningChange,
+  autoRun = false,
 }: Props) {
+  const autoRunFiredRef = useRef(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const [showConsole, setShowConsole] = useState(false);
   const [activeConsoleTab, setActiveConsoleTab] = useState<'terminal' | 'output'>('terminal');
@@ -182,19 +339,26 @@ export default function CodeWorkspace({
   const [saving, setSaving] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeState | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
-  const [startPhase, setStartPhase] = useState<'idle' | 'setup' | 'run'>('idle');
+  const [startPhase, setStartPhase] = useState<'idle' | 'setup' | 'run' | 'healing'>('idle');
   const [runtimeOutput, setRuntimeOutput] = useState('');
   const [setupRunning, setSetupRunning] = useState(false);
   const [setupOutput, setSetupOutput] = useState('');
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const [awaitingPreview, setAwaitingPreview] = useState(false);
+  const [healStatus, setHealStatus] = useState<RuntimeState['heal'] | null>(null);
+  const [runtimeAgentRun, setRuntimeAgentRun] = useState<ExternalAgentRun | null>(null);
   // When probe times out but server is running, user can force-open the iframe
   const [forcePreview, setForcePreview] = useState(false);
-  const [termPid, setTermPid] = useState<string | null>(null);
-  const terminalRef = useRef<any>(null);
+  const [previewLocation, setPreviewLocation] = useState('');
+  const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [activeTerminalPid, setActiveTerminalPid] = useState<string | null>(null);
+  const [secondaryRuntimeOutputs, setSecondaryRuntimeOutputs] = useState<Record<string, string>>({});
+  const [activeAppOutputPid, setActiveAppOutputPid] = useState<string | null>(null);
+  const terminalRef = useRef<{ write: (data: string) => void; reset: (data?: string) => void; focus: () => void } | null>(null);
   const socketsRef = useRef<Record<string, WebSocket>>({});
+  const lastHealEventRef = useRef<string | null>(null);
 
-  const chatPanel   = useDragResize(390, 260, 600, 'h');
+  const chatPanel   = useDragResize(560, 300, 760, 'h', true);
   const fileTree    = useDragResize(230, 150, 400, 'h');
   const consoleH    = useDragResize(220, 100, 500, 'v', true);
   const isResizing  = chatPanel.isDragging || fileTree.isDragging || consoleH.isDragging;
@@ -211,12 +375,76 @@ export default function CodeWorkspace({
   const previewPort      = previewUrl ? (() => { try { return new URL(previewUrl).port; } catch { return null; } })() : null;
   const isRunning        = Boolean(runtime?.status?.running);
   const setupRunning_    = setupRunning;
+  const healActive       = isHealActive(healStatus);
+  const healProblem      = isHealError(healStatus);
+  const healSummary      = healStatusMessage(healStatus);
+  const secondaryStatuses = Array.isArray(runtime?.secondary_statuses) ? runtime.secondary_statuses : [];
+  const effectivePreviewUrl = previewLocation || previewUrl || '';
+  const activeTerminalSession = terminalSessions.find((session) => session.processId === activeTerminalPid) || terminalSessions[0] || null;
+  const appOutputSessions: AppOutputSession[] = [
+    ...(runtime?.process_id ? [{
+      processId: runtime.process_id,
+      title: runtimeOutputLabel(runtime, 0, true),
+      output: runtimeOutput,
+      running: Boolean(runtime?.status?.running),
+    }] : []),
+    ...secondaryStatuses
+      .filter((item) => item?.process_id)
+      .map((item, index) => ({
+        processId: String(item.process_id),
+        title: runtimeOutputLabel(item, index, false),
+        output: secondaryRuntimeOutputs[String(item.process_id)] || '',
+        running: Boolean(item.status?.running),
+      })),
+    ...(workspaceId && (setupOutput || setupRunning_) ? [{
+      processId: `${workspaceId}_setup`,
+      title: 'Setup',
+      output: setupOutput,
+      running: setupRunning_,
+    }] : []),
+  ];
+  const activeAppOutput = appOutputSessions.find((item) => item.processId === activeAppOutputPid) || appOutputSessions[0] || null;
 
-  const startLabel = runtimeLoading
-    ? (startPhase === 'setup' ? 'Preparing...' : 'Starting...')
+  const startLabel = healActive
+    ? 'Healing...'
+    : runtimeLoading
+    ? (startPhase === 'setup' ? 'Installing deps...' : startPhase === 'healing' ? 'AI fixing...' : 'Starting...')
     : needsSetup ? 'Setup & Run'
     : runtime?.run_command ? 'Start'
     : 'No command';
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsInitializing(false), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!previewUrl) {
+      setPreviewLocation('');
+      return;
+    }
+    setPreviewLocation((current) => {
+      if (!current) return previewUrl;
+      try {
+        const currentUrl = new URL(current);
+        const baseUrl = new URL(previewUrl);
+        if (currentUrl.origin !== baseUrl.origin) return previewUrl;
+        return current;
+      } catch {
+        return previewUrl;
+      }
+    });
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (!appOutputSessions.length) {
+      setActiveAppOutputPid(null);
+      return;
+    }
+    if (!activeAppOutputPid || !appOutputSessions.some((item) => item.processId === activeAppOutputPid)) {
+      setActiveAppOutputPid(appOutputSessions[0].processId);
+    }
+  }, [activeAppOutputPid, appOutputSessions]);
 
   // -- API helpers --------------------------------------------------------------
 
@@ -236,14 +464,68 @@ export default function CodeWorkspace({
     setTreeNodes(snap);
   };
 
+  const applyHealStatus = (heal: RuntimeState['heal'] | null | undefined) => {
+    if (!heal) return false;
+
+    const active = isHealActive(heal);
+    setHealStatus(heal);
+    setRuntimeAgentRun(buildRuntimeAgentRun(heal));
+    if (active) {
+      setStartPhase('healing');
+      setAwaitingPreview(false);
+      setActiveTab('preview');
+      setChatOpen(true);
+    } else if (heal.status === 'restarted') {
+      setStartPhase('run');
+      setPreviewRefreshKey((c) => c + 1);
+      if (heal.files_modified?.length) {
+        void refreshTree();
+        onProjectChanged?.();
+      }
+    } else {
+      setStartPhase((current) => (current === 'healing' ? 'idle' : current));
+    }
+
+    const key = [
+      heal.heal_type,
+      heal.status,
+      heal.module,
+      heal.package,
+      heal.restarted ? 'restarted' : '',
+      heal.files_modified?.join('|') || '',
+      heal.error || '',
+    ].join(':');
+    if (key !== lastHealEventRef.current) {
+      lastHealEventRef.current = key;
+      setRuntimeOutput((current) => `${current}${current && !current.endsWith('\n') ? '\n' : ''}${healLogLine(heal)}`);
+    }
+    return active;
+  };
+
   const fetchRuntime = async () => {
     if (!workspaceId) return null;
     const r = await fetch(`${API}/workspace/${workspaceId}/runtime/`);
     const d = await r.json();
     setRuntime(d);
     onRuntimeRunningChange?.(Boolean(d?.status?.running));
+    if (d?.heal) {
+      applyHealStatus(d.heal);
+    } else if (healStatus && d?.status?.running) {
+      setHealStatus(null);
+      lastHealEventRef.current = null;
+      setStartPhase('idle');
+    }
     return d as RuntimeState;
   };
+
+  // Auto-start the project once for newly scaffolded starter projects.
+  // Fires only on the first successful runtime fetch that has a run_command.
+  useEffect(() => {
+    if (!autoRun || autoRunFiredRef.current || !runtime?.run_command || runtime?.status?.running) return;
+    autoRunFiredRef.current = true;
+    void runProject();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun, runtime]);
 
   const fetchSetupStatus = async () => {
     if (!workspaceId) return null;
@@ -295,11 +577,12 @@ export default function CodeWorkspace({
 
   useEffect(() => {
     if (!workspaceId) return;
-    const active = runtimeLoading || setupRunning_ || awaitingPreview || previewPending;
+    const healing = startPhase === 'healing' || healActive;
+    const active = runtimeLoading || setupRunning_ || awaitingPreview || previewPending || healing;
     const delay  = active ? 1500 : isRunning ? 15000 : 30000;
     const t = window.setTimeout(() => void fetchRuntime(), delay);
     return () => window.clearTimeout(t);
-  }, [workspaceId, runtimeLoading, setupRunning_, awaitingPreview, previewPending, isRunning]);
+  }, [workspaceId, runtimeLoading, setupRunning_, awaitingPreview, previewPending, isRunning, startPhase, healActive, healStatus]);
 
   useEffect(() => {
     if (!workspaceId || !setupRunning_) return;
@@ -327,6 +610,16 @@ export default function CodeWorkspace({
   useEffect(() => {
     if (!isRunning) setForcePreview(false);
   }, [isRunning]);
+
+  // Auto-refresh iframe when probe finally passes after forcePreview was used
+  const prevReadyRef = useRef<boolean>(false);
+  useEffect(() => {
+    const nowReady = Boolean(runtime?.ready);
+    if (nowReady && !prevReadyRef.current && forcePreview) {
+      setPreviewRefreshKey((c) => c + 1);
+    }
+    prevReadyRef.current = nowReady;
+  }, [runtime?.ready, forcePreview]);
 
   // -- File ops -----------------------------------------------------------------
 
@@ -360,15 +653,70 @@ export default function CodeWorkspace({
 
   // -- Terminal -----------------------------------------------------------------
 
-  const spawnTerm = () => {
-    if (!workspaceId || termPid) return;
-    fetch(`${API}/workspace/${workspaceId}/spawn/`, {
+  const spawnTerm = async (command = 'cmd.exe') => {
+    if (!workspaceId) return null;
+    const r = await fetch(`${API}/workspace/${workspaceId}/spawn/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'cmd.exe' }),
-    }).then((r) => r.json()).then((d) => { if (d.process_id) setTermPid(d.process_id); });
+      body: JSON.stringify({ command }),
+    });
+    const d = await r.json();
+    if (!r.ok || d?.error || !d?.process_id) throw new Error(d?.error || 'Unable to open a terminal.');
+    const processId = String(d.process_id);
+    setTerminalSessions((current) => {
+      if (current.some((session) => session.processId === processId)) return current;
+      return [
+        ...current,
+        {
+          processId,
+          command: String(d.command || command),
+          title: `Terminal ${current.length + 1}`,
+          output: '',
+          running: true,
+        },
+      ];
+    });
+    setActiveTerminalPid(processId);
+    setShowConsole(true);
+    setActiveConsoleTab('terminal');
+    return processId;
   };
 
-  useEffect(() => { if (workspaceId && !termPid) spawnTerm(); }, [workspaceId, termPid]);
+  const closeTerm = async (processId: string) => {
+    if (!workspaceId) return;
+    try {
+      await fetch(`${API}/workspace/${workspaceId}/process/${encodeURIComponent(processId)}/`, { method: 'DELETE' });
+    } finally {
+      socketsRef.current[processId]?.close();
+      delete socketsRef.current[processId];
+      setTerminalSessions((current) => current.filter((session) => session.processId !== processId));
+      setActiveTerminalPid((current) => (current === processId ? null : current));
+    }
+  };
+
+  useEffect(() => {
+    terminalRef.current?.reset('');
+    setTerminalSessions([]);
+    setActiveTerminalPid(null);
+    setSecondaryRuntimeOutputs({});
+    setActiveAppOutputPid(null);
+    Object.values(socketsRef.current).forEach((socket) => socket.close());
+    socketsRef.current = {};
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || terminalSessions.length) return;
+    void spawnTerm().catch(() => {});
+  }, [workspaceId, terminalSessions.length]);
+
+  useEffect(() => {
+    if (!terminalSessions.length) {
+      if (activeTerminalPid) setActiveTerminalPid(null);
+      return;
+    }
+    if (!activeTerminalPid || !terminalSessions.some((session) => session.processId === activeTerminalPid)) {
+      setActiveTerminalPid(terminalSessions[0].processId);
+    }
+  }, [activeTerminalPid, terminalSessions]);
 
   const connectSocket = (pid: string, onMsg: (d: any) => void) => {
     if (!workspaceId || socketsRef.current[pid]) return;
@@ -379,34 +727,91 @@ export default function CodeWorkspace({
   };
 
   useEffect(() => {
-    if (termPid)
-      connectSocket(termPid, (d) => {
-        if (d.output && terminalRef.current) terminalRef.current.write(d.output);
+    terminalSessions.forEach((session) => {
+      connectSocket(session.processId, (d) => {
+        if (!d.output && !d.status) return;
+        setTerminalSessions((current) => current.map((item) => (
+          item.processId === session.processId
+            ? {
+                ...item,
+                output: d.output ? `${item.output}${d.output}` : item.output,
+                running: d.status?.running ?? item.running,
+              }
+            : item
+        )));
       });
+    });
     if (runtime?.process_id && isRunning)
       connectSocket(runtime.process_id, (d) => {
         if (d.output) setRuntimeOutput((c) => c + d.output);
         if (d.status) setRuntime((c) => c ? { ...c, status: d.status } : null);
       });
+    secondaryStatuses.forEach((secondary) => {
+      if (!secondary.process_id || !secondary.status?.running) return;
+      connectSocket(String(secondary.process_id), (d) => {
+        if (d.output) {
+          setSecondaryRuntimeOutputs((current) => ({
+            ...current,
+            [String(secondary.process_id)]: `${current[String(secondary.process_id)] || ''}${d.output}`,
+          }));
+        }
+      });
+    });
     if (setupRunning_ && workspaceId)
       connectSocket(`${workspaceId}_setup`, (d) => {
         if (d.output) setSetupOutput((c) => c + d.output);
         if (d.status && !d.status.running) { setSetupRunning(false); void fetchRuntime(); }
       });
-  }, [workspaceId, termPid, runtime?.process_id, isRunning, setupRunning_]);
+  }, [workspaceId, terminalSessions, runtime?.process_id, isRunning, setupRunning_, secondaryStatuses]);
 
   const termInput = (data: string) => {
-    if (termPid && socketsRef.current[termPid]?.readyState === WebSocket.OPEN)
-      socketsRef.current[termPid].send(JSON.stringify({ input: data }));
+    if (activeTerminalPid && socketsRef.current[activeTerminalPid]?.readyState === WebSocket.OPEN)
+      socketsRef.current[activeTerminalPid].send(JSON.stringify({ input: data }));
+  };
+
+  useEffect(() => {
+    if (!showConsole || activeConsoleTab !== 'terminal' || !activeTerminalSession) return;
+    const timer = window.setTimeout(() => terminalRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [activeConsoleTab, activeTerminalSession, showConsole]);
+
+  const updatePreviewLocation = (nextValue: string) => {
+    setPreviewLocation(nextValue);
+  };
+
+  const applyPreviewLocation = () => {
+    if (!previewUrl) return;
+    const nextValue = (previewLocation || '').trim();
+    if (!nextValue) {
+      setPreviewLocation(previewUrl);
+      return;
+    }
+    try {
+      const baseUrl = new URL(previewUrl);
+      const nextUrl = new URL(nextValue, baseUrl);
+      if (nextUrl.origin !== baseUrl.origin) {
+        setPreviewLocation(baseUrl.toString());
+        return;
+      }
+      setPreviewLocation(nextUrl.toString());
+      setPreviewRefreshKey((current) => current + 1);
+    } catch {
+      setPreviewLocation(previewUrl);
+    }
   };
 
   // -- Runtime controls ---------------------------------------------------------
 
   const runProject = async () => {
     if (!workspaceId) return;
+    let keepHealingPhase = false;
     setRuntimeLoading(true);
     setStartPhase(needsSetup ? 'setup' : 'run');
+    setHealStatus(null);
+    setRuntimeAgentRun(null);
+    lastHealEventRef.current = null;
     setRuntimeOutput('');
+    setSecondaryRuntimeOutputs({});
     setShowConsole(true);
     setActiveConsoleTab('output');
     try {
@@ -425,15 +830,16 @@ export default function CodeWorkspace({
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || 'Unable to start the project.');
       setRuntime(data);
+      if (data.preview_error) setRuntimeOutput((c) => `${c}\n${data.preview_error}`);
+      if (data.heal) keepHealingPhase = applyHealStatus(data.heal);
       if (data.ready || forcePreview) { setActiveTab('preview'); setAwaitingPreview(false); }
       else if (data?.status?.running && data.preview_url) setActiveTab('preview');
-      if (data.preview_error) setRuntimeOutput((c) => `${c}\n${data.preview_error}`);
     } catch (e) {
       setRuntimeOutput(e instanceof Error ? e.message : 'Unable to start the project.');
       setAwaitingPreview(false);
     } finally {
       setRuntimeLoading(false);
-      setStartPhase('idle');
+      if (!keepHealingPhase) setStartPhase('idle');
     }
   };
 
@@ -443,6 +849,10 @@ export default function CodeWorkspace({
     onRuntimeRunningChange?.(false);
     setAwaitingPreview(false);
     setForcePreview(false);
+    setHealStatus(null);
+    setRuntimeAgentRun(null);
+    lastHealEventRef.current = null;
+    setSecondaryRuntimeOutputs({});
     void fetchRuntime();
   };
 
@@ -529,167 +939,45 @@ export default function CodeWorkspace({
   }
 
   // --- Render -------------------------------------------------------------------
+  if (isInitializing) {
+    return (
+      <div className="devhub-loading-screen flex h-full w-full items-center justify-center sleek-tab-enter">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative flex h-20 w-20 items-center justify-center">
+            <div className="absolute inset-0 rounded-full" style={{ border: '2px solid rgba(140,84,98,0.12)' }} />
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#8c5462] animate-spin" />
+            <div className="devhub-loading-icon-bg flex h-14 w-14 items-center justify-center rounded-2xl shadow-2xl">
+              <Code2 className="h-7 w-7 text-[#8c5462] animate-pulse" />
+            </div>
+          </div>
+          <div className="text-center">
+            <h3 className="devhub-loading-title text-sm font-semibold tracking-wide">Initializing IDE</h3>
+            <p className="devhub-loading-subtitle mt-1.5 text-[11px] uppercase tracking-widest font-medium">Mounting Workspace Environment</p>
+          </div>
+          <div className="devhub-loading-track w-32 h-1 overflow-hidden rounded-full">
+            <div className="h-full bg-gradient-to-r from-[#8c5462] to-[#d9a4b2] animate-[loader-bar-indeterminate_1.5s_infinite]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
-      className={`devhub-workspace flex h-full w-full min-h-0 min-w-0 overflow-hidden bg-[#0a0a0c] text-[#e8e8e3] ${
-        isFullscreen ? '' : 'rounded-lg border border-white/10'
+      className={`devhub-workspace flex h-full w-full min-h-0 min-w-0 overflow-hidden bg-[#0a0a0c] text-[#e8e8e3] sleek-tab-enter ${
+        isFullscreen ? '' : 'border-white/10'
       }`}
       style={{ userSelect: isResizing ? 'none' : undefined }}
     >
 
-      {/* == LEFT: Chat panel ================================================== */}
-      {chatOpen && (
-        <>
-          <div
-            className="flex shrink-0 flex-col border-r border-white/10 bg-[#111111]"
-            style={{ width: chatPanel.size, minWidth: 0 }}
-          >
-            {/* Chat header - back button + project name + runtime controls */}
-            <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#0d0d0d] px-3 py-2">
-              <div className="flex min-w-0 flex-1 items-start gap-2">
-                {/* <- back to project views */}
-                {onToggleProjectSidebar && (
-                  <button
-                    onClick={onToggleProjectSidebar}
-                    title="Back to project"
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[#858585] transition-colors hover:bg-[#3c3c3c] hover:text-[#d4d4d4]"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                )}
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[#8c5462] to-[#70434f]">
-                  <Code2 className="h-3.5 w-3.5 text-white" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="break-words text-[13px] font-semibold leading-tight text-[#f3f3ee]">
-                    {projectName || projectPath?.split(/[\\/]/).pop() || 'Workspace'}
-                  </div>
-                  <div className="mt-1 break-all font-mono text-[10px] leading-tight text-[#858585]" title={projectId}>
-                    {projectId}
-                  </div>
-                  {workspaceId && workspaceId !== projectId && (
-                    <div className="mt-0.5 break-all font-mono text-[9px] leading-tight text-[#666666]" title={workspaceId}>
-                      workspace {workspaceId}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-1">
-                {/* Port badge */}
-                {isRunning && previewPort && (
-                  <span className="flex items-center gap-1 rounded-full border border-[#34d399]/25 bg-[#34d399]/8 px-1.5 py-0.5 text-[10px] text-[#34d399]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#34d399] animate-pulse" />
-                    :{previewPort}
-                  </span>
-                )}
-
-                {/* Setup */}
-                {runtime?.setup_command && !isRunning && (
-                  <button
-                    onClick={() => { void startSetup().catch(() => {}); }}
-                    disabled={setupRunning_ || runtimeLoading}
-                    title="Install dependencies"
-                    className="flex h-7 w-7 items-center justify-center rounded-lg text-[#a6a6a0] transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"
-                  >
-                    {setupRunning_ ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wrench className="h-3.5 w-3.5" />}
-                  </button>
-                )}
-
-                {/* Restart */}
-                {isRunning && (
-                  <button
-                    onClick={() => void restartProject()}
-                    disabled={runtimeLoading}
-                    title="Restart"
-                    className="flex h-7 w-7 items-center justify-center rounded-lg text-[#a6a6a0] transition-colors hover:bg-white/10 hover:text-white disabled:opacity-40"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </button>
-                )}
-
-                {/* Start / Stop */}
-                {isRunning ? (
-                  <button
-                    onClick={stopProject}
-                    className="flex h-7 items-center gap-1 rounded-lg bg-[#7f1d1d] px-2.5 text-[11px] font-semibold text-white transition-colors hover:bg-[#991b1b]"
-                  >
-                    <Square className="h-2.5 w-2.5 fill-white" />
-                    Stop
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => void runProject()}
-                    disabled={runtimeLoading || !runtime?.run_command}
-                    className="flex h-7 items-center gap-1 rounded-lg bg-[#8c5462] px-2.5 text-[11px] font-semibold text-white shadow-sm shadow-[#70434f]/20 transition-all hover:bg-[#70434f] disabled:opacity-40 disabled:shadow-none"
-                  >
-                    {runtimeLoading
-                      ? <Loader2 className="h-3 w-3 animate-spin" />
-                      : <Play className="h-3 w-3 fill-white" />}
-                    {startLabel}
-                  </button>
-                )}
-
-                {/* Fullscreen */}
-                {onToggleFullscreen && (
-                  <button
-                    onClick={onToggleFullscreen}
-                    title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg text-[#a6a6a0] transition-colors hover:bg-white/10 hover:text-white"
-                  >
-                    {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Chat content */}
-            <div className="flex min-h-0 flex-1 flex-col" style={{ minHeight: 0 }}>
-              <ProjectChatPanel
-                projectId={projectId}
-                mode="workspace"
-                selectedFile={selectedFile}
-                fileContent={fileContent}
-                treeNodes={treeNodes}
-                coderCustomization={coderCustomization}
-                onCodeApplied={handleCodeApplied}
-                onAgentAction={handleAgentAction}
-                onCustomizationChanged={onProjectChanged}
-                onToggleChat={setChatOpen}
-                chatOpen={chatOpen}
-              />
-            </div>
-          </div>
-
-          {/* Drag handle */}
-          <div
-            className="group relative w-[3px] shrink-0 cursor-col-resize bg-[#0a0a0c] transition-colors hover:bg-[#8c5462]/60"
-            onMouseDown={chatPanel.onMouseDown}
-          />
-        </>
-      )}
-
-      {/* == RIGHT: Content area =============================================== */}
+      {/* == LEFT: Content area ================================================ */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#0a0a0c]">
 
         {/* Tab strip - sits at top of content area only */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 bg-[#111111] px-3">
           {/* Left: chat toggle + view tabs */}
           <div className="flex items-center gap-0.5">
-            {/* Always-visible chat toggle */}
-            <button
-              onClick={() => setChatOpen((v) => !v)}
-              title={chatOpen ? 'Close chat' : 'Open chat'}
-              className={`mr-1 flex h-7 w-7 items-center justify-center rounded-md transition-colors ${
-                chatOpen
-                  ? 'bg-white/10 text-[#d9a4b2]'
-                  : 'text-[#a6a6a0] hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </button>
-            <button
+                        <button
               onClick={() => setActiveTab('preview')}
               className={`flex h-7 items-center gap-1.5 rounded-md px-3 text-[11px] font-medium transition-colors ${
                 activeTab === 'preview'
@@ -723,33 +1011,82 @@ export default function CodeWorkspace({
             >
               <TerminalSquare className="h-3.5 w-3.5" />
               Console
-              {(setupRunning_ || runtimeLoading) && (
+              {(setupRunning_ || runtimeLoading || healActive) && (
                 <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-[#fbbf24] animate-pulse" />
               )}
             </button>
           </div>
 
-          {/* Right: preview URL bar (when preview active) */}
-          {activeTab === 'preview' && previewAvailable && previewUrl && (
-            <div className="flex items-center gap-1">
-              <div className="flex max-w-[280px] items-center gap-1.5 rounded-full border border-white/10 bg-[#0a0a0c] px-3 py-1.5 text-[10px] font-mono text-[#a6a6a0]">
-                <Globe className="h-3 w-3 shrink-0 text-[#d9a4b2]" />
-                <span className="truncate">{previewUrl.replace(/^https?:\/\//, '')}</span>
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 pl-3">
+            {healStatus && healSummary && (
+              <div
+                className={`flex min-w-0 max-w-[360px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-semibold ${
+                  healProblem
+                    ? 'border-[#f87171]/25 bg-[#2a1717] text-[#fca5a5]'
+                    : healActive
+                      ? 'border-[#8c5462]/35 bg-[#2b1d22] text-[#d9a4b2]'
+                      : 'border-[#34d399]/20 bg-[#10251b] text-[#86efac]'
+                }`}
+                title={healSummary}
+              >
+                {healActive ? (
+                  <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                ) : healProblem ? (
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                ) : (
+                  <Wrench className="h-3 w-3 shrink-0" />
+                )}
+                <span className="truncate">{healSummary}</span>
               </div>
+            )}
+
+            {/* Stop button — visible whenever project is running */}
+            {isRunning && (
               <button
-                onClick={() => setPreviewRefreshKey((c) => c + 1)}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-[#a6a6a0] transition-colors hover:bg-white/10 hover:text-white"
+                onClick={() => void stopProject()}
+                disabled={runtimeLoading}
+                className="flex h-7 items-center gap-1.5 rounded-md border border-[#3a2a30] bg-[#1f1a1d] px-2.5 text-[11px] font-medium text-[#f87171] transition-colors hover:border-[#f87171]/40 hover:bg-[#2a1717] disabled:opacity-40"
+                title="Stop project"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <Square className="h-3 w-3 fill-[#f87171]" />
+                Stop
               </button>
-              <button
-                onClick={() => window.open(previewUrl, '_blank')}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-[#a6a6a0] transition-colors hover:bg-white/10 hover:text-white"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
+            )}
+
+            {/* Right: preview URL bar (when preview active) */}
+            {activeTab === 'preview' && previewAvailable && previewUrl && (
+              <div className="flex items-center gap-1">
+                <div className="flex max-w-[360px] items-center gap-1.5 rounded-full border border-white/10 bg-[#0a0a0c] px-3 py-1.5 text-[10px] font-mono text-[#a6a6a0]">
+                  <Globe className="h-3 w-3 shrink-0 text-[#d9a4b2]" />
+                  <input
+                    value={previewLocation.replace(/^https?:\/\//, '')}
+                    onChange={(event) => updatePreviewLocation(`${previewUrl?.startsWith('https://') ? 'https://' : 'http://'}${event.target.value}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        applyPreviewLocation();
+                      }
+                    }}
+                    className="min-w-0 flex-1 bg-transparent outline-none"
+                    spellCheck={false}
+                  />
+                </div>
+                <button
+                  onClick={() => setPreviewRefreshKey((c) => c + 1)}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[#a6a6a0] transition-colors hover:bg-white/10 hover:text-white"
+                  title="Reload preview"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => window.open(effectivePreviewUrl || previewUrl, '_blank')}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[#a6a6a0] transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Main + (optional) file tree */}
@@ -795,11 +1132,11 @@ export default function CodeWorkspace({
                 <>
                   {/* Running + available (probe passed or forced) */}
                   {isRunning && previewUrl && previewAvailable && (
-                    <div className="absolute inset-0 bg-[#0a0a0c] p-2">
-                      <div className="relative h-full w-full overflow-hidden rounded-lg border border-white/10 bg-[#f7f7f3] shadow-[0_24px_80px_rgba(0,0,0,0.38)]">
+                    <div className="absolute inset-0 bg-[#0a0a0c] p-0">
+                      <div className="relative h-full w-full overflow-hidden border-white/10 bg-[#f7f7f3] shadow-[0_24px_80px_rgba(0,0,0,0.38)]">
                         <iframe
                           key={`${runtime?.process_id}-${previewRefreshKey}`}
-                          src={previewUrl ?? undefined}
+                          src={effectivePreviewUrl || previewUrl || undefined}
                           className="h-full w-full border-0"
                           style={{ pointerEvents: isResizing ? 'none' : 'auto' }}
                           title="Live Preview"
@@ -809,42 +1146,64 @@ export default function CodeWorkspace({
                     </div>
                   )}
 
-                  {/* Running + probe timed out - show error + escape hatch */}
+                  {/* Running + probe timed out - show error + escape hatch, or AI healing banner */}
                   {isRunning && previewUrl && previewTimedOut && !forcePreview && (
-                    <div className="absolute inset-2 flex flex-col items-center justify-center gap-5 rounded-lg border border-white/10 bg-[#151515] text-center">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#fbbf24]/20 bg-[#2d2000]">
-                        <AlertTriangle className="h-6 w-6 text-[#fbbf24]" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-[#d4d4d4]">Preview probe timed out</p>
-                        <p className="mt-1.5 max-w-xs text-xs leading-5 text-[#858585]">
-                          {runtime?.preview_error}<br />
-                          The server may still be starting - try opening it anyway.
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => { setForcePreview(true); }}
-                          className="flex items-center gap-1.5 rounded-lg bg-[#8c5462] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#70434f]"
-                        >
-                          <Globe className="h-3.5 w-3.5" />
-                          Open preview anyway
-                        </button>
-                        <button
-                          onClick={() => void restartProject()}
-                          disabled={runtimeLoading}
-                          className="flex items-center gap-1.5 rounded-lg border border-[#3a2a30] bg-[#1f1a1d] px-4 py-2 text-xs font-semibold text-[#b9adb1] transition-colors hover:border-[#70434f] hover:text-[#f5eef1] disabled:opacity-40"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Restart
-                        </button>
-                      </div>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 border-white/10 bg-[#151515] text-center">
+                      {healActive ? (
+                        <>
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#8c5462]/25 bg-[#2b1d22]">
+                            <Loader2 className="h-6 w-6 animate-spin text-[#d9a4b2]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-[#d4d4d4]">{healSummary || 'Healing runtime error'}</p>
+                            <p className="mt-1.5 max-w-xs text-xs leading-5 text-[#858585]">
+                              DevHub is repairing the crashed startup path and will restart automatically.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => setShowConsole(true)}
+                            className="text-[11px] text-[#858585] underline underline-offset-2 transition-colors hover:text-[#d9a4b2]"
+                          >
+                            View output
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#fbbf24]/20 bg-[#2d2000]">
+                            <AlertTriangle className="h-6 w-6 text-[#fbbf24]" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-[#d4d4d4]">Preview probe timed out</p>
+                            <p className="mt-1.5 max-w-xs text-xs leading-5 text-[#858585]">
+                              {runtime?.preview_error}<br />
+                              The server may still be starting - try opening it anyway.
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => { setForcePreview(true); }}
+                              className="flex items-center gap-1.5 rounded-lg bg-[#8c5462] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#70434f]"
+                            >
+                              <Globe className="h-3.5 w-3.5" />
+                              Open preview anyway
+                            </button>
+                            <button
+                              onClick={() => void restartProject()}
+                              disabled={runtimeLoading}
+                              className="flex items-center gap-1.5 rounded-lg border border-[#3a2a30] bg-[#1f1a1d] px-4 py-2 text-xs font-semibold text-[#b9adb1] transition-colors hover:border-[#70434f] hover:text-[#f5eef1] disabled:opacity-40"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Restart
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
 
                   {/* Running + waiting for probe */}
                   {isRunning && previewUrl && previewPending && (
-                    <div className="absolute inset-2 flex flex-col items-center justify-center gap-4 rounded-lg border border-white/10 bg-[#151515] text-center">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 border-white/10 bg-[#151515] text-center">
                       <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#8c5462]/25 bg-[#2b1d22]">
                         <Loader2 className="h-6 w-6 animate-spin text-[#d9a4b2]" />
                       </div>
@@ -863,21 +1222,27 @@ export default function CodeWorkspace({
 
                   {/* Not running */}
                   {!isRunning && (
-                    <div className="absolute inset-2 flex flex-col items-center justify-center gap-5 rounded-lg border border-white/10 bg-[#151515] text-center">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 border-white/10 bg-[#151515] text-center">
                       <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
                         <Globe className="h-7 w-7 text-[#75756f]" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-[#e8e8e3]">
-                          {runtime?.run_command ? 'Project not running' : 'No run command detected'}
+                          {healStatus && healSummary
+                            ? (healSummary || 'Healing runtime error')
+                            : runtime?.run_command ? 'Project not running' : 'No run command detected'}
                         </p>
                         <p className="mt-1.5 max-w-xs text-xs leading-5 text-[#a6a6a0]">
-                          {runtime?.run_command
-                            ? 'Hit Start in the chat panel to launch your app.'
-                            : 'Add a start script or run a command from the Console tab.'}
+                          {healActive
+                            ? 'DevHub is repairing the startup error and will restart the project automatically.'
+                            : healProblem
+                              ? (healStatus?.error || healStatus?.message || 'Auto-heal stopped. Review the output and retry.')
+                            : runtime?.run_command
+                              ? 'Hit Start in the chat panel to launch your app.'
+                              : 'Add a start script or run a command from the Console tab.'}
                         </p>
                       </div>
-                      {runtime?.run_command && (
+                      {runtime?.run_command && !healActive && (
                         <button
                           onClick={() => void runProject()}
                           disabled={runtimeLoading}
@@ -885,8 +1250,10 @@ export default function CodeWorkspace({
                         >
                           {runtimeLoading
                             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            : <Play className="h-3.5 w-3.5 fill-white" />}
-                          Start Project
+                            : startPhase === 'healing'
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Play className="h-3.5 w-3.5 fill-white" />}
+                          {runtimeLoading || startPhase === 'healing' ? startLabel : 'Start Project'}
                         </button>
                       )}
                     </div>
@@ -936,7 +1303,7 @@ export default function CodeWorkspace({
                       </div>
                     </>
                   ) : (
-                    <div className="pointer-events-none absolute inset-2 flex flex-col items-center justify-center gap-3 rounded-lg border border-white/10 bg-[#151515] text-center">
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 border-white/10 bg-[#151515] text-center">
                       <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
                         <Code2 className="h-7 w-7 text-[#75756f]" />
                       </div>
@@ -978,7 +1345,7 @@ export default function CodeWorkspace({
                       >
                         {tab === 'terminal' ? <TerminalSquare className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                         {tab === 'terminal' ? 'Terminal' : 'App Output'}
-                        {tab === 'output' && (setupRunning_ || runtimeLoading) && (
+                        {tab === 'output' && (setupRunning_ || runtimeLoading || healActive) && (
                           <span className="ml-1 h-1.5 w-1.5 rounded-full bg-[#fbbf24] animate-pulse" />
                         )}
                       </button>
@@ -994,18 +1361,92 @@ export default function CodeWorkspace({
 
                 <div className="relative flex-1 overflow-hidden" style={{ minHeight: 0 }}>
                   {activeConsoleTab === 'terminal' ? (
-                    <div className="absolute inset-0 overflow-hidden p-1">
-                      <Terminal ref={terminalRef} onInput={termInput} />
+                    <div className="absolute inset-0 flex flex-col overflow-hidden">
+                      <div className="flex h-9 shrink-0 items-center justify-between border-b border-white/10 bg-[#0d0d0d] px-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1">
+                          {terminalSessions.map((session) => {
+                            const active = session.processId === activeTerminalSession?.processId;
+                            return (
+                              <button
+                                key={session.processId}
+                                onClick={() => setActiveTerminalPid(session.processId)}
+                                className={`flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1 text-[10px] font-semibold transition-colors ${
+                                  active
+                                    ? 'bg-[#2b1d22] text-[#f5eef1]'
+                                    : 'bg-transparent text-[#8e8e88] hover:bg-white/5 hover:text-white'
+                                }`}
+                                title={session.command}
+                              >
+                                <TerminalSquare className="h-3 w-3" />
+                                <span className="max-w-[120px] truncate">{session.title}</span>
+                                <span className={`h-1.5 w-1.5 rounded-full ${session.running ? 'bg-[#34d399]' : 'bg-[#6b6b6b]'}`} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="ml-3 flex shrink-0 items-center gap-1">
+                          <button
+                            onClick={() => void spawnTerm()}
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-[#8e8e88] transition-colors hover:bg-white/10 hover:text-white"
+                            title="New terminal"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          {activeTerminalSession && terminalSessions.length > 1 && (
+                            <button
+                              onClick={() => void closeTerm(activeTerminalSession.processId)}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-[#8e8e88] transition-colors hover:bg-white/10 hover:text-white"
+                              title="Close terminal"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-hidden p-1">
+                        <Terminal
+                          key={activeTerminalSession?.processId || 'empty-terminal'}
+                          ref={terminalRef}
+                          onInput={termInput}
+                          outputStream={activeTerminalSession?.output || ''}
+                        />
+                      </div>
                     </div>
                   ) : (
-                    <div className="absolute inset-0 overflow-y-auto bg-[#0d0d0d] p-4 font-mono text-[12px] leading-relaxed text-[#d8d8d2]">
-                      <pre className="whitespace-pre-wrap break-words">
-                        {stripAnsi(runtimeOutput)}
-                        {setupOutput ? `${runtimeOutput ? '\n\n' : ''}--- Setup ---\n${stripAnsi(setupOutput)}` : ''}
-                        {!runtimeOutput && !setupOutput && !setupRunning_ && !runtimeLoading && !isRunning && (
-                          <span className="italic text-[#555555]">Start the project to stream output here...</span>
-                        )}
-                      </pre>
+                    <div className="absolute inset-0 flex flex-col overflow-hidden bg-[#0d0d0d]">
+                      {appOutputSessions.length > 1 && (
+                        <div className="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-white/10 px-2">
+                          {appOutputSessions.map((session) => {
+                            const active = session.processId === activeAppOutput?.processId;
+                            return (
+                              <button
+                                key={session.processId}
+                                onClick={() => setActiveAppOutputPid(session.processId)}
+                                className={`flex shrink-0 items-center gap-2 rounded-md px-2.5 py-1 text-[10px] font-semibold transition-colors ${
+                                  active
+                                    ? 'bg-[#2b1d22] text-[#f5eef1]'
+                                    : 'bg-transparent text-[#8e8e88] hover:bg-white/5 hover:text-white'
+                                }`}
+                              >
+                                <Play className="h-3 w-3" />
+                                <span>{session.title}</span>
+                                <span className={`h-1.5 w-1.5 rounded-full ${session.running ? 'bg-[#34d399]' : 'bg-[#6b6b6b]'}`} />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="min-h-0 flex-1 overflow-y-auto p-4 font-mono text-[12px] leading-relaxed text-[#d8d8d2]">
+                        <pre className="whitespace-pre-wrap break-words">
+                          {stripAnsi(activeAppOutput?.output || '')}
+                          {!activeAppOutput?.output && !setupRunning_ && !runtimeLoading && !isRunning && (
+                            <span className="italic text-[#555555]">Start the project to stream output here...</span>
+                          )}
+                          {!activeAppOutput?.output && activeAppOutput?.running && (
+                            <span className="italic text-[#555555]">Waiting for process output...</span>
+                          )}
+                        </pre>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1020,16 +1461,72 @@ export default function CodeWorkspace({
                 <span>{runtimeBackend === 'docker' ? 'Docker' : 'Local'}</span>
                 {runtime?.runtime_type && <span>{runtime.runtime_type}</span>}
               </div>
-              {isRunning && previewPort && (
-                <span className="flex items-center gap-1 text-[#34d399]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#34d399] animate-pulse" />
-                  PORT {previewPort}
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {healStatus && healSummary && (
+                  <span className={`${healProblem ? 'text-[#fca5a5]' : healActive ? 'text-[#d9a4b2]' : 'text-[#86efac]'}`}>
+                    {healSummary}
+                  </span>
+                )}
+                {isRunning && previewPort && (
+                  <span className="flex items-center gap-1 text-[#34d399]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#34d399] animate-pulse" />
+                    PORT {previewPort}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* == RIGHT: Chat panel ================================================= */}
+      {chatOpen ? (
+        <>
+          {/* Drag handle — left edge of right-side chat */}
+          <div
+            className="group relative w-[3px] shrink-0 cursor-col-resize bg-[#0a0a0c] transition-colors hover:bg-[#8c5462]/60"
+            onMouseDown={chatPanel.onMouseDown}
+          />
+
+          <div className="flex h-full flex-col min-w-0 shrink-0 border-l border-white/10 bg-[#111111]" style={{ width: `${chatPanel.size}px` }}>
+            {/* Header */}
+            <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-4">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[#d9a4b2]" />
+                <span className="text-xs font-semibold text-[#f3f3ee]">Workspace AI</span>
+              </div>
+            </div>
+
+            {/* Chat content */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ minHeight: 0 }}>
+              <ProjectChatPanel
+                projectId={projectId}
+                mode="workspace"
+                selectedFile={selectedFile}
+                fileContent={fileContent}
+                treeNodes={treeNodes}
+                coderCustomization={coderCustomization}
+                runtimeAgentRun={runtimeAgentRun}
+                onCodeApplied={handleCodeApplied}
+                onAgentAction={handleAgentAction}
+                onCustomizationChanged={onProjectChanged}
+                onToggleChat={setChatOpen}
+                chatOpen={chatOpen}
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex w-12 shrink-0 flex-col items-center border-l border-white/5 bg-[#0d0d0d] py-3">
+          <button
+            onClick={() => setChatOpen(true)}
+            title="Expand Chat Panel"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#6b6b6b] transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

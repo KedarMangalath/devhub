@@ -195,8 +195,8 @@ def _suggested_stack_from_text(idea: str, tech_stack: list[str] | None = None) -
     if any(token in text for token in ("fastapi", "api", "backend", "python api")):
         return ["FastAPI"]
     if any(token in text for token in ("react", "vite", "frontend", "ui", "dashboard", "landing page", "web app", "app", "game", "snake")):
-        return ["React", "FastAPI"]
-    return ["React", "FastAPI"]
+        return ["React"]
+    return ["React"]
 
 
 def _starter_app_kind(project: Project, starter_brief: str = "") -> str:

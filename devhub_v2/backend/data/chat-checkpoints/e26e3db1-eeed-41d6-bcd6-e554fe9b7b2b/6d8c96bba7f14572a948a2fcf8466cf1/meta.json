@@ -1,0 +1,26 @@
+{
+  "id": "6d8c96bba7f14572a948a2fcf8466cf1",
+  "project_id": "e26e3db1-eeed-41d6-bcd6-e554fe9b7b2b",
+  "workspace_path": "C:\\Users\\USER\\AppData\\Local\\Temp\\tmp3xtnxk87",
+  "source": "chat_edit",
+  "label": "Change the App component greeting.",
+  "created_at": "2026-04-24T10:12:55.768754+00:00",
+  "file_count": 12,
+  "excluded_dirs": [
+    ".git",
+    ".idea",
+    ".next",
+    ".nuxt",
+    ".venv",
+    ".vscode",
+    "__pycache__",
+    "build",
+    "dist",
+    "env",
+    "node_modules",
+    "out",
+    "target",
+    "vendor",
+    "venv"
+  ]
+}
