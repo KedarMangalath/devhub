@@ -33,23 +33,28 @@ class SpecAgent(BaseAgent):
         frontend_only = not bool(conventions.get("backend_framework"))
         frontend_demo_rules = """
 FRONTEND EXPERIENCE RULES (apply whenever the stack has a frontend):
-- The generated frontend must be impressive and usable before any backend is running.
-- Design a frontend-first demo data layer even for full-stack apps. Backend APIs may exist, but
-  React pages must render rich local mock data immediately and must never collapse into empty
-  lists, "failed to load", or login walls when the API is unavailable.
-- Every non-trivial product needs at least 6 routes: home/overview, primary list/catalog/workspace,
-  primary detail, main action workflow, dashboard/account/workspace, and history/records/settings/admin
-  as appropriate to the domain.
-- Every major page should have 4-7 concrete sections or panels. Examples: hero, filters,
-  featured records, process steps, comparison grid, detail summary, timeline, dashboard tabs,
-  activity feed, trust/privacy block, checkout/booking/application flow, records/history table.
-- Include a frontend content bank with realistic names, entities, dates, ratings, stats,
-  images, statuses, messages, testimonials, notes, and CTA labels. It must be domain-adaptive;
-  do not hardcode healthcare unless the user's idea is healthcare.
-- Include a design system: visual direction, typography pairing, palette, surface/card style,
-  button style, icon strategy, and imagery strategy. Avoid generic blue-gray admin UI.
-- Use real-feeling mock interactions: search, filters, tabs, selected states, forms, confirmations,
-  saved/draft states, dashboard metrics, and populated detail pages.
+- The generated frontend must be impressive, DENSE, and usable before any backend is running.
+- MINIMUM 10 pages: home (full landing), explore/catalog, detail, workflow/action, dashboard,
+  history/records, login, register, about, settings. Add more domain-specific pages as needed.
+- The HOME/LANDING page MUST have ALL of: navbar, hero (with image), logo-cloud, feature grid
+  (6+ cards), stats band, testimonials (6+), pricing (3 tiers), FAQ (8+), CTA band, footer.
+  This page alone should be 400-600 lines of JSX. DO NOT omit any section.
+- Every non-home page must have 6-8 sections. No page should be under 300 lines.
+- DESIGN SYSTEM: Pick a strong, opinionated visual direction based on the product domain.
+  Options: (a) Clean minimalist SaaS — white/slate, Inter font, subtle shadows, pill badges;
+  (b) Bold premium — dark backgrounds, gradient accents, large typography, glassmorphism;
+  (c) Warm editorial — cream/tan backgrounds, serif display font, warm accent color;
+  (d) Energetic/vibrant — strong color blocks, geometric patterns, high contrast.
+  The design system MUST match the product domain — do not default to generic blue-gray.
+  Include: specific hex palette (bg, surface, text, primary, accent, muted), Google Fonts pairing
+  (display + body), card style, button radius, spacing scale, imagery strategy.
+- CONTENT BANK must be large and realistic: 20+ distinct entity names, 10+ status labels,
+  8+ metric values, 6+ testimonial quotes, 3 pricing tiers with 6+ features each,
+  10+ FAQ pairs, 5+ process steps, 6+ team members (for about page), 8+ partner logos.
+- DATA: seed_data_description must specify 30+ primary records, 30+ activity/history records,
+  10+ categories, 8+ dashboard KPIs, realistic images from Unsplash.
+- USE realistic mock interactions everywhere: search filters, tab switching, selected cards,
+  multi-step forms, modal confirmations, dashboard panels, table sorting, pagination.
 """
 
         backend_rules = (
@@ -173,23 +178,22 @@ Return a JSON object with EXACTLY this structure:
 }}
 
 Rules for a high-quality spec:
-- Minimum 6 pages/routes for any non-trivial app with a frontend, even if it also has a backend
-- Frontend-only routes must include: home, list/catalog/workspace, detail, main action flow,
-  dashboard/account, and history/records/settings/admin where relevant
-- Minimum 5 frontend data collections for apps with a frontend: primary records, categories/statuses,
-  activity/history, dashboard metrics, and user/account/profile data
-- Minimum 3 backend data models/data collections with real field names (e.g. created_at, user_id, is_active)
-- Minimum 8 API endpoints — one per meaningful user action, not just CRUD
-- Every page must include a sections array with at least 4 sections/panels for important pages
-- Every page lists EVERY component it renders by name
-- Every API endpoint has a realistic request_body and response_shape
-- For a healthcare app: home, doctor directory with filters, doctor profile+booking, patient dashboard, services page
-- For e-commerce: home, product catalog with filters, product detail, cart, checkout, order history
-- For any other domain, infer the equivalent: marketplace/listing, project/workspace, entity detail,
-  action flow, dashboard, history/insights/settings. Never leave this as a generic landing page.
-- api_calls in pages must EXACTLY match paths in api_endpoints — no mismatches
-- auth_model must be realistic: if app has user accounts, specify jwt-token or session
-- If the stack is frontend-only, the FRONTEND-ONLY MVP RULES override endpoint minimums.
+- MINIMUM 10 pages: always include home, explore/catalog, detail, workflow, dashboard, history,
+  login, register, about, settings — plus any domain-specific pages needed
+- Home page MUST have sections: navbar, hero, logo_cloud, feature_grid, stats_band, testimonials,
+  pricing, faq, cta_band, footer — every section fully specified with real content
+- Every page must have sections array with AT LEAST 6 sections; home/detail/dashboard need 8-10
+- Minimum 8 frontend data collections; each must have minimum_records >= 20 for primary, >= 30 for activity
+- Minimum 5 backend data models with realistic field names (created_at, user_id, is_active, etc.)
+- Minimum 12 API endpoints covering: auth (login/register/me), CRUD for each model, search, stats
+- Every API endpoint has realistic request_body and response_shape
+- design_system MUST be opinionated and domain-specific — pick one of the 4 styles from the rules above
+  and commit to it: specific hex palette, real Google Fonts names, card border-radius, shadow style
+- content_bank must have: 15+ sample_names, 8+ metrics with real values, 6+ testimonial quotes,
+  3 pricing tiers with 6+ features each, 10+ FAQ pairs, 5+ workflow steps, 6+ team members
+- seed_data_description: 30+ primary records, 30+ activity records, 10+ categories, 8 KPIs
+- auth_model: if any user accounts → use "jwt-token"
+- If stack is frontend-only: FRONTEND-ONLY MVP RULES override endpoint minimums
 """
         raw = self.generate(prompt=prompt)
         spec = self.parse_json(raw)
@@ -228,28 +232,72 @@ Rules for a high-quality spec:
         if "react" in str(conventions.get("frontend_framework", "")).lower():
             if not spec.get("frontend_data_collections"):
                 spec["frontend_data_collections"] = [
-                    {"name": "primaryItems", "description": "main domain records displayed in list/detail pages", "minimum_records": 15, "sample_fields": ["id", "title", "category", "status", "image", "rating"]},
-                    {"name": "categories", "description": "filters, specialties, product groups, services, or statuses", "minimum_records": 8, "sample_fields": ["id", "name", "count", "icon"]},
-                    {"name": "activity", "description": "timeline, messages, bookings, orders, reports, or history records", "minimum_records": 20, "sample_fields": ["id", "title", "date", "status", "description"]},
-                    {"name": "dashboardMetrics", "description": "summary cards and insight metrics", "minimum_records": 8, "sample_fields": ["label", "value", "detail", "trend"]},
-                    {"name": "userProfile", "description": "signed-in demo profile and preferences", "minimum_records": 1, "sample_fields": ["name", "email", "role", "avatar"]},
+                    {"name": "primaryItems", "description": "main domain records", "minimum_records": 30, "sample_fields": ["id", "slug", "title", "description", "category", "status", "image", "rating", "price", "tags", "createdAt"]},
+                    {"name": "categories", "description": "filter categories/groups", "minimum_records": 10, "sample_fields": ["id", "name", "count", "icon", "color"]},
+                    {"name": "activity", "description": "timeline/history/transaction records", "minimum_records": 30, "sample_fields": ["id", "title", "body", "date", "status", "type", "user"]},
+                    {"name": "dashboardMetrics", "description": "KPI cards and stats", "minimum_records": 8, "sample_fields": ["label", "value", "detail", "trend", "trendValue", "icon"]},
+                    {"name": "userProfile", "description": "demo signed-in user", "minimum_records": 1, "sample_fields": ["name", "email", "role", "avatar", "joinDate", "stats"]},
+                    {"name": "testimonials", "description": "customer quotes", "minimum_records": 8, "sample_fields": ["id", "quote", "name", "role", "company", "avatar", "rating"]},
+                    {"name": "pricingTiers", "description": "3 pricing plans", "minimum_records": 3, "sample_fields": ["name", "price", "period", "description", "features", "highlighted", "cta"]},
+                    {"name": "faqItems", "description": "FAQ Q&A pairs", "minimum_records": 10, "sample_fields": ["question", "answer"]},
+                    {"name": "teamMembers", "description": "about page team grid", "minimum_records": 6, "sample_fields": ["name", "role", "bio", "avatar", "linkedin"]},
+                    {"name": "processSteps", "description": "how-it-works steps", "minimum_records": 5, "sample_fields": ["step", "title", "description", "icon"]},
                 ]
             if not spec.get("design_system"):
-                spec["design_system"] = {
-                    "aesthetic": "premium editorial product UI with warm surfaces, confident contrast, and domain-specific imagery",
-                    "typography": {"display": "Fraunces", "body": "Inter"},
-                    "palette": {"background": "#f8f3ea", "surface": "#fffdf8", "text": "#10251f", "primary": "#10251f", "accent": "#f18455", "muted": "#5a6c64"},
-                    "surface_style": "soft bordered cards, rounded panels, subtle shadows, generous whitespace, compact action pills",
-                    "imagery_strategy": "Unsplash hero/detail images with picsum.photos seeded fallback",
-                    "interaction_style": "tabs, pills, cards, sticky summaries, search filters, multi-step forms, and confirmations",
-                }
+                import hashlib
+                # Pick design style based on product name hash — ensures variety
+                product_name = spec.get("product_name", "App")
+                style_idx = int(hashlib.md5(product_name.encode()).hexdigest(), 16) % 4
+                design_styles = [
+                    {
+                        "aesthetic": "Clean modern SaaS — white backgrounds, sharp type, confident primary color, minimal shadows",
+                        "typography": {"display": "Plus Jakarta Sans", "body": "Inter"},
+                        "palette": {"background": "#ffffff", "surface": "#f8fafc", "text": "#0f172a", "primary": "#6366f1", "accent": "#f59e0b", "muted": "#64748b"},
+                        "surface_style": "thin bordered cards, 8px radius, light shadows, tight spacing, colored icon badges",
+                        "imagery_strategy": "Unsplash tech/workspace photos, gradient placeholder backgrounds",
+                        "interaction_style": "slide-over panels, command palette, inline editing, pill tabs, floating CTAs",
+                    },
+                    {
+                        "aesthetic": "Bold premium dark — near-black backgrounds, bright gradient accents, large type, glassmorphism cards",
+                        "typography": {"display": "Syne", "body": "DM Sans"},
+                        "palette": {"background": "#09090b", "surface": "#18181b", "text": "#fafafa", "primary": "#a855f7", "accent": "#06b6d4", "muted": "#71717a"},
+                        "surface_style": "glass-effect cards with border-white/10, 12px radius, colored glow shadows, backdrop-blur",
+                        "imagery_strategy": "Dark moody Unsplash photos with purple/cyan color overlays",
+                        "interaction_style": "hover glow effects, animated gradients, sticky headers, full-screen modals",
+                    },
+                    {
+                        "aesthetic": "Warm editorial — cream/sand backgrounds, serif display font, terracotta accent, organic layouts",
+                        "typography": {"display": "Playfair Display", "body": "Source Sans 3"},
+                        "palette": {"background": "#fdf8f3", "surface": "#fff9f4", "text": "#1c1209", "primary": "#c2410c", "accent": "#d97706", "muted": "#78716c"},
+                        "surface_style": "warm-toned cards, 6px radius, hairline borders, generous padding, editorial whitespace",
+                        "imagery_strategy": "Warm-toned Unsplash lifestyle photos, illustrated icon accents",
+                        "interaction_style": "smooth scroll, full-bleed sections, parallax hero, magazine-style grid",
+                    },
+                    {
+                        "aesthetic": "Energetic vibrant — strong color blocks, bold type, high contrast, geometric shapes",
+                        "typography": {"display": "Space Grotesk", "body": "Nunito"},
+                        "palette": {"background": "#f0fdf4", "surface": "#ffffff", "text": "#052e16", "primary": "#16a34a", "accent": "#dc2626", "muted": "#6b7280"},
+                        "surface_style": "bold bordered cards, 4px radius, thick colored borders, block shadows, vibrant fills",
+                        "imagery_strategy": "High-saturation Unsplash photos with green/red accent overlays",
+                        "interaction_style": "chunky buttons, tag filters, bold section headers, action-first layouts",
+                    },
+                ]
+                spec["design_system"] = design_styles[style_idx]
             if not spec.get("content_bank"):
                 spec["content_bank"] = {
-                    "headlines": ["A polished, complete product experience built from realistic demo data"],
-                    "metrics": ["15+ records", "20+ activity items", "4 dashboard panels"],
+                    "headlines": [
+                        f"The smarter way to manage {spec.get('product_name', 'your workflow')}",
+                        "Built for teams who move fast",
+                        "Everything you need, nothing you don't",
+                    ],
+                    "metrics": ["10,000+ users", "4.9/5 rating", "99.9% uptime", "50+ integrations"],
                     "sample_names": [],
-                    "workflow_steps": ["Choose", "Review", "Confirm", "Track"],
-                    "testimonials_or_notes": ["Demo data should feel specific to this product, not placeholder copy"],
+                    "workflow_steps": ["Choose", "Configure", "Review", "Confirm", "Track"],
+                    "testimonials_or_notes": [
+                        "This product completely transformed how our team works.",
+                        "I can't imagine going back to our old process.",
+                        "Setup took 5 minutes. Results were immediate.",
+                    ],
                 }
             for page in spec.get("pages", []):
                 if isinstance(page, dict) and not isinstance(page.get("sections"), list):

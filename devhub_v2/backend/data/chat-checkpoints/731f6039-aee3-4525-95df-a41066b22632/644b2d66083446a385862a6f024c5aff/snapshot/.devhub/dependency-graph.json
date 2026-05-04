@@ -1,0 +1,454 @@
+{
+  "edges": [
+    {
+      "from": "src/App.jsx",
+      "to": "src/components/Layout.jsx",
+      "reason": "import Layout from './components/Layout';"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/Home.jsx",
+      "reason": "import Home from './pages/Home';"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/SubmitComplaint.jsx",
+      "reason": "import SubmitComplaint from './pages/SubmitComplaint';"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/TrackComplaint.jsx",
+      "reason": "import TrackComplaint from './pages/TrackComplaint';"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/OfficerDashboard.jsx",
+      "reason": "import OfficerDashboard from './pages/OfficerDashboard';"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/ComplaintDetail.jsx",
+      "reason": "import ComplaintDetail from './pages/ComplaintDetail';"
+    },
+    {
+      "from": "src/App.jsx",
+      "to": "src/pages/AnalyticsDashboard.jsx",
+      "reason": "import AnalyticsDashboard from './pages/AnalyticsDashboard';"
+    },
+    {
+      "from": "src/main.jsx",
+      "to": "src/App.jsx",
+      "reason": "import App from './App.jsx';"
+    },
+    {
+      "from": "src/components/AppShell.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { currentUser } from '../mockData';"
+    },
+    {
+      "from": "src/components/AppShell.jsx",
+      "to": "src/components/shared/Footer.jsx",
+      "reason": "import Footer from './shared/Footer';"
+    },
+    {
+      "from": "src/pages/FileComplaintWorkflow.jsx",
+      "to": "src/components/shared/Navbar.jsx",
+      "reason": "import Navbar from '../components/shared/Navbar'"
+    },
+    {
+      "from": "src/pages/FileComplaintWorkflow.jsx",
+      "to": "src/components/shared/Footer.jsx",
+      "reason": "import Footer from '../components/shared/Footer'"
+    },
+    {
+      "from": "src/pages/FileComplaintWorkflow.jsx",
+      "to": "src/components/file-complaint/StepIndicator.jsx",
+      "reason": "import StepIndicator from '../components/file-complaint/StepIndicator'"
+    },
+    {
+      "from": "src/pages/FileComplaintWorkflow.jsx",
+      "to": "src/components/file-complaint/DepartmentSelector.jsx",
+      "reason": "import DepartmentSelector from '../components/file-complaint/DepartmentSelector'"
+    },
+    {
+      "from": "src/pages/FileComplaintWorkflow.jsx",
+      "to": "src/components/file-complaint/ComplaintForm.jsx",
+      "reason": "import ComplaintForm from '../components/file-complaint/ComplaintForm'"
+    },
+    {
+      "from": "src/pages/FileComplaintWorkflow.jsx",
+      "to": "src/components/file-complaint/EvidenceUploader.jsx",
+      "reason": "import EvidenceUploader from '../components/file-complaint/EvidenceUploader'"
+    },
+    {
+      "from": "src/pages/FileComplaintWorkflow.jsx",
+      "to": "src/components/file-complaint/ReviewSubmitCard.jsx",
+      "reason": "import ReviewSubmitCard from '../components/file-complaint/ReviewSubmitCard'"
+    },
+    {
+      "from": "src/pages/OfficerComplaintDetail.jsx",
+      "to": "src/components/shared/Navbar.jsx",
+      "reason": "import Navbar from '../components/shared/Navbar'"
+    },
+    {
+      "from": "src/pages/OfficerComplaintDetail.jsx",
+      "to": "src/components/shared/StatusPill.jsx",
+      "reason": "import StatusPill from '../components/shared/StatusPill'"
+    },
+    {
+      "from": "src/pages/OfficerComplaintDetail.jsx",
+      "to": "src/components/officer/AIPanel.jsx",
+      "reason": "import AIPanel from '../components/officer/AIPanel'"
+    },
+    {
+      "from": "src/pages/OfficerComplaintDetail.jsx",
+      "to": "src/components/officer/EvidenceGallery.jsx",
+      "reason": "import EvidenceGallery from '../components/officer/EvidenceGallery'"
+    },
+    {
+      "from": "src/pages/OfficerComplaintDetail.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { complaints } from '../mockData'"
+    },
+    {
+      "from": "src/pages/ComplaintDetail.jsx",
+      "to": "src/services/api.js",
+      "reason": "import { api } from '../services/api';"
+    },
+    {
+      "from": "src/pages/ComplaintDetail.jsx",
+      "to": "src/components/Badges.jsx",
+      "reason": "import { StatusBadge, SeverityBadge } from '../components/Badges';"
+    },
+    {
+      "from": "src/pages/DirectorAnalytics.jsx",
+      "to": "src/components/shared/Navbar.jsx",
+      "reason": "import Navbar from '../components/shared/Navbar';"
+    },
+    {
+      "from": "src/pages/DirectorAnalytics.jsx",
+      "to": "src/components/shared/MetricCard.jsx",
+      "reason": "import MetricCard from '../components/shared/MetricCard';"
+    },
+    {
+      "from": "src/pages/DirectorAnalytics.jsx",
+      "to": "src/components/director/GeographicHeatmap.jsx",
+      "reason": "import GeographicHeatmap from '../components/director/GeographicHeatmap';"
+    },
+    {
+      "from": "src/pages/DirectorAnalytics.jsx",
+      "to": "src/components/director/RiskProfileTable.jsx",
+      "reason": "import RiskProfileTable from '../components/director/RiskProfileTable';"
+    },
+    {
+      "from": "src/pages/DirectorAnalytics.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { dashboardMetrics } from '../mockData';"
+    },
+    {
+      "from": "src/pages/OfficerDashboard.jsx",
+      "to": "src/services/api.js",
+      "reason": "import { api } from '../services/api';"
+    },
+    {
+      "from": "src/pages/OfficerDashboard.jsx",
+      "to": "src/components/Badges.jsx",
+      "reason": "import { StatusBadge, SeverityBadge } from '../components/Badges';"
+    },
+    {
+      "from": "src/pages/PublicHome.jsx",
+      "to": "src/components/shared/Navbar.jsx",
+      "reason": "import Navbar from '../components/shared/Navbar'"
+    },
+    {
+      "from": "src/pages/PublicHome.jsx",
+      "to": "src/components/shared/Footer.jsx",
+      "reason": "import Footer from '../components/shared/Footer'"
+    },
+    {
+      "from": "src/pages/PublicHome.jsx",
+      "to": "src/components/home/HeroSection.jsx",
+      "reason": "import HeroSection from '../components/home/HeroSection'"
+    },
+    {
+      "from": "src/pages/PublicHome.jsx",
+      "to": "src/components/home/FeatureCards.jsx",
+      "reason": "import FeatureCards from '../components/home/FeatureCards'"
+    },
+    {
+      "from": "src/pages/PublicHome.jsx",
+      "to": "src/components/home/StatCounter.jsx",
+      "reason": "import StatCounter from '../components/home/StatCounter'"
+    },
+    {
+      "from": "src/pages/TrackComplaint.jsx",
+      "to": "src/services/api.js",
+      "reason": "import { api } from '../services/api';"
+    },
+    {
+      "from": "src/pages/TrackComplaint.jsx",
+      "to": "src/components/Badges.jsx",
+      "reason": "import { StatusBadge } from '../components/Badges';"
+    },
+    {
+      "from": "src/pages/AnalyticsDashboard.jsx",
+      "to": "src/services/api.js",
+      "reason": "import { api } from '../services/api';"
+    },
+    {
+      "from": "src/pages/SubmitComplaint.jsx",
+      "to": "src/services/api.js",
+      "reason": "import { api } from '../services/api';"
+    },
+    {
+      "from": "src/services/api.js",
+      "to": "src/mockData.js",
+      "reason": "import { initialComplaints, analyticsData } from '../mockData';"
+    },
+    {
+      "from": "src/components/ItemCard.jsx",
+      "to": "src/components/shared/StatusPill.jsx",
+      "reason": "import StatusPill from './shared/StatusPill'"
+    },
+    {
+      "from": "src/components/director/GeographicHeatmap.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { departments } from '../../mockData';"
+    },
+    {
+      "from": "src/components/director/RiskProfileTable.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { departments } from '../../mockData'"
+    },
+    {
+      "from": "src/components/director/RiskProfileTable.jsx",
+      "to": "src/components/shared/StatusPill.jsx",
+      "reason": "import StatusPill from '../shared/StatusPill'"
+    },
+    {
+      "from": "src/components/file-complaint/DepartmentSelector.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { departments } from '../../mockData'"
+    },
+    {
+      "from": "src/components/home/StatCounter.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { dashboardMetrics } from '../../mockData';"
+    },
+    {
+      "from": "src/components/officer/ComplaintDataGrid.jsx",
+      "to": "src/components/shared/StatusPill.jsx",
+      "reason": "import StatusPill from '../shared/StatusPill'"
+    },
+    {
+      "from": "src/components/officer/EvidenceGallery.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { evidenceFiles } from '../../mockData';"
+    },
+    {
+      "from": "src/components/track/BlockchainTimeline.jsx",
+      "to": "src/mockData.js",
+      "reason": "import { timelineEvents } from '../../mockData';"
+    }
+  ],
+  "adjacency": {
+    "src/App.jsx": [
+      "src/components/Layout.jsx",
+      "src/pages/Home.jsx",
+      "src/pages/SubmitComplaint.jsx",
+      "src/pages/TrackComplaint.jsx",
+      "src/pages/OfficerDashboard.jsx",
+      "src/pages/ComplaintDetail.jsx",
+      "src/pages/AnalyticsDashboard.jsx"
+    ],
+    "src/main.jsx": [
+      "src/App.jsx"
+    ],
+    "src/components/AppShell.jsx": [
+      "src/mockData.js",
+      "src/components/shared/Footer.jsx"
+    ],
+    "src/pages/FileComplaintWorkflow.jsx": [
+      "src/components/shared/Navbar.jsx",
+      "src/components/shared/Footer.jsx",
+      "src/components/file-complaint/StepIndicator.jsx",
+      "src/components/file-complaint/DepartmentSelector.jsx",
+      "src/components/file-complaint/ComplaintForm.jsx",
+      "src/components/file-complaint/EvidenceUploader.jsx",
+      "src/components/file-complaint/ReviewSubmitCard.jsx"
+    ],
+    "src/pages/OfficerComplaintDetail.jsx": [
+      "src/components/shared/Navbar.jsx",
+      "src/components/shared/StatusPill.jsx",
+      "src/components/officer/AIPanel.jsx",
+      "src/components/officer/EvidenceGallery.jsx",
+      "src/mockData.js"
+    ],
+    "src/pages/ComplaintDetail.jsx": [
+      "src/services/api.js",
+      "src/components/Badges.jsx"
+    ],
+    "src/pages/DirectorAnalytics.jsx": [
+      "src/components/shared/Navbar.jsx",
+      "src/components/shared/MetricCard.jsx",
+      "src/components/director/GeographicHeatmap.jsx",
+      "src/components/director/RiskProfileTable.jsx",
+      "src/mockData.js"
+    ],
+    "src/pages/OfficerDashboard.jsx": [
+      "src/services/api.js",
+      "src/components/Badges.jsx"
+    ],
+    "src/pages/PublicHome.jsx": [
+      "src/components/shared/Navbar.jsx",
+      "src/components/shared/Footer.jsx",
+      "src/components/home/HeroSection.jsx",
+      "src/components/home/FeatureCards.jsx",
+      "src/components/home/StatCounter.jsx"
+    ],
+    "src/pages/TrackComplaint.jsx": [
+      "src/services/api.js",
+      "src/components/Badges.jsx"
+    ],
+    "src/pages/AnalyticsDashboard.jsx": [
+      "src/services/api.js"
+    ],
+    "src/pages/SubmitComplaint.jsx": [
+      "src/services/api.js"
+    ],
+    "src/services/api.js": [
+      "src/mockData.js"
+    ],
+    "src/components/ItemCard.jsx": [
+      "src/components/shared/StatusPill.jsx"
+    ],
+    "src/components/director/GeographicHeatmap.jsx": [
+      "src/mockData.js"
+    ],
+    "src/components/director/RiskProfileTable.jsx": [
+      "src/mockData.js",
+      "src/components/shared/StatusPill.jsx"
+    ],
+    "src/components/file-complaint/DepartmentSelector.jsx": [
+      "src/mockData.js"
+    ],
+    "src/components/home/StatCounter.jsx": [
+      "src/mockData.js"
+    ],
+    "src/components/officer/ComplaintDataGrid.jsx": [
+      "src/components/shared/StatusPill.jsx"
+    ],
+    "src/components/officer/EvidenceGallery.jsx": [
+      "src/mockData.js"
+    ],
+    "src/components/track/BlockchainTimeline.jsx": [
+      "src/mockData.js"
+    ]
+  },
+  "reverse_adjacency": {
+    "src/components/Layout.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/Home.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/SubmitComplaint.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/TrackComplaint.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/OfficerDashboard.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/ComplaintDetail.jsx": [
+      "src/App.jsx"
+    ],
+    "src/pages/AnalyticsDashboard.jsx": [
+      "src/App.jsx"
+    ],
+    "src/App.jsx": [
+      "src/main.jsx"
+    ],
+    "src/mockData.js": [
+      "src/components/AppShell.jsx",
+      "src/pages/OfficerComplaintDetail.jsx",
+      "src/pages/DirectorAnalytics.jsx",
+      "src/services/api.js",
+      "src/components/director/GeographicHeatmap.jsx",
+      "src/components/director/RiskProfileTable.jsx",
+      "src/components/file-complaint/DepartmentSelector.jsx",
+      "src/components/home/StatCounter.jsx",
+      "src/components/officer/EvidenceGallery.jsx",
+      "src/components/track/BlockchainTimeline.jsx"
+    ],
+    "src/components/shared/Footer.jsx": [
+      "src/components/AppShell.jsx",
+      "src/pages/FileComplaintWorkflow.jsx",
+      "src/pages/PublicHome.jsx"
+    ],
+    "src/components/shared/Navbar.jsx": [
+      "src/pages/FileComplaintWorkflow.jsx",
+      "src/pages/OfficerComplaintDetail.jsx",
+      "src/pages/DirectorAnalytics.jsx",
+      "src/pages/PublicHome.jsx"
+    ],
+    "src/components/file-complaint/StepIndicator.jsx": [
+      "src/pages/FileComplaintWorkflow.jsx"
+    ],
+    "src/components/file-complaint/DepartmentSelector.jsx": [
+      "src/pages/FileComplaintWorkflow.jsx"
+    ],
+    "src/components/file-complaint/ComplaintForm.jsx": [
+      "src/pages/FileComplaintWorkflow.jsx"
+    ],
+    "src/components/file-complaint/EvidenceUploader.jsx": [
+      "src/pages/FileComplaintWorkflow.jsx"
+    ],
+    "src/components/file-complaint/ReviewSubmitCard.jsx": [
+      "src/pages/FileComplaintWorkflow.jsx"
+    ],
+    "src/components/shared/StatusPill.jsx": [
+      "src/pages/OfficerComplaintDetail.jsx",
+      "src/components/ItemCard.jsx",
+      "src/components/director/RiskProfileTable.jsx",
+      "src/components/officer/ComplaintDataGrid.jsx"
+    ],
+    "src/components/officer/AIPanel.jsx": [
+      "src/pages/OfficerComplaintDetail.jsx"
+    ],
+    "src/components/officer/EvidenceGallery.jsx": [
+      "src/pages/OfficerComplaintDetail.jsx"
+    ],
+    "src/services/api.js": [
+      "src/pages/ComplaintDetail.jsx",
+      "src/pages/OfficerDashboard.jsx",
+      "src/pages/TrackComplaint.jsx",
+      "src/pages/AnalyticsDashboard.jsx",
+      "src/pages/SubmitComplaint.jsx"
+    ],
+    "src/components/Badges.jsx": [
+      "src/pages/ComplaintDetail.jsx",
+      "src/pages/OfficerDashboard.jsx",
+      "src/pages/TrackComplaint.jsx"
+    ],
+    "src/components/shared/MetricCard.jsx": [
+      "src/pages/DirectorAnalytics.jsx"
+    ],
+    "src/components/director/GeographicHeatmap.jsx": [
+      "src/pages/DirectorAnalytics.jsx"
+    ],
+    "src/components/director/RiskProfileTable.jsx": [
+      "src/pages/DirectorAnalytics.jsx"
+    ],
+    "src/components/home/HeroSection.jsx": [
+      "src/pages/PublicHome.jsx"
+    ],
+    "src/components/home/FeatureCards.jsx": [
+      "src/pages/PublicHome.jsx"
+    ],
+    "src/components/home/StatCounter.jsx": [
+      "src/pages/PublicHome.jsx"
+    ]
+  }
+}

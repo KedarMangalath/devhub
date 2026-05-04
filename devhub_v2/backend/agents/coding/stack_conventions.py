@@ -26,15 +26,17 @@ def _any(stack: str, *keywords: str) -> bool:
 def detect_stack_key(tech_stack: str) -> str:
     """Return a canonical stack key from a free-form tech_stack string."""
     s = tech_stack.lower()
-    frontend_requested = any(token in s for token in ("react", "vite", "next", "vue", "svelte", "frontend", "ui", "web app", "website"))
+    frontend_requested = any(token in s for token in (
+        "react", "vite", "next", "vue", "svelte", "frontend", "ui", "web app", "website"
+    ))
 
     frontend = "react_vite"
-    if "next" in s:
+    if "next" in s or "nextjs" in s or "next.js" in s:
         frontend = "nextjs"
-    elif "vue" in s:
-        frontend = "vue_vite"
     elif "svelte" in s:
         frontend = "svelte_vite"
+    elif "vue" in s:
+        frontend = "vue_vite"
     elif "react" in s:
         frontend = "react_vite"
     elif "html" in s and "javascript" in s and "react" not in s:
@@ -45,10 +47,12 @@ def detect_stack_key(tech_stack: str) -> str:
         backend = "fastapi"
     elif "flask" in s:
         backend = "flask"
-    elif "express" in s or "node" in s:
-        backend = "express"
     elif "django" in s:
         backend = "django"
+    elif any(token in s for token in ("express", "node.js", "nodejs")):
+        backend = "express"
+    elif "node" in s and any(token in s for token in ("postgres", "mysql", "mongodb", "prisma", "sequelize", "typeorm")):
+        backend = "express"
     elif any(token in s for token in ("full stack", "full-stack", "fullstack", "backend", "database", "auth")):
         backend = "fastapi"
 
@@ -56,7 +60,7 @@ def detect_stack_key(tech_stack: str) -> str:
         return "fastapi_only"
 
     # purely frontend stacks
-    if frontend in ("react_vite", "vue_vite", "svelte_vite", "vanilla") and backend is None:
+    if backend is None:
         if frontend == "react_vite":
             return "react_vite_mock"
         return f"{frontend}_only"
@@ -327,17 +331,118 @@ _CONVENTIONS: dict[str, dict] = {
         "vite_version": "^4.5.2",
         "notes": "Frontend-only MVP. Use rich hardcoded demo data from src/mockData.js so the app works instantly with zero network calls.",
     },
+    # ─── Next.js + Express / Node ───────────────────────────────────────────
+    "nextjs_express": {
+        "label": "Next.js 14 App Router + Express/Node.js",
+        "frontend_framework": "Next.js 14 with App Router, Tailwind CSS, TypeScript",
+        "backend_framework": "Express.js with Node.js, Prisma ORM",
+        "frontend_dir": "frontend",
+        "backend_dir": "backend",
+        "frontend_port": 3000,
+        "backend_port": 4000,
+        "frontend_entry": "frontend/app/layout.tsx",
+        "backend_entry": "backend/src/index.ts",
+        "frontend_run": "cd frontend && npm run dev",
+        "backend_run": "cd backend && npm run dev",
+        "install_frontend": "cd frontend && npm install",
+        "install_backend": "cd backend && npm install",
+        "syntax_check_backend": None,
+        "startup_check_backend": None,
+        "vite_proxy": False,
+        "api_prefix": "http://localhost:4000/api/",
+        "import_style": "esm_modules",
+        "backend_import_note": "Express routers in backend/src/routes/. Use ES module imports. Prisma client: import { PrismaClient } from '@prisma/client'.",
+        "frontend_import_note": "Next.js fetches from http://localhost:4000/api/ in server components. Use 'use client' for interactive components. Import types from '@/types'.",
+        "file_extensions": {"components": ".tsx", "pages": ".tsx", "hooks": ".ts", "utils": ".ts"},
+        "required_files": [
+            "frontend/package.json",
+            "frontend/app/layout.tsx",
+            "frontend/app/page.tsx",
+            "backend/package.json",
+            "backend/src/index.ts",
+            "backend/prisma/schema.prisma",
+        ],
+        "package_json_scripts": {"dev": "next dev", "build": "next build"},
+        "vite_version": None,
+        "notes": "Next.js on port 3000, Express on port 4000. Use Prisma for DB. Frontend-only: mockData in frontend/lib/mockData.ts. No Vite.",
+    },
+
+    # ─── SvelteKit (standalone) ──────────────────────────────────────────────
+    "svelte_vite_only": {
+        "label": "SvelteKit (frontend-first)",
+        "frontend_framework": "SvelteKit with Svelte 4, Tailwind CSS",
+        "backend_framework": None,
+        "frontend_dir": ".",
+        "backend_dir": None,
+        "frontend_port": 5173,
+        "backend_port": None,
+        "frontend_entry": "src/routes/+page.svelte",
+        "backend_entry": None,
+        "frontend_run": "npm run dev",
+        "backend_run": None,
+        "install_frontend": "npm install",
+        "install_backend": None,
+        "syntax_check_backend": None,
+        "startup_check_backend": None,
+        "vite_proxy": False,
+        "api_prefix": None,
+        "import_style": "frontend_mock",
+        "backend_import_note": None,
+        "frontend_import_note": "No backend. Use $lib/mockData.ts for demo data.",
+        "file_extensions": {"components": ".svelte", "pages": ".svelte", "hooks": ".ts", "utils": ".ts"},
+        "required_files": ["package.json", "svelte.config.js", "src/routes/+page.svelte"],
+        "package_json_scripts": {"dev": "vite dev", "build": "vite build"},
+        "vite_version": "^4.5.2",
+        "notes": "SvelteKit. Use $lib/ for shared modules. Rich mock data in $lib/mockData.ts.",
+    },
+
+    # ─── Vue (Vite, standalone) ───────────────────────────────────────────────
+    "vue_vite_only": {
+        "label": "Vue 3 + Vite (frontend-only)",
+        "frontend_framework": "Vue 3 with Vite 4, Vue Router 4, Pinia, Tailwind CSS",
+        "backend_framework": None,
+        "frontend_dir": ".",
+        "backend_dir": None,
+        "frontend_port": 5173,
+        "backend_port": None,
+        "frontend_entry": "src/main.ts",
+        "backend_entry": None,
+        "frontend_run": "npm run dev",
+        "backend_run": None,
+        "install_frontend": "npm install",
+        "install_backend": None,
+        "syntax_check_backend": None,
+        "startup_check_backend": None,
+        "vite_proxy": False,
+        "api_prefix": None,
+        "import_style": "frontend_mock",
+        "backend_import_note": None,
+        "frontend_import_note": "No backend. Rich demo data in src/mockData.ts.",
+        "file_extensions": {"components": ".vue", "pages": ".vue", "hooks": ".ts", "utils": ".ts"},
+        "required_files": ["package.json", "vite.config.ts", "src/main.ts", "src/App.vue"],
+        "package_json_scripts": {"dev": "vite", "build": "vite build"},
+        "vite_version": "^4.5.2",
+        "notes": "Vue 3 Composition API. script setup. Use defineProps/defineEmits.",
+    },
 }
 
-# Default fallback
-_CONVENTIONS["react_vite_only"] = _CONVENTIONS["react_vite_only"]
+# Default fallback — used only when StackResolverAgent also fails
 _DEFAULT_KEY = "react_vite_mock"
+
+import logging as _logging
+_logger = _logging.getLogger(__name__)
 
 
 def get_conventions(tech_stack: str) -> dict:
     """Return the conventions dict for a given tech_stack string."""
     key = detect_stack_key(tech_stack)
-    return _CONVENTIONS.get(key, _CONVENTIONS[_DEFAULT_KEY])
+    if key in _CONVENTIONS:
+        return _CONVENTIONS[key]
+    _logger.warning(
+        "Stack '%s' (key='%s') not in registry — StackResolverAgent will be used at pipeline time",
+        tech_stack, key,
+    )
+    return _CONVENTIONS[_DEFAULT_KEY]
 
 
 def build_constraint_block(tech_stack: str) -> str:

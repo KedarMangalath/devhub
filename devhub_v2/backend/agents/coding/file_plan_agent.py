@@ -32,7 +32,7 @@ class FilePlanAgent(BaseAgent):
             ai_config=ai_config,
         )
 
-    def plan(self, spec: dict, tech_stack: str) -> list[dict]:
+    def plan(self, spec: dict, tech_stack: str, wireframes: dict | None = None) -> list[dict]:
         conventions = get_conventions(tech_stack)
         constraint_block = build_constraint_block(tech_stack)
         frontend_only = not bool(conventions.get("backend_framework"))
@@ -107,6 +107,16 @@ FRONTEND-ONLY MOCK DATA REQUIREMENTS:
             for p in spec.get("pages", [])
         )
 
+        wireframe_summary = ""
+        if wireframes:
+            wf_lines = []
+            for route, wf in list(wireframes.items())[:8]:
+                if not isinstance(wf, dict):
+                    continue
+                section_kinds = [s.get("kind", "") for s in wf.get("sections", []) if isinstance(s, dict)]
+                wf_lines.append(f"  {route} ({wf.get('name', '')}): {' → '.join(section_kinds)}")
+            wireframe_summary = "Page wireframes (section order for each page):\n" + "\n".join(wf_lines)
+
         prompt = f"""Produce a complete ordered file plan for this project.
 
 {constraint_block}
@@ -123,6 +133,8 @@ API endpoints:
 
 Pages:
 {pages_summary}
+
+{wireframe_summary}
 
 Key user flows:
 {chr(10).join(spec.get('key_user_flows', []))}
@@ -159,9 +171,11 @@ DESCRIPTION FIELD RULES (this is the most important field):
    Good: "Axios client. Exports: getDoctors(specialty?,page?) → GET /api/doctors/?specialty=X&page=Y, getDoctor(id) → GET /api/doctors/{id}/, createAppointment(data) → POST /api/appointments/, getMyAppointments(token) → GET /api/appointments/me/ with Authorization header."
    Bad: "API utility functions"
 3. For React components: list props interface, what API it calls, what state it manages.
-   Good: "DoctorCard component. Props: {{doctor: {{id,name,specialty,bio,rating,image_url}}, onBook: (doctor)=>void}}. Renders doctor image, name, specialty badge, star rating, 'Book Appointment' button that calls onBook(doctor). No API calls — data passed via props. Tailwind styled card with hover shadow."
+   Good: "DoctorCard component. Props: {{doctor: {{id,name,specialty,bio,rating,image_url}}, onBook: (doctor)=>void}}. Renders doctor image, name, specialty Badge, star rating, 'Book' Button. Import Card from components/ui/card, Badge from components/ui/badge, Button from components/ui/button."
    Bad: "Component for displaying a doctor"
-4. For pages: list route, all components it renders, all API calls it makes with params, all state variables.
+   IMPORTANT: UI primitives (Button, Card, CardHeader, CardContent, CardTitle, CardDescription, CardFooter, Badge, Input, Label, Textarea, Separator, Avatar, Skeleton, Progress, Tabs/TabsList/TabsTrigger/TabsContent, Select, Dialog, Sheet) are pre-built in src/components/ui/. Reference them in descriptions; do NOT plan files for them.
+4. For pages: list route, all wireframe sections to render in order, components used, state variables.
+   IMPORTANT: Page descriptions MUST reference the wireframe sections for that route.
 5. For seed files: describe exact number and shape of records to insert.
    Good: "Seed 15 doctors across 6 specialties (Cardiology, Neurology, Pediatrics, Dermatology, Orthopedics, Psychiatry) with realistic names, bios, ratings 4.0-5.0, experience 3-20 years. Seed 8 services. Seed 20 appointments across different doctors and statuses."
 

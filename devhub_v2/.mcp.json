@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "code-review-graph": {
+      "command": "npx",
+      "args": ["-y", "code-review-graph"]
+    },
+    "stitch": {
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/stitch-mcp-server"],
+      "env": {
+        "STITCH_API_KEY": ""
+      },
+      "disabled": true
+    }
+  }
+}

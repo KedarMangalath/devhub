@@ -1,0 +1,476 @@
+{
+  "cache_version": 24,
+  "file_count": 47,
+  "files": [
+    {
+      "path": "index.html",
+      "size": 348,
+      "extension": ".html",
+      "language": "html",
+      "modified": 1777373588416741000,
+      "depth": 0,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "package.json",
+      "size": 557,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777373588414732100,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "postcss.config.js",
+      "size": 84,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588415738400,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "src/App.jsx",
+      "size": 1019,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588417758800,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "src/components/AppShell.jsx",
+      "size": 8243,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443714285500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/Badges.jsx",
+      "size": 1199,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588419767700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/director/GeographicHeatmap.jsx",
+      "size": 7173,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443712776400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/director/RiskProfileTable.jsx",
+      "size": 4770,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443709247700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/ComplaintForm.jsx",
+      "size": 5387,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443703790400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/DepartmentSelector.jsx",
+      "size": 4121,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443702784300,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/EvidenceUploader.jsx",
+      "size": 6214,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443705295000,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/ReviewSubmitCard.jsx",
+      "size": 5262,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443707683000,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/StepIndicator.jsx",
+      "size": 2462,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443704790700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/home/FeatureCards.jsx",
+      "size": 2472,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443698759400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/home/HeroSection.jsx",
+      "size": 6442,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443702784300,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/home/StatCounter.jsx",
+      "size": 2587,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443702279400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/ItemCard.jsx",
+      "size": 5409,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443710752500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/Layout.jsx",
+      "size": 3855,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588419767700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/officer/AIPanel.jsx",
+      "size": 3568,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443708241800,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/officer/ComplaintDataGrid.jsx",
+      "size": 4554,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443709247700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/officer/EvidenceGallery.jsx",
+      "size": 5328,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443709247700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/officer/FilterTabs.jsx",
+      "size": 1199,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443706044200,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/shared/Footer.jsx",
+      "size": 3464,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443701278900,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/shared/MetricCard.jsx",
+      "size": 1935,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443700272500,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/shared/Navbar.jsx",
+      "size": 4520,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443698759400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/shared/StatusPill.jsx",
+      "size": 1231,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443698759400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/StatCard.jsx",
+      "size": 5120,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443712776400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/TabbedPanel.jsx",
+      "size": 5095,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443712272100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/TimelineList.jsx",
+      "size": 5119,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443711266200,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/track/BlockchainTimeline.jsx",
+      "size": 4847,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443707051600,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/track/TrackingSearch.jsx",
+      "size": 1876,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443706044200,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/index.css",
+      "size": 772,
+      "extension": ".css",
+      "language": "css",
+      "modified": 1777373588417245200,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/main.jsx",
+      "size": 248,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588417245200,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "src/mockData.js",
+      "size": 7221,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588417758800,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/AnalyticsDashboard.jsx",
+      "size": 5434,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588423807600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/ComplaintDetail.jsx",
+      "size": 9813,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588422809700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/DirectorAnalytics.jsx",
+      "size": 6119,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443716320600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/FileComplaintWorkflow.jsx",
+      "size": 9421,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443717874400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/Home.jsx",
+      "size": 3786,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588420767800,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/OfficerComplaintDetail.jsx",
+      "size": 13422,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443714808200,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/OfficerDashboard.jsx",
+      "size": 6431,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588421808600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/PublicHome.jsx",
+      "size": 701,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443714808200,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/SubmitComplaint.jsx",
+      "size": 7953,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588420767800,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/TrackComplaint.jsx",
+      "size": 6165,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588421808600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/services/api.js",
+      "size": 3144,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588418764100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "tailwind.config.js",
+      "size": 385,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588415738400,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "vite.config.js",
+      "size": 174,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588414732100,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    }
+  ]
+}

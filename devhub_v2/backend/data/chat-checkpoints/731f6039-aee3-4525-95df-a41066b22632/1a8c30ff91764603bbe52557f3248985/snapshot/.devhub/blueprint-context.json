@@ -1,0 +1,4230 @@
+{
+  "cache_version": 24,
+  "fingerprint": "ecaeeea8eebf4d3d159daadc0a4df9ce2c88c152",
+  "manifest_file_count": 47,
+  "file_count": 47,
+  "directory_counts": {
+    ".": 5,
+    "src": 42
+  },
+  "root_directories": [
+    ".devhub",
+    "src"
+  ],
+  "manifest": [
+    {
+      "path": "index.html",
+      "size": 348,
+      "extension": ".html",
+      "language": "html",
+      "modified": 1777373588416741000,
+      "depth": 0,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "package.json",
+      "size": 557,
+      "extension": ".json",
+      "language": "json",
+      "modified": 1777373588414732100,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "postcss.config.js",
+      "size": 84,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588415738400,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "src/App.jsx",
+      "size": 1019,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588417758800,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "src/components/AppShell.jsx",
+      "size": 8243,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443714285500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/Badges.jsx",
+      "size": 1199,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588419767700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/director/GeographicHeatmap.jsx",
+      "size": 7173,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443712776400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/director/RiskProfileTable.jsx",
+      "size": 4770,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443709247700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/ComplaintForm.jsx",
+      "size": 5387,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443703790400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/DepartmentSelector.jsx",
+      "size": 4121,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443702784300,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/EvidenceUploader.jsx",
+      "size": 6214,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443705295000,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/ReviewSubmitCard.jsx",
+      "size": 5262,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443707683000,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/file-complaint/StepIndicator.jsx",
+      "size": 2462,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443704790700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/home/FeatureCards.jsx",
+      "size": 2472,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443698759400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/home/HeroSection.jsx",
+      "size": 6442,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443702784300,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/home/StatCounter.jsx",
+      "size": 2587,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443702279400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/ItemCard.jsx",
+      "size": 5409,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443710752500,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/Layout.jsx",
+      "size": 3855,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588419767700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/officer/AIPanel.jsx",
+      "size": 3568,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443708241800,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/officer/ComplaintDataGrid.jsx",
+      "size": 4554,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443709247700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/officer/EvidenceGallery.jsx",
+      "size": 5328,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443709247700,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/officer/FilterTabs.jsx",
+      "size": 1199,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443706044200,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/shared/Footer.jsx",
+      "size": 3464,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443701278900,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/shared/MetricCard.jsx",
+      "size": 1935,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443700272500,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/shared/Navbar.jsx",
+      "size": 4520,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443698759400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/shared/StatusPill.jsx",
+      "size": 1231,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443698759400,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/StatCard.jsx",
+      "size": 5120,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443712776400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/TabbedPanel.jsx",
+      "size": 5095,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443712272100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/TimelineList.jsx",
+      "size": 5119,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443711266200,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/track/BlockchainTimeline.jsx",
+      "size": 4847,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443707051600,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/components/track/TrackingSearch.jsx",
+      "size": 1876,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443706044200,
+      "depth": 4,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/index.css",
+      "size": 772,
+      "extension": ".css",
+      "language": "css",
+      "modified": 1777373588417245200,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/main.jsx",
+      "size": 248,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588417245200,
+      "depth": 2,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    },
+    {
+      "path": "src/mockData.js",
+      "size": 7221,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588417758800,
+      "depth": 2,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/AnalyticsDashboard.jsx",
+      "size": 5434,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588423807600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/ComplaintDetail.jsx",
+      "size": 9813,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588422809700,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/DirectorAnalytics.jsx",
+      "size": 6119,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443716320600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/FileComplaintWorkflow.jsx",
+      "size": 9421,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443717874400,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/Home.jsx",
+      "size": 3786,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588420767800,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/OfficerComplaintDetail.jsx",
+      "size": 13422,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443714808200,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/OfficerDashboard.jsx",
+      "size": 6431,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588421808600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/PublicHome.jsx",
+      "size": 701,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373443714808200,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/SubmitComplaint.jsx",
+      "size": 7953,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588420767800,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/pages/TrackComplaint.jsx",
+      "size": 6165,
+      "extension": ".jsx",
+      "language": "javascript-react",
+      "modified": 1777373588421808600,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "src/services/api.js",
+      "size": 3144,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588418764100,
+      "depth": 3,
+      "tier": 2,
+      "tier_reason": "source-summary"
+    },
+    {
+      "path": "tailwind.config.js",
+      "size": 385,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588415738400,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "entry-routing"
+    },
+    {
+      "path": "vite.config.js",
+      "size": 174,
+      "extension": ".js",
+      "language": "javascript",
+      "modified": 1777373588414732100,
+      "depth": 0,
+      "tier": 1,
+      "tier_reason": "critical-config"
+    }
+  ],
+  "indexed_paths": [
+    "index.html",
+    "package.json",
+    "postcss.config.js",
+    "src/App.jsx",
+    "src/components/AppShell.jsx",
+    "src/components/Badges.jsx",
+    "src/components/director/GeographicHeatmap.jsx",
+    "src/components/director/RiskProfileTable.jsx",
+    "src/components/file-complaint/ComplaintForm.jsx",
+    "src/components/file-complaint/DepartmentSelector.jsx",
+    "src/components/file-complaint/EvidenceUploader.jsx",
+    "src/components/file-complaint/ReviewSubmitCard.jsx",
+    "src/components/file-complaint/StepIndicator.jsx",
+    "src/components/home/FeatureCards.jsx",
+    "src/components/home/HeroSection.jsx",
+    "src/components/home/StatCounter.jsx",
+    "src/components/ItemCard.jsx",
+    "src/components/Layout.jsx",
+    "src/components/officer/AIPanel.jsx",
+    "src/components/officer/ComplaintDataGrid.jsx",
+    "src/components/officer/EvidenceGallery.jsx",
+    "src/components/officer/FilterTabs.jsx",
+    "src/components/shared/Footer.jsx",
+    "src/components/shared/MetricCard.jsx",
+    "src/components/shared/Navbar.jsx",
+    "src/components/shared/StatusPill.jsx",
+    "src/components/StatCard.jsx",
+    "src/components/TabbedPanel.jsx",
+    "src/components/TimelineList.jsx",
+    "src/components/track/BlockchainTimeline.jsx",
+    "src/components/track/TrackingSearch.jsx",
+    "src/index.css",
+    "src/main.jsx",
+    "src/mockData.js",
+    "src/pages/AnalyticsDashboard.jsx",
+    "src/pages/ComplaintDetail.jsx",
+    "src/pages/DirectorAnalytics.jsx",
+    "src/pages/FileComplaintWorkflow.jsx",
+    "src/pages/Home.jsx",
+    "src/pages/OfficerComplaintDetail.jsx",
+    "src/pages/OfficerDashboard.jsx",
+    "src/pages/PublicHome.jsx",
+    "src/pages/SubmitComplaint.jsx",
+    "src/pages/TrackComplaint.jsx",
+    "src/services/api.js",
+    "tailwind.config.js",
+    "vite.config.js"
+  ],
+  "important_files": [
+    {
+      "path": "src/App.jsx",
+      "size": 1019,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "api-module",
+      "language": "javascript-react",
+      "lines": 27,
+      "symbol": "App",
+      "imports": [
+        "import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';",
+        "import Layout from './components/Layout';",
+        "import Home from './pages/Home';",
+        "import SubmitComplaint from './pages/SubmitComplaint';",
+        "import TrackComplaint from './pages/TrackComplaint';",
+        "import OfficerDashboard from './pages/OfficerDashboard';",
+        "import ComplaintDetail from './pages/ComplaintDetail';",
+        "import AnalyticsDashboard from './pages/AnalyticsDashboard';"
+      ],
+      "routes": [
+        "submit",
+        "track",
+        "officer",
+        "officer/complaint/:id",
+        "director"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `App` if present and then trace the request flow through imports and downstream service calls. Routes detected: submit, track, officer, officer/complaint/:id.",
+      "excerpt": "import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';\nimport Layout from './components/Layout';\nimport Home from './pages/Home';\nimport SubmitComplaint from './pages/SubmitComplaint';\nimport TrackComplaint from './pages/TrackComplaint';\nimport OfficerDashboard from './pages/OfficerDashboard';\nimport ComplaintDetail from './pages/ComplaintDetail';\nimport AnalyticsDashboard from './pages/AnalyticsDashboard';\n\nfunction App() {\n  return (\n    <Router>\n      <Routes>\n        <Route path=\"/\" element={<Layout />}>\n          <Route index element={<Home />} />\n          <Route path=\"submit\" element={<SubmitComplaint />} />\n          <Route path=\"track\" element={<TrackComplaint />} />\n          <Route path=\"officer\" element={<OfficerDashboard />} />\n          <Route path=\"officer/complaint/:id\" element={<ComplaintDetail />} />\n          <Route path=\"director\" element={<AnalyticsDashboard />} />\n        </Route>\n      </Routes>\n    </Router>\n  );\n}\n\nexport default App;",
+      "brief": "src/App.jsx (javascript-react, ui, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 27 lines. Primary symbol: App. Key imports: import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';, import Layout from './components/Layout';, import Home from './pages/Home';, import SubmitComplaint from './pages/SubmitComplaint';, import TrackComplaint from './pages/TrackComplaint';."
+    },
+    {
+      "path": "vite.config.js",
+      "size": 174,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "build-config",
+      "language": "javascript",
+      "lines": 9,
+      "symbol": "",
+      "imports": [
+        "import { defineConfig } from 'vite';",
+        "import react from '@vitejs/plugin-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project.",
+      "why": "It exists because the build pipeline has repo-specific entrypoints, output rules, plugins, or environment handling that cannot live in default tool settings.",
+      "how": "Start with `` if present, then inspect imported helpers like import { defineConfig } from 'vite';, import react from '@vitejs/plugin-react'; to see which parts of the build are delegated elsewhere.",
+      "excerpt": "import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n  server: {\n    port: 3000\n  }\n});",
+      "brief": "vite.config.js (javascript, config)",
+      "summary": "Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project. It has about 9 lines. Key imports: import { defineConfig } from 'vite';, import react from '@vitejs/plugin-react';."
+    },
+    {
+      "path": "package.json",
+      "size": 557,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "package-manifest",
+      "language": "json",
+      "lines": 25,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [
+        "name",
+        "private",
+        "version",
+        "type",
+        "scripts",
+        "dependencies",
+        "devDependencies"
+      ],
+      "commands": [],
+      "purpose": "Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace.",
+      "why": "It exists as the control file for install/build/test commands and for declaring the dependency surface this project expects.",
+      "how": "Start with top-level keys like name, private, version, type, scripts, dependencies and then inspect the scripts section to understand day-to-day commands.",
+      "excerpt": "{\n  \"name\": \"c3ms-vacb-kerala\",\n  \"private\": true,\n  \"version\": \"1.0.0\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"build\": \"vite build\",\n    \"preview\": \"vite preview\"\n  },\n  \"dependencies\": {\n    \"lucide-react\": \"^0.344.0\",\n    \"react\": \"^18.2.0\",\n    \"react-dom\": \"^18.2.0\",\n    \"react-router-dom\": \"^6.22.3\",\n    \"recharts\": \"^2.12.2\"\n  },\n  \"devDependencies\": {\n    \"@vitejs/plugin-react\": \"^4.2.1\",\n    \"autoprefixer\": \"^10.4.18\",\n    \"postcss\": \"^8.4.35\",\n    \"tailwindcss\": \"^3.4.1\",\n    \"vite\": \"^4.5.2\"\n  }\n}",
+      "brief": "package.json (json, config)",
+      "summary": "Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace. It has about 25 lines. Top-level keys: name, private, version, type, scripts, dependencies."
+    },
+    {
+      "path": "src/main.jsx",
+      "size": 248,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 10,
+      "symbol": "",
+      "imports": [
+        "import React from 'react';",
+        "import ReactDOM from 'react-dom/client';",
+        "import App from './App.jsx';",
+        "import './index.css';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App.jsx';\nimport './index.css';\n\nReactDOM.createRoot(document.getElementById('root')).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>,\n);",
+      "brief": "src/main.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 10 lines. Key imports: import React from 'react';, import ReactDOM from 'react-dom/client';, import App from './App.jsx';, import './index.css';."
+    },
+    {
+      "path": "postcss.config.js",
+      "size": 84,
+      "tier": 1,
+      "tier_reason": "entry-routing",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 6,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the project root area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}",
+      "brief": "postcss.config.js (javascript)",
+      "summary": "Source file that contributes to the project root area of the repository. It has about 6 lines."
+    },
+    {
+      "path": "tailwind.config.js",
+      "size": 385,
+      "tier": 1,
+      "tier_reason": "entry-routing",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 21,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the project root area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "/** @type {import('tailwindcss').Config} */\nexport default {\n  content: [\n    \"./index.html\",\n    \"./src/**/*.{js,ts,jsx,tsx}\",\n  ],\n  theme: {\n    extend: {\n      colors: {\n        vacb: {\n          50: '#f0fdfa',\n          100: '#ccfbf1',\n          500: '#14b8a6',\n          700: '#0f766e',\n          900: '#134e4a',\n        }\n      }\n    },\n  },\n  plugins: [],\n}",
+      "brief": "tailwind.config.js (javascript)",
+      "summary": "Source file that contributes to the project root area of the repository. It has about 21 lines."
+    },
+    {
+      "path": "src/components/AppShell.jsx",
+      "size": 8243,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "javascript-react",
+      "lines": 184,
+      "symbol": "AppShell",
+      "imports": [
+        "import React, { useState, useEffect } from 'react';",
+        "import { NavLink, Link, useLocation, Outlet } from 'react-router-dom';",
+        "import {",
+        "import { currentUser } from '../mockData';",
+        "import Footer from './shared/Footer';"
+      ],
+      "routes": [
+        "/track",
+        "/officer",
+        "/director"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [
+        "Shield,"
+      ],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `AppShell` if present and then trace the request flow through imports and downstream service calls. Routes detected: /track, /officer, /director.",
+      "excerpt": "",
+      "brief": "src/components/AppShell.jsx (javascript-react, ui, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 184 lines. Primary symbol: AppShell. Key imports: import React, { useState, useEffect } from 'react';, import { NavLink, Link, useLocation, Outlet } from 'react-router-dom';, import {, import { currentUser } from '../mockData';, import Footer from './shared/Footer';. Representative commands: Shield,."
+    },
+    {
+      "path": "src/pages/FileComplaintWorkflow.jsx",
+      "size": 9421,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 224,
+      "symbol": "FileComplaintWorkflow",
+      "imports": [
+        "import { useState } from 'react'",
+        "import Navbar from '../components/shared/Navbar'",
+        "import Footer from '../components/shared/Footer'",
+        "import StepIndicator from '../components/file-complaint/StepIndicator'",
+        "import DepartmentSelector from '../components/file-complaint/DepartmentSelector'",
+        "import ComplaintForm from '../components/file-complaint/ComplaintForm'",
+        "import EvidenceUploader from '../components/file-complaint/EvidenceUploader'",
+        "import ReviewSubmitCard from '../components/file-complaint/ReviewSubmitCard'",
+        "import { CheckCircle } from 'lucide-react'",
+        "import { Link } from 'react-router-dom'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `FileComplaintWorkflow` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/FileComplaintWorkflow.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 224 lines. Primary symbol: FileComplaintWorkflow. Key imports: import { useState } from 'react', import Navbar from '../components/shared/Navbar', import Footer from '../components/shared/Footer', import StepIndicator from '../components/file-complaint/StepIndicator', import DepartmentSelector from '../components/file-complaint/DepartmentSelector'."
+    },
+    {
+      "path": "src/components/Layout.jsx",
+      "size": 3855,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "javascript-react",
+      "lines": 95,
+      "symbol": "Layout",
+      "imports": [
+        "import { Outlet, Link, useLocation } from 'react-router-dom';",
+        "import { Shield, FileText, Search, LayoutDashboard, BarChart3, Menu } from 'lucide-react';",
+        "import { useState } from 'react';"
+      ],
+      "routes": [
+        "/submit",
+        "/track",
+        "/officer",
+        "/director"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `Layout` if present and then trace the request flow through imports and downstream service calls. Routes detected: /submit, /track, /officer, /director.",
+      "excerpt": "",
+      "brief": "src/components/Layout.jsx (javascript-react, ui, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 95 lines. Primary symbol: Layout. Key imports: import { Outlet, Link, useLocation } from 'react-router-dom';, import { Shield, FileText, Search, LayoutDashboard, BarChart3, Menu } from 'lucide-react';, import { useState } from 'react';."
+    },
+    {
+      "path": "src/components/shared/Navbar.jsx",
+      "size": 4520,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "javascript-react",
+      "lines": 117,
+      "symbol": "Navbar",
+      "imports": [
+        "import { Link, useLocation } from 'react-router-dom'",
+        "import { Shield, Menu, X } from 'lucide-react'",
+        "import { useState } from 'react'",
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [
+        "/file-complaint",
+        "/track",
+        "/officer",
+        "/director"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `Navbar` if present and then trace the request flow through imports and downstream service calls. Routes detected: /file-complaint, /track, /officer, /director.",
+      "excerpt": "",
+      "brief": "src/components/shared/Navbar.jsx (javascript-react, ui, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 117 lines. Primary symbol: Navbar. Key imports: import { Link, useLocation } from 'react-router-dom', import { Shield, Menu, X } from 'lucide-react', import { useState } from 'react', import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/TabbedPanel.jsx",
+      "size": 5095,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "data-model",
+      "language": "javascript-react",
+      "lines": 133,
+      "symbol": "TabbedPanel",
+      "imports": [
+        "import React from 'react';",
+        "import { cn } from '../utils/cn.js';"
+      ],
+      "routes": [],
+      "data_models": [
+        "for"
+      ],
+      "role_hints": [
+        "ui",
+        "data-model"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Data model or type-definition file describing the shapes the application stores, exchanges, or validates.",
+      "why": "It exists to centralize schema expectations so other layers can rely on shared structure instead of duplicating field logic.",
+      "how": "Start with the declared models or types: for and then inspect which services or routes consume them.",
+      "excerpt": "",
+      "brief": "src/components/TabbedPanel.jsx (javascript-react, ui, data-model)",
+      "summary": "Data model or type-definition file describing the shapes the application stores, exchanges, or validates. It has about 133 lines. Primary symbol: TabbedPanel. Key imports: import React from 'react';, import { cn } from '../utils/cn.js';."
+    },
+    {
+      "path": "src/pages/OfficerComplaintDetail.jsx",
+      "size": 13422,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 265,
+      "symbol": "OfficerComplaintDetail",
+      "imports": [
+        "import { useState } from 'react'",
+        "import { useParams, useNavigate, Link } from 'react-router-dom'",
+        "import Navbar from '../components/shared/Navbar'",
+        "import StatusPill from '../components/shared/StatusPill'",
+        "import AIPanel from '../components/officer/AIPanel'",
+        "import EvidenceGallery from '../components/officer/EvidenceGallery'",
+        "import { complaints } from '../mockData'",
+        "import { ArrowLeft, Save, CheckCircle } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `OfficerComplaintDetail` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/OfficerComplaintDetail.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 265 lines. Primary symbol: OfficerComplaintDetail. Key imports: import { useState } from 'react', import { useParams, useNavigate, Link } from 'react-router-dom', import Navbar from '../components/shared/Navbar', import StatusPill from '../components/shared/StatusPill', import AIPanel from '../components/officer/AIPanel'."
+    },
+    {
+      "path": "src/components/file-complaint/ReviewSubmitCard.jsx",
+      "size": 5262,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 122,
+      "symbol": "ReviewSubmitCard",
+      "imports": [
+        "import React from 'react';",
+        "import { ShieldCheck } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `ReviewSubmitCard` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/ReviewSubmitCard.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 122 lines. Primary symbol: ReviewSubmitCard. Key imports: import React from 'react';, import { ShieldCheck } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/ComplaintDetail.jsx",
+      "size": 9813,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 214,
+      "symbol": "ComplaintDetail",
+      "imports": [
+        "import { useState, useEffect } from 'react';",
+        "import { useParams, useNavigate } from 'react-router-dom';",
+        "import { api } from '../services/api';",
+        "import { StatusBadge, SeverityBadge } from '../components/Badges';",
+        "import { BrainCircuit, Shield, FileText, Clock, Link as LinkIcon, UserX, UserCheck, AlertTriangle, CheckCircle } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `ComplaintDetail` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/ComplaintDetail.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 214 lines. Primary symbol: ComplaintDetail. Key imports: import { useState, useEffect } from 'react';, import { useParams, useNavigate } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge, SeverityBadge } from '../components/Badges';, import { BrainCircuit, Shield, FileText, Clock, Link as LinkIcon, UserX, UserCheck, AlertTriangle, CheckCircle } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/DirectorAnalytics.jsx",
+      "size": 6119,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 130,
+      "symbol": "DirectorAnalytics",
+      "imports": [
+        "import React, { useMemo } from 'react';",
+        "import Navbar from '../components/shared/Navbar';",
+        "import MetricCard from '../components/shared/MetricCard';",
+        "import GeographicHeatmap from '../components/director/GeographicHeatmap';",
+        "import RiskProfileTable from '../components/director/RiskProfileTable';",
+        "import { dashboardMetrics } from '../mockData';",
+        "import { BarChart3, ShieldAlert, Users, Activity } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `DirectorAnalytics` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/DirectorAnalytics.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 130 lines. Primary symbol: DirectorAnalytics. Key imports: import React, { useMemo } from 'react';, import Navbar from '../components/shared/Navbar';, import MetricCard from '../components/shared/MetricCard';, import GeographicHeatmap from '../components/director/GeographicHeatmap';, import RiskProfileTable from '../components/director/RiskProfileTable';."
+    },
+    {
+      "path": "src/pages/OfficerDashboard.jsx",
+      "size": 6431,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 137,
+      "symbol": "OfficerDashboard",
+      "imports": [
+        "import { useState, useEffect } from 'react';",
+        "import { Link } from 'react-router-dom';",
+        "import { api } from '../services/api';",
+        "import { StatusBadge, SeverityBadge } from '../components/Badges';",
+        "import { Filter, Search, AlertCircle, BrainCircuit } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `OfficerDashboard` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/OfficerDashboard.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 137 lines. Primary symbol: OfficerDashboard. Key imports: import { useState, useEffect } from 'react';, import { Link } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge, SeverityBadge } from '../components/Badges';, import { Filter, Search, AlertCircle, BrainCircuit } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/PublicHome.jsx",
+      "size": 701,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 22,
+      "symbol": "PublicHome",
+      "imports": [
+        "import React from 'react'",
+        "import Navbar from '../components/shared/Navbar'",
+        "import Footer from '../components/shared/Footer'",
+        "import HeroSection from '../components/home/HeroSection'",
+        "import FeatureCards from '../components/home/FeatureCards'",
+        "import StatCounter from '../components/home/StatCounter'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `PublicHome` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/PublicHome.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 22 lines. Primary symbol: PublicHome. Key imports: import React from 'react', import Navbar from '../components/shared/Navbar', import Footer from '../components/shared/Footer', import HeroSection from '../components/home/HeroSection', import FeatureCards from '../components/home/FeatureCards'."
+    },
+    {
+      "path": "src/pages/TrackComplaint.jsx",
+      "size": 6165,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 139,
+      "symbol": "TrackComplaint",
+      "imports": [
+        "import { useState, useEffect } from 'react';",
+        "import { useSearchParams } from 'react-router-dom';",
+        "import { api } from '../services/api';",
+        "import { StatusBadge } from '../components/Badges';",
+        "import { Search, CheckCircle2, Clock, AlertTriangle, Link as LinkIcon } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `TrackComplaint` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/TrackComplaint.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 139 lines. Primary symbol: TrackComplaint. Key imports: import { useState, useEffect } from 'react';, import { useSearchParams } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge } from '../components/Badges';, import { Search, CheckCircle2, Clock, AlertTriangle, Link as LinkIcon } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/AnalyticsDashboard.jsx",
+      "size": 5434,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 130,
+      "symbol": "AnalyticsDashboard",
+      "imports": [
+        "import { useState, useEffect } from 'react';",
+        "import { api } from '../services/api';",
+        "import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';",
+        "import { Map, AlertTriangle, TrendingUp, Users } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `AnalyticsDashboard` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/AnalyticsDashboard.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 130 lines. Primary symbol: AnalyticsDashboard. Key imports: import { useState, useEffect } from 'react';, import { api } from '../services/api';, import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';, import { Map, AlertTriangle, TrendingUp, Users } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/Home.jsx",
+      "size": 3786,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 76,
+      "symbol": "Home",
+      "imports": [
+        "import { Link } from 'react-router-dom';",
+        "import { ShieldAlert, Search, MessageSquare, Smartphone, Lock, BrainCircuit } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `Home` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/Home.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 76 lines. Primary symbol: Home. Key imports: import { Link } from 'react-router-dom';, import { ShieldAlert, Search, MessageSquare, Smartphone, Lock, BrainCircuit } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/SubmitComplaint.jsx",
+      "size": 7953,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 168,
+      "symbol": "SubmitComplaint",
+      "imports": [
+        "import { useState } from 'react';",
+        "import { useNavigate } from 'react-router-dom';",
+        "import { api } from '../services/api';",
+        "import { UploadCloud, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `SubmitComplaint` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/SubmitComplaint.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 168 lines. Primary symbol: SubmitComplaint. Key imports: import { useState } from 'react';, import { useNavigate } from 'react-router-dom';, import { api } from '../services/api';, import { UploadCloud, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';."
+    },
+    {
+      "path": "src/services/api.js",
+      "size": 3144,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "javascript",
+      "lines": 90,
+      "symbol": "delay",
+      "imports": [
+        "import { initialComplaints, analyticsData } from '../mockData';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `delay` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "src/services/api.js (javascript, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 90 lines. Primary symbol: delay. Key imports: import { initialComplaints, analyticsData } from '../mockData';."
+    },
+    {
+      "path": "src/components/Badges.jsx",
+      "size": 1199,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 35,
+      "symbol": "colors",
+      "imports": [
+        "import React from 'react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `colors` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/Badges.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 35 lines. Primary symbol: colors. Key imports: import React from 'react';."
+    },
+    {
+      "path": "src/components/ItemCard.jsx",
+      "size": 5409,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 148,
+      "symbol": "ItemCard",
+      "imports": [
+        "import React from 'react'",
+        "import { Calendar, ChevronRight, Tag, Hash, ArrowRight } from 'lucide-react'",
+        "import StatusPill from './shared/StatusPill'",
+        "import { cn } from '../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `ItemCard` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/ItemCard.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 148 lines. Primary symbol: ItemCard. Key imports: import React from 'react', import { Calendar, ChevronRight, Tag, Hash, ArrowRight } from 'lucide-react', import StatusPill from './shared/StatusPill', import { cn } from '../utils/cn'."
+    },
+    {
+      "path": "src/components/StatCard.jsx",
+      "size": 5120,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 140,
+      "symbol": "StatCard",
+      "imports": [
+        "import React from 'react'",
+        "import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `StatCard` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/StatCard.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 140 lines. Primary symbol: StatCard. Key imports: import React from 'react', import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/TimelineList.jsx",
+      "size": 5119,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 139,
+      "symbol": "defaultEvents",
+      "imports": [
+        "import React from 'react'",
+        "import {"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [
+        "ShieldCheck,"
+      ],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `defaultEvents` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/TimelineList.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 139 lines. Primary symbol: defaultEvents. Key imports: import React from 'react', import {. Representative commands: ShieldCheck,."
+    },
+    {
+      "path": "src/components/director/GeographicHeatmap.jsx",
+      "size": 7173,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 166,
+      "symbol": "KERALA_DISTRICTS",
+      "imports": [
+        "import React, { useState, useMemo } from 'react';",
+        "import { MapPin, AlertOctagon } from 'lucide-react';",
+        "import { departments } from '../../mockData';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `KERALA_DISTRICTS` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/director/GeographicHeatmap.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 166 lines. Primary symbol: KERALA_DISTRICTS. Key imports: import React, { useState, useMemo } from 'react';, import { MapPin, AlertOctagon } from 'lucide-react';, import { departments } from '../../mockData';."
+    },
+    {
+      "path": "src/components/director/RiskProfileTable.jsx",
+      "size": 4770,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 101,
+      "symbol": "RiskProfileTable",
+      "imports": [
+        "import { departments } from '../../mockData'",
+        "import StatusPill from '../shared/StatusPill'",
+        "import { TrendingUp, TrendingDown, Minus } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `RiskProfileTable` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/director/RiskProfileTable.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 101 lines. Primary symbol: RiskProfileTable. Key imports: import { departments } from '../../mockData', import StatusPill from '../shared/StatusPill', import { TrendingUp, TrendingDown, Minus } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/file-complaint/ComplaintForm.jsx",
+      "size": 5387,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 118,
+      "symbol": "ComplaintForm",
+      "imports": [
+        "import React from 'react';",
+        "import { AlertCircle } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `ComplaintForm` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/ComplaintForm.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 118 lines. Primary symbol: ComplaintForm. Key imports: import React from 'react';, import { AlertCircle } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/file-complaint/DepartmentSelector.jsx",
+      "size": 4121,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 93,
+      "symbol": "DepartmentSelector",
+      "imports": [
+        "import { departments } from '../../mockData'",
+        "import { Search, Building2 } from 'lucide-react'",
+        "import { useState } from 'react'",
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `DepartmentSelector` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/DepartmentSelector.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 93 lines. Primary symbol: DepartmentSelector. Key imports: import { departments } from '../../mockData', import { Search, Building2 } from 'lucide-react', import { useState } from 'react', import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/file-complaint/EvidenceUploader.jsx",
+      "size": 6214,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 153,
+      "symbol": "EvidenceUploader",
+      "imports": [
+        "import React, { useState, useRef } from 'react'",
+        "import { UploadCloud, FileText, X } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `EvidenceUploader` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/EvidenceUploader.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 153 lines. Primary symbol: EvidenceUploader. Key imports: import React, { useState, useRef } from 'react', import { UploadCloud, FileText, X } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/file-complaint/StepIndicator.jsx",
+      "size": 2462,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 61,
+      "symbol": "StepIndicator",
+      "imports": [
+        "import { Check } from 'lucide-react'",
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `StepIndicator` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/StepIndicator.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 61 lines. Primary symbol: StepIndicator. Key imports: import { Check } from 'lucide-react', import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/home/FeatureCards.jsx",
+      "size": 2472,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 58,
+      "symbol": "FeatureCards",
+      "imports": [
+        "import { Bot, Link as LinkIcon, UserX } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `FeatureCards` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/home/FeatureCards.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 58 lines. Primary symbol: FeatureCards. Key imports: import { Bot, Link as LinkIcon, UserX } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/home/HeroSection.jsx",
+      "size": 6442,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 104,
+      "symbol": "HeroSection",
+      "imports": [
+        "import { Link } from 'react-router-dom'",
+        "import { ArrowRight, Search } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `HeroSection` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/home/HeroSection.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 104 lines. Primary symbol: HeroSection. Key imports: import { Link } from 'react-router-dom', import { ArrowRight, Search } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/home/StatCounter.jsx",
+      "size": 2587,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 57,
+      "symbol": "getIcon",
+      "imports": [
+        "import React from 'react';",
+        "import { dashboardMetrics } from '../../mockData';",
+        "import { ShieldCheck, Clock, FileText, Database } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `getIcon` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/home/StatCounter.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 57 lines. Primary symbol: getIcon. Key imports: import React from 'react';, import { dashboardMetrics } from '../../mockData';, import { ShieldCheck, Clock, FileText, Database } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/officer/AIPanel.jsx",
+      "size": 3568,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 82,
+      "symbol": "AIPanel",
+      "imports": [
+        "import React from 'react';",
+        "import { Bot, ShieldAlert, CheckCircle } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `AIPanel` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/officer/AIPanel.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 82 lines. Primary symbol: AIPanel. Key imports: import React from 'react';, import { Bot, ShieldAlert, CheckCircle } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/officer/ComplaintDataGrid.jsx",
+      "size": 4554,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 94,
+      "symbol": "ComplaintDataGrid",
+      "imports": [
+        "import { useNavigate } from 'react-router-dom'",
+        "import StatusPill from '../shared/StatusPill'",
+        "import { AlertTriangle } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `ComplaintDataGrid` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/officer/ComplaintDataGrid.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 94 lines. Primary symbol: ComplaintDataGrid. Key imports: import { useNavigate } from 'react-router-dom', import StatusPill from '../shared/StatusPill', import { AlertTriangle } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/officer/EvidenceGallery.jsx",
+      "size": 5328,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 116,
+      "symbol": "EvidenceGallery",
+      "imports": [
+        "import React from 'react';",
+        "import { evidenceFiles } from '../../mockData';",
+        "import { FileText, Image as ImageIcon, Download } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `EvidenceGallery` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/officer/EvidenceGallery.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 116 lines. Primary symbol: EvidenceGallery. Key imports: import React from 'react';, import { evidenceFiles } from '../../mockData';, import { FileText, Image as ImageIcon, Download } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/officer/FilterTabs.jsx",
+      "size": 1199,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 32,
+      "symbol": "FilterTabs",
+      "imports": [
+        "import React from 'react';",
+        "import { cn } from '../../utils/cn';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `FilterTabs` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/officer/FilterTabs.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 32 lines. Primary symbol: FilterTabs. Key imports: import React from 'react';, import { cn } from '../../utils/cn';."
+    },
+    {
+      "path": "src/components/shared/Footer.jsx",
+      "size": 3464,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 82,
+      "symbol": "Footer",
+      "imports": [
+        "import { Shield } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `Footer` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/shared/Footer.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 82 lines. Primary symbol: Footer. Key imports: import { Shield } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/shared/MetricCard.jsx",
+      "size": 1935,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 62,
+      "symbol": "MetricCard",
+      "imports": [
+        "import { TrendingUp, TrendingDown } from 'lucide-react'",
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `MetricCard` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/shared/MetricCard.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 62 lines. Primary symbol: MetricCard. Key imports: import { TrendingUp, TrendingDown } from 'lucide-react', import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/shared/StatusPill.jsx",
+      "size": 1231,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 37,
+      "symbol": "StatusPill",
+      "imports": [
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `StatusPill` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/shared/StatusPill.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 37 lines. Primary symbol: StatusPill. Key imports: import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/track/BlockchainTimeline.jsx",
+      "size": 4847,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 109,
+      "symbol": "BlockchainTimeline",
+      "imports": [
+        "import React, { useMemo } from 'react';",
+        "import { timelineEvents } from '../../mockData';",
+        "import { Link as LinkIcon, Clock, User } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `BlockchainTimeline` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/track/BlockchainTimeline.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 109 lines. Primary symbol: BlockchainTimeline. Key imports: import React, { useMemo } from 'react';, import { timelineEvents } from '../../mockData';, import { Link as LinkIcon, Clock, User } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/track/TrackingSearch.jsx",
+      "size": 1876,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 42,
+      "symbol": "TrackingSearch",
+      "imports": [
+        "import { Search } from 'lucide-react'",
+        "import { useState } from 'react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `TrackingSearch` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/track/TrackingSearch.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 42 lines. Primary symbol: TrackingSearch. Key imports: import { Search } from 'lucide-react', import { useState } from 'react'."
+    },
+    {
+      "path": "index.html",
+      "size": 348,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "html",
+      "lines": 12,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the project root area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "index.html (html)",
+      "summary": "Source file that contributes to the project root area of the repository. It has about 12 lines."
+    },
+    {
+      "path": "src/index.css",
+      "size": 772,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "css",
+      "lines": 18,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `src` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "src/index.css (css)",
+      "summary": "Source file that contributes to the `src` area of the repository. It has about 18 lines."
+    },
+    {
+      "path": "src/mockData.js",
+      "size": 7221,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 142,
+      "symbol": "generateHash",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `src` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `generateHash` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "src/mockData.js (javascript)",
+      "summary": "Source file that contributes to the `src` area of the repository. It has about 142 lines. Primary symbol: generateHash."
+    }
+  ],
+  "all_file_summaries": [
+    {
+      "path": "src/App.jsx",
+      "size": 1019,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "api-module",
+      "language": "javascript-react",
+      "lines": 27,
+      "symbol": "App",
+      "imports": [
+        "import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';",
+        "import Layout from './components/Layout';",
+        "import Home from './pages/Home';",
+        "import SubmitComplaint from './pages/SubmitComplaint';",
+        "import TrackComplaint from './pages/TrackComplaint';",
+        "import OfficerDashboard from './pages/OfficerDashboard';",
+        "import ComplaintDetail from './pages/ComplaintDetail';",
+        "import AnalyticsDashboard from './pages/AnalyticsDashboard';"
+      ],
+      "routes": [
+        "submit",
+        "track",
+        "officer",
+        "officer/complaint/:id",
+        "director"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `App` if present and then trace the request flow through imports and downstream service calls. Routes detected: submit, track, officer, officer/complaint/:id.",
+      "excerpt": "import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';\nimport Layout from './components/Layout';\nimport Home from './pages/Home';\nimport SubmitComplaint from './pages/SubmitComplaint';\nimport TrackComplaint from './pages/TrackComplaint';\nimport OfficerDashboard from './pages/OfficerDashboard';\nimport ComplaintDetail from './pages/ComplaintDetail';\nimport AnalyticsDashboard from './pages/AnalyticsDashboard';\n\nfunction App() {\n  return (\n    <Router>\n      <Routes>\n        <Route path=\"/\" element={<Layout />}>\n          <Route index element={<Home />} />\n          <Route path=\"submit\" element={<SubmitComplaint />} />\n          <Route path=\"track\" element={<TrackComplaint />} />\n          <Route path=\"officer\" element={<OfficerDashboard />} />\n          <Route path=\"officer/complaint/:id\" element={<ComplaintDetail />} />\n          <Route path=\"director\" element={<AnalyticsDashboard />} />\n        </Route>\n      </Routes>\n    </Router>\n  );\n}\n\nexport default App;",
+      "brief": "src/App.jsx (javascript-react, ui, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 27 lines. Primary symbol: App. Key imports: import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';, import Layout from './components/Layout';, import Home from './pages/Home';, import SubmitComplaint from './pages/SubmitComplaint';, import TrackComplaint from './pages/TrackComplaint';."
+    },
+    {
+      "path": "vite.config.js",
+      "size": 174,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "build-config",
+      "language": "javascript",
+      "lines": 9,
+      "symbol": "",
+      "imports": [
+        "import { defineConfig } from 'vite';",
+        "import react from '@vitejs/plugin-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project.",
+      "why": "It exists because the build pipeline has repo-specific entrypoints, output rules, plugins, or environment handling that cannot live in default tool settings.",
+      "how": "Start with `` if present, then inspect imported helpers like import { defineConfig } from 'vite';, import react from '@vitejs/plugin-react'; to see which parts of the build are delegated elsewhere.",
+      "excerpt": "import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n  server: {\n    port: 3000\n  }\n});",
+      "brief": "vite.config.js (javascript, config)",
+      "summary": "Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project. It has about 9 lines. Key imports: import { defineConfig } from 'vite';, import react from '@vitejs/plugin-react';."
+    },
+    {
+      "path": "package.json",
+      "size": 557,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "package-manifest",
+      "language": "json",
+      "lines": 25,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "config"
+      ],
+      "headings": [],
+      "json_keys": [
+        "name",
+        "private",
+        "version",
+        "type",
+        "scripts",
+        "dependencies",
+        "devDependencies"
+      ],
+      "commands": [],
+      "purpose": "Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace.",
+      "why": "It exists as the control file for install/build/test commands and for declaring the dependency surface this project expects.",
+      "how": "Start with top-level keys like name, private, version, type, scripts, dependencies and then inspect the scripts section to understand day-to-day commands.",
+      "excerpt": "{\n  \"name\": \"c3ms-vacb-kerala\",\n  \"private\": true,\n  \"version\": \"1.0.0\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"build\": \"vite build\",\n    \"preview\": \"vite preview\"\n  },\n  \"dependencies\": {\n    \"lucide-react\": \"^0.344.0\",\n    \"react\": \"^18.2.0\",\n    \"react-dom\": \"^18.2.0\",\n    \"react-router-dom\": \"^6.22.3\",\n    \"recharts\": \"^2.12.2\"\n  },\n  \"devDependencies\": {\n    \"@vitejs/plugin-react\": \"^4.2.1\",\n    \"autoprefixer\": \"^10.4.18\",\n    \"postcss\": \"^8.4.35\",\n    \"tailwindcss\": \"^3.4.1\",\n    \"vite\": \"^4.5.2\"\n  }\n}",
+      "brief": "package.json (json, config)",
+      "summary": "Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace. It has about 25 lines. Top-level keys: name, private, version, type, scripts, dependencies."
+    },
+    {
+      "path": "src/main.jsx",
+      "size": 248,
+      "tier": 1,
+      "tier_reason": "critical-config",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 10,
+      "symbol": "",
+      "imports": [
+        "import React from 'react';",
+        "import ReactDOM from 'react-dom/client';",
+        "import App from './App.jsx';",
+        "import './index.css';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "import React from 'react';\nimport ReactDOM from 'react-dom/client';\nimport App from './App.jsx';\nimport './index.css';\n\nReactDOM.createRoot(document.getElementById('root')).render(\n  <React.StrictMode>\n    <App />\n  </React.StrictMode>,\n);",
+      "brief": "src/main.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 10 lines. Key imports: import React from 'react';, import ReactDOM from 'react-dom/client';, import App from './App.jsx';, import './index.css';."
+    },
+    {
+      "path": "postcss.config.js",
+      "size": 84,
+      "tier": 1,
+      "tier_reason": "entry-routing",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 6,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the project root area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "export default {\n  plugins: {\n    tailwindcss: {},\n    autoprefixer: {},\n  },\n}",
+      "brief": "postcss.config.js (javascript)",
+      "summary": "Source file that contributes to the project root area of the repository. It has about 6 lines."
+    },
+    {
+      "path": "tailwind.config.js",
+      "size": 385,
+      "tier": 1,
+      "tier_reason": "entry-routing",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 21,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the project root area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "/** @type {import('tailwindcss').Config} */\nexport default {\n  content: [\n    \"./index.html\",\n    \"./src/**/*.{js,ts,jsx,tsx}\",\n  ],\n  theme: {\n    extend: {\n      colors: {\n        vacb: {\n          50: '#f0fdfa',\n          100: '#ccfbf1',\n          500: '#14b8a6',\n          700: '#0f766e',\n          900: '#134e4a',\n        }\n      }\n    },\n  },\n  plugins: [],\n}",
+      "brief": "tailwind.config.js (javascript)",
+      "summary": "Source file that contributes to the project root area of the repository. It has about 21 lines."
+    },
+    {
+      "path": "src/components/AppShell.jsx",
+      "size": 8243,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "javascript-react",
+      "lines": 184,
+      "symbol": "AppShell",
+      "imports": [
+        "import React, { useState, useEffect } from 'react';",
+        "import { NavLink, Link, useLocation, Outlet } from 'react-router-dom';",
+        "import {",
+        "import { currentUser } from '../mockData';",
+        "import Footer from './shared/Footer';"
+      ],
+      "routes": [
+        "/track",
+        "/officer",
+        "/director"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [
+        "Shield,"
+      ],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `AppShell` if present and then trace the request flow through imports and downstream service calls. Routes detected: /track, /officer, /director.",
+      "excerpt": "",
+      "brief": "src/components/AppShell.jsx (javascript-react, ui, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 184 lines. Primary symbol: AppShell. Key imports: import React, { useState, useEffect } from 'react';, import { NavLink, Link, useLocation, Outlet } from 'react-router-dom';, import {, import { currentUser } from '../mockData';, import Footer from './shared/Footer';. Representative commands: Shield,."
+    },
+    {
+      "path": "src/pages/FileComplaintWorkflow.jsx",
+      "size": 9421,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 224,
+      "symbol": "FileComplaintWorkflow",
+      "imports": [
+        "import { useState } from 'react'",
+        "import Navbar from '../components/shared/Navbar'",
+        "import Footer from '../components/shared/Footer'",
+        "import StepIndicator from '../components/file-complaint/StepIndicator'",
+        "import DepartmentSelector from '../components/file-complaint/DepartmentSelector'",
+        "import ComplaintForm from '../components/file-complaint/ComplaintForm'",
+        "import EvidenceUploader from '../components/file-complaint/EvidenceUploader'",
+        "import ReviewSubmitCard from '../components/file-complaint/ReviewSubmitCard'",
+        "import { CheckCircle } from 'lucide-react'",
+        "import { Link } from 'react-router-dom'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `FileComplaintWorkflow` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/FileComplaintWorkflow.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 224 lines. Primary symbol: FileComplaintWorkflow. Key imports: import { useState } from 'react', import Navbar from '../components/shared/Navbar', import Footer from '../components/shared/Footer', import StepIndicator from '../components/file-complaint/StepIndicator', import DepartmentSelector from '../components/file-complaint/DepartmentSelector'."
+    },
+    {
+      "path": "src/components/Layout.jsx",
+      "size": 3855,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "javascript-react",
+      "lines": 95,
+      "symbol": "Layout",
+      "imports": [
+        "import { Outlet, Link, useLocation } from 'react-router-dom';",
+        "import { Shield, FileText, Search, LayoutDashboard, BarChart3, Menu } from 'lucide-react';",
+        "import { useState } from 'react';"
+      ],
+      "routes": [
+        "/submit",
+        "/track",
+        "/officer",
+        "/director"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `Layout` if present and then trace the request flow through imports and downstream service calls. Routes detected: /submit, /track, /officer, /director.",
+      "excerpt": "",
+      "brief": "src/components/Layout.jsx (javascript-react, ui, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 95 lines. Primary symbol: Layout. Key imports: import { Outlet, Link, useLocation } from 'react-router-dom';, import { Shield, FileText, Search, LayoutDashboard, BarChart3, Menu } from 'lucide-react';, import { useState } from 'react';."
+    },
+    {
+      "path": "src/components/shared/Navbar.jsx",
+      "size": 4520,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "javascript-react",
+      "lines": 117,
+      "symbol": "Navbar",
+      "imports": [
+        "import { Link, useLocation } from 'react-router-dom'",
+        "import { Shield, Menu, X } from 'lucide-react'",
+        "import { useState } from 'react'",
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [
+        "/file-complaint",
+        "/track",
+        "/officer",
+        "/director"
+      ],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `Navbar` if present and then trace the request flow through imports and downstream service calls. Routes detected: /file-complaint, /track, /officer, /director.",
+      "excerpt": "",
+      "brief": "src/components/shared/Navbar.jsx (javascript-react, ui, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 117 lines. Primary symbol: Navbar. Key imports: import { Link, useLocation } from 'react-router-dom', import { Shield, Menu, X } from 'lucide-react', import { useState } from 'react', import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/TabbedPanel.jsx",
+      "size": 5095,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "data-model",
+      "language": "javascript-react",
+      "lines": 133,
+      "symbol": "TabbedPanel",
+      "imports": [
+        "import React from 'react';",
+        "import { cn } from '../utils/cn.js';"
+      ],
+      "routes": [],
+      "data_models": [
+        "for"
+      ],
+      "role_hints": [
+        "ui",
+        "data-model"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Data model or type-definition file describing the shapes the application stores, exchanges, or validates.",
+      "why": "It exists to centralize schema expectations so other layers can rely on shared structure instead of duplicating field logic.",
+      "how": "Start with the declared models or types: for and then inspect which services or routes consume them.",
+      "excerpt": "",
+      "brief": "src/components/TabbedPanel.jsx (javascript-react, ui, data-model)",
+      "summary": "Data model or type-definition file describing the shapes the application stores, exchanges, or validates. It has about 133 lines. Primary symbol: TabbedPanel. Key imports: import React from 'react';, import { cn } from '../utils/cn.js';."
+    },
+    {
+      "path": "src/pages/OfficerComplaintDetail.jsx",
+      "size": 13422,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 265,
+      "symbol": "OfficerComplaintDetail",
+      "imports": [
+        "import { useState } from 'react'",
+        "import { useParams, useNavigate, Link } from 'react-router-dom'",
+        "import Navbar from '../components/shared/Navbar'",
+        "import StatusPill from '../components/shared/StatusPill'",
+        "import AIPanel from '../components/officer/AIPanel'",
+        "import EvidenceGallery from '../components/officer/EvidenceGallery'",
+        "import { complaints } from '../mockData'",
+        "import { ArrowLeft, Save, CheckCircle } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `OfficerComplaintDetail` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/OfficerComplaintDetail.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 265 lines. Primary symbol: OfficerComplaintDetail. Key imports: import { useState } from 'react', import { useParams, useNavigate, Link } from 'react-router-dom', import Navbar from '../components/shared/Navbar', import StatusPill from '../components/shared/StatusPill', import AIPanel from '../components/officer/AIPanel'."
+    },
+    {
+      "path": "src/components/file-complaint/ReviewSubmitCard.jsx",
+      "size": 5262,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 122,
+      "symbol": "ReviewSubmitCard",
+      "imports": [
+        "import React from 'react';",
+        "import { ShieldCheck } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `ReviewSubmitCard` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/ReviewSubmitCard.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 122 lines. Primary symbol: ReviewSubmitCard. Key imports: import React from 'react';, import { ShieldCheck } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/ComplaintDetail.jsx",
+      "size": 9813,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 214,
+      "symbol": "ComplaintDetail",
+      "imports": [
+        "import { useState, useEffect } from 'react';",
+        "import { useParams, useNavigate } from 'react-router-dom';",
+        "import { api } from '../services/api';",
+        "import { StatusBadge, SeverityBadge } from '../components/Badges';",
+        "import { BrainCircuit, Shield, FileText, Clock, Link as LinkIcon, UserX, UserCheck, AlertTriangle, CheckCircle } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `ComplaintDetail` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/ComplaintDetail.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 214 lines. Primary symbol: ComplaintDetail. Key imports: import { useState, useEffect } from 'react';, import { useParams, useNavigate } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge, SeverityBadge } from '../components/Badges';, import { BrainCircuit, Shield, FileText, Clock, Link as LinkIcon, UserX, UserCheck, AlertTriangle, CheckCircle } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/DirectorAnalytics.jsx",
+      "size": 6119,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 130,
+      "symbol": "DirectorAnalytics",
+      "imports": [
+        "import React, { useMemo } from 'react';",
+        "import Navbar from '../components/shared/Navbar';",
+        "import MetricCard from '../components/shared/MetricCard';",
+        "import GeographicHeatmap from '../components/director/GeographicHeatmap';",
+        "import RiskProfileTable from '../components/director/RiskProfileTable';",
+        "import { dashboardMetrics } from '../mockData';",
+        "import { BarChart3, ShieldAlert, Users, Activity } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `DirectorAnalytics` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/DirectorAnalytics.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 130 lines. Primary symbol: DirectorAnalytics. Key imports: import React, { useMemo } from 'react';, import Navbar from '../components/shared/Navbar';, import MetricCard from '../components/shared/MetricCard';, import GeographicHeatmap from '../components/director/GeographicHeatmap';, import RiskProfileTable from '../components/director/RiskProfileTable';."
+    },
+    {
+      "path": "src/pages/OfficerDashboard.jsx",
+      "size": 6431,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 137,
+      "symbol": "OfficerDashboard",
+      "imports": [
+        "import { useState, useEffect } from 'react';",
+        "import { Link } from 'react-router-dom';",
+        "import { api } from '../services/api';",
+        "import { StatusBadge, SeverityBadge } from '../components/Badges';",
+        "import { Filter, Search, AlertCircle, BrainCircuit } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `OfficerDashboard` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/OfficerDashboard.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 137 lines. Primary symbol: OfficerDashboard. Key imports: import { useState, useEffect } from 'react';, import { Link } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge, SeverityBadge } from '../components/Badges';, import { Filter, Search, AlertCircle, BrainCircuit } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/PublicHome.jsx",
+      "size": 701,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 22,
+      "symbol": "PublicHome",
+      "imports": [
+        "import React from 'react'",
+        "import Navbar from '../components/shared/Navbar'",
+        "import Footer from '../components/shared/Footer'",
+        "import HeroSection from '../components/home/HeroSection'",
+        "import FeatureCards from '../components/home/FeatureCards'",
+        "import StatCounter from '../components/home/StatCounter'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `PublicHome` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/PublicHome.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 22 lines. Primary symbol: PublicHome. Key imports: import React from 'react', import Navbar from '../components/shared/Navbar', import Footer from '../components/shared/Footer', import HeroSection from '../components/home/HeroSection', import FeatureCards from '../components/home/FeatureCards'."
+    },
+    {
+      "path": "src/pages/TrackComplaint.jsx",
+      "size": 6165,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 139,
+      "symbol": "TrackComplaint",
+      "imports": [
+        "import { useState, useEffect } from 'react';",
+        "import { useSearchParams } from 'react-router-dom';",
+        "import { api } from '../services/api';",
+        "import { StatusBadge } from '../components/Badges';",
+        "import { Search, CheckCircle2, Clock, AlertTriangle, Link as LinkIcon } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `TrackComplaint` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/TrackComplaint.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 139 lines. Primary symbol: TrackComplaint. Key imports: import { useState, useEffect } from 'react';, import { useSearchParams } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge } from '../components/Badges';, import { Search, CheckCircle2, Clock, AlertTriangle, Link as LinkIcon } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/AnalyticsDashboard.jsx",
+      "size": 5434,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 130,
+      "symbol": "AnalyticsDashboard",
+      "imports": [
+        "import { useState, useEffect } from 'react';",
+        "import { api } from '../services/api';",
+        "import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';",
+        "import { Map, AlertTriangle, TrendingUp, Users } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `AnalyticsDashboard` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/AnalyticsDashboard.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 130 lines. Primary symbol: AnalyticsDashboard. Key imports: import { useState, useEffect } from 'react';, import { api } from '../services/api';, import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';, import { Map, AlertTriangle, TrendingUp, Users } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/Home.jsx",
+      "size": 3786,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 76,
+      "symbol": "Home",
+      "imports": [
+        "import { Link } from 'react-router-dom';",
+        "import { ShieldAlert, Search, MessageSquare, Smartphone, Lock, BrainCircuit } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `Home` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/Home.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 76 lines. Primary symbol: Home. Key imports: import { Link } from 'react-router-dom';, import { ShieldAlert, Search, MessageSquare, Smartphone, Lock, BrainCircuit } from 'lucide-react';."
+    },
+    {
+      "path": "src/pages/SubmitComplaint.jsx",
+      "size": 7953,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "page-component",
+      "language": "javascript-react",
+      "lines": 168,
+      "symbol": "SubmitComplaint",
+      "imports": [
+        "import { useState } from 'react';",
+        "import { useNavigate } from 'react-router-dom';",
+        "import { api } from '../services/api';",
+        "import { UploadCloud, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui",
+        "routing"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Page-level UI module that usually composes other components and represents a route or large screen.",
+      "why": "It exists to keep route-specific rendering, loading, and orchestration concerns out of smaller reusable components.",
+      "how": "Start with `SubmitComplaint` if present, then trace imported components, hooks, and data calls to see how the page is assembled.",
+      "excerpt": "",
+      "brief": "src/pages/SubmitComplaint.jsx (javascript-react, ui, routing)",
+      "summary": "Page-level UI module that usually composes other components and represents a route or large screen. It has about 168 lines. Primary symbol: SubmitComplaint. Key imports: import { useState } from 'react';, import { useNavigate } from 'react-router-dom';, import { api } from '../services/api';, import { UploadCloud, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';."
+    },
+    {
+      "path": "src/services/api.js",
+      "size": 3144,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "api-module",
+      "language": "javascript",
+      "lines": 90,
+      "symbol": "delay",
+      "imports": [
+        "import { initialComplaints, analyticsData } from '../mockData';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "api"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "API-facing module that defines endpoints, handlers, or service integration behavior.",
+      "why": "It exists to translate requests into application actions and to keep routing or handler logic separate from lower-level implementation details.",
+      "how": "Start with `delay` if present and then trace the request flow through imports and downstream service calls.",
+      "excerpt": "",
+      "brief": "src/services/api.js (javascript, api)",
+      "summary": "API-facing module that defines endpoints, handlers, or service integration behavior. It has about 90 lines. Primary symbol: delay. Key imports: import { initialComplaints, analyticsData } from '../mockData';."
+    },
+    {
+      "path": "src/components/Badges.jsx",
+      "size": 1199,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 35,
+      "symbol": "colors",
+      "imports": [
+        "import React from 'react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `colors` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/Badges.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 35 lines. Primary symbol: colors. Key imports: import React from 'react';."
+    },
+    {
+      "path": "src/components/ItemCard.jsx",
+      "size": 5409,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 148,
+      "symbol": "ItemCard",
+      "imports": [
+        "import React from 'react'",
+        "import { Calendar, ChevronRight, Tag, Hash, ArrowRight } from 'lucide-react'",
+        "import StatusPill from './shared/StatusPill'",
+        "import { cn } from '../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `ItemCard` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/ItemCard.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 148 lines. Primary symbol: ItemCard. Key imports: import React from 'react', import { Calendar, ChevronRight, Tag, Hash, ArrowRight } from 'lucide-react', import StatusPill from './shared/StatusPill', import { cn } from '../utils/cn'."
+    },
+    {
+      "path": "src/components/StatCard.jsx",
+      "size": 5120,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 140,
+      "symbol": "StatCard",
+      "imports": [
+        "import React from 'react'",
+        "import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `StatCard` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/StatCard.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 140 lines. Primary symbol: StatCard. Key imports: import React from 'react', import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/TimelineList.jsx",
+      "size": 5119,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 139,
+      "symbol": "defaultEvents",
+      "imports": [
+        "import React from 'react'",
+        "import {"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [
+        "ShieldCheck,"
+      ],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `defaultEvents` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/TimelineList.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 139 lines. Primary symbol: defaultEvents. Key imports: import React from 'react', import {. Representative commands: ShieldCheck,."
+    },
+    {
+      "path": "src/components/director/GeographicHeatmap.jsx",
+      "size": 7173,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 166,
+      "symbol": "KERALA_DISTRICTS",
+      "imports": [
+        "import React, { useState, useMemo } from 'react';",
+        "import { MapPin, AlertOctagon } from 'lucide-react';",
+        "import { departments } from '../../mockData';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `KERALA_DISTRICTS` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/director/GeographicHeatmap.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 166 lines. Primary symbol: KERALA_DISTRICTS. Key imports: import React, { useState, useMemo } from 'react';, import { MapPin, AlertOctagon } from 'lucide-react';, import { departments } from '../../mockData';."
+    },
+    {
+      "path": "src/components/director/RiskProfileTable.jsx",
+      "size": 4770,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 101,
+      "symbol": "RiskProfileTable",
+      "imports": [
+        "import { departments } from '../../mockData'",
+        "import StatusPill from '../shared/StatusPill'",
+        "import { TrendingUp, TrendingDown, Minus } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `RiskProfileTable` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/director/RiskProfileTable.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 101 lines. Primary symbol: RiskProfileTable. Key imports: import { departments } from '../../mockData', import StatusPill from '../shared/StatusPill', import { TrendingUp, TrendingDown, Minus } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/file-complaint/ComplaintForm.jsx",
+      "size": 5387,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 118,
+      "symbol": "ComplaintForm",
+      "imports": [
+        "import React from 'react';",
+        "import { AlertCircle } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `ComplaintForm` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/ComplaintForm.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 118 lines. Primary symbol: ComplaintForm. Key imports: import React from 'react';, import { AlertCircle } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/file-complaint/DepartmentSelector.jsx",
+      "size": 4121,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 93,
+      "symbol": "DepartmentSelector",
+      "imports": [
+        "import { departments } from '../../mockData'",
+        "import { Search, Building2 } from 'lucide-react'",
+        "import { useState } from 'react'",
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `DepartmentSelector` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/DepartmentSelector.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 93 lines. Primary symbol: DepartmentSelector. Key imports: import { departments } from '../../mockData', import { Search, Building2 } from 'lucide-react', import { useState } from 'react', import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/file-complaint/EvidenceUploader.jsx",
+      "size": 6214,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 153,
+      "symbol": "EvidenceUploader",
+      "imports": [
+        "import React, { useState, useRef } from 'react'",
+        "import { UploadCloud, FileText, X } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `EvidenceUploader` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/EvidenceUploader.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 153 lines. Primary symbol: EvidenceUploader. Key imports: import React, { useState, useRef } from 'react', import { UploadCloud, FileText, X } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/file-complaint/StepIndicator.jsx",
+      "size": 2462,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 61,
+      "symbol": "StepIndicator",
+      "imports": [
+        "import { Check } from 'lucide-react'",
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `StepIndicator` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/file-complaint/StepIndicator.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 61 lines. Primary symbol: StepIndicator. Key imports: import { Check } from 'lucide-react', import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/home/FeatureCards.jsx",
+      "size": 2472,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 58,
+      "symbol": "FeatureCards",
+      "imports": [
+        "import { Bot, Link as LinkIcon, UserX } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `FeatureCards` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/home/FeatureCards.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 58 lines. Primary symbol: FeatureCards. Key imports: import { Bot, Link as LinkIcon, UserX } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/home/HeroSection.jsx",
+      "size": 6442,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 104,
+      "symbol": "HeroSection",
+      "imports": [
+        "import { Link } from 'react-router-dom'",
+        "import { ArrowRight, Search } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `HeroSection` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/home/HeroSection.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 104 lines. Primary symbol: HeroSection. Key imports: import { Link } from 'react-router-dom', import { ArrowRight, Search } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/home/StatCounter.jsx",
+      "size": 2587,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 57,
+      "symbol": "getIcon",
+      "imports": [
+        "import React from 'react';",
+        "import { dashboardMetrics } from '../../mockData';",
+        "import { ShieldCheck, Clock, FileText, Database } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `getIcon` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/home/StatCounter.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 57 lines. Primary symbol: getIcon. Key imports: import React from 'react';, import { dashboardMetrics } from '../../mockData';, import { ShieldCheck, Clock, FileText, Database } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/officer/AIPanel.jsx",
+      "size": 3568,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 82,
+      "symbol": "AIPanel",
+      "imports": [
+        "import React from 'react';",
+        "import { Bot, ShieldAlert, CheckCircle } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `AIPanel` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/officer/AIPanel.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 82 lines. Primary symbol: AIPanel. Key imports: import React from 'react';, import { Bot, ShieldAlert, CheckCircle } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/officer/ComplaintDataGrid.jsx",
+      "size": 4554,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 94,
+      "symbol": "ComplaintDataGrid",
+      "imports": [
+        "import { useNavigate } from 'react-router-dom'",
+        "import StatusPill from '../shared/StatusPill'",
+        "import { AlertTriangle } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `ComplaintDataGrid` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/officer/ComplaintDataGrid.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 94 lines. Primary symbol: ComplaintDataGrid. Key imports: import { useNavigate } from 'react-router-dom', import StatusPill from '../shared/StatusPill', import { AlertTriangle } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/officer/EvidenceGallery.jsx",
+      "size": 5328,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 116,
+      "symbol": "EvidenceGallery",
+      "imports": [
+        "import React from 'react';",
+        "import { evidenceFiles } from '../../mockData';",
+        "import { FileText, Image as ImageIcon, Download } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `EvidenceGallery` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/officer/EvidenceGallery.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 116 lines. Primary symbol: EvidenceGallery. Key imports: import React from 'react';, import { evidenceFiles } from '../../mockData';, import { FileText, Image as ImageIcon, Download } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/officer/FilterTabs.jsx",
+      "size": 1199,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 32,
+      "symbol": "FilterTabs",
+      "imports": [
+        "import React from 'react';",
+        "import { cn } from '../../utils/cn';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `FilterTabs` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/officer/FilterTabs.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 32 lines. Primary symbol: FilterTabs. Key imports: import React from 'react';, import { cn } from '../../utils/cn';."
+    },
+    {
+      "path": "src/components/shared/Footer.jsx",
+      "size": 3464,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 82,
+      "symbol": "Footer",
+      "imports": [
+        "import { Shield } from 'lucide-react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `Footer` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/shared/Footer.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 82 lines. Primary symbol: Footer. Key imports: import { Shield } from 'lucide-react'."
+    },
+    {
+      "path": "src/components/shared/MetricCard.jsx",
+      "size": 1935,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 62,
+      "symbol": "MetricCard",
+      "imports": [
+        "import { TrendingUp, TrendingDown } from 'lucide-react'",
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `MetricCard` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/shared/MetricCard.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 62 lines. Primary symbol: MetricCard. Key imports: import { TrendingUp, TrendingDown } from 'lucide-react', import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/shared/StatusPill.jsx",
+      "size": 1231,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 37,
+      "symbol": "StatusPill",
+      "imports": [
+        "import { cn } from '../../utils/cn'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `StatusPill` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/shared/StatusPill.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 37 lines. Primary symbol: StatusPill. Key imports: import { cn } from '../../utils/cn'."
+    },
+    {
+      "path": "src/components/track/BlockchainTimeline.jsx",
+      "size": 4847,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 109,
+      "symbol": "BlockchainTimeline",
+      "imports": [
+        "import React, { useMemo } from 'react';",
+        "import { timelineEvents } from '../../mockData';",
+        "import { Link as LinkIcon, Clock, User } from 'lucide-react';"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `BlockchainTimeline` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/track/BlockchainTimeline.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 109 lines. Primary symbol: BlockchainTimeline. Key imports: import React, { useMemo } from 'react';, import { timelineEvents } from '../../mockData';, import { Link as LinkIcon, Clock, User } from 'lucide-react';."
+    },
+    {
+      "path": "src/components/track/TrackingSearch.jsx",
+      "size": 1876,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "ui-component",
+      "language": "javascript-react",
+      "lines": 42,
+      "symbol": "TrackingSearch",
+      "imports": [
+        "import { Search } from 'lucide-react'",
+        "import { useState } from 'react'"
+      ],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [
+        "ui"
+      ],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Reusable UI component responsible for part of the interface.",
+      "why": "It exists to encapsulate rendering behavior, styling, and interaction logic so screens can compose consistent UI pieces.",
+      "how": "Start with `TrackingSearch` if present and inspect props, imported utilities, and any sibling components it collaborates with.",
+      "excerpt": "",
+      "brief": "src/components/track/TrackingSearch.jsx (javascript-react, ui)",
+      "summary": "Reusable UI component responsible for part of the interface. It has about 42 lines. Primary symbol: TrackingSearch. Key imports: import { Search } from 'lucide-react', import { useState } from 'react'."
+    },
+    {
+      "path": "index.html",
+      "size": 348,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "html",
+      "lines": 12,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the project root area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "index.html (html)",
+      "summary": "Source file that contributes to the project root area of the repository. It has about 12 lines."
+    },
+    {
+      "path": "src/index.css",
+      "size": 772,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "css",
+      "lines": 18,
+      "symbol": "",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `src` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "src/index.css (css)",
+      "summary": "Source file that contributes to the `src` area of the repository. It has about 18 lines."
+    },
+    {
+      "path": "src/mockData.js",
+      "size": 7221,
+      "tier": 2,
+      "tier_reason": "source-summary",
+      "file_kind": "source-file",
+      "language": "javascript",
+      "lines": 142,
+      "symbol": "generateHash",
+      "imports": [],
+      "routes": [],
+      "data_models": [],
+      "role_hints": [],
+      "headings": [],
+      "json_keys": [],
+      "commands": [],
+      "purpose": "Source file that contributes to the `src` area of the repository.",
+      "why": "It exists as part of the application or tooling implementation for this part of the codebase.",
+      "how": "Start with `generateHash` if present, then inspect imports and nearby files to understand how this module fits into the surrounding flow.",
+      "excerpt": "",
+      "brief": "src/mockData.js (javascript)",
+      "summary": "Source file that contributes to the `src` area of the repository. It has about 142 lines. Primary symbol: generateHash."
+    }
+  ],
+  "dependency_graph": {
+    "edges": [
+      {
+        "from": "src/App.jsx",
+        "to": "src/components/Layout.jsx",
+        "reason": "import Layout from './components/Layout';"
+      },
+      {
+        "from": "src/App.jsx",
+        "to": "src/pages/Home.jsx",
+        "reason": "import Home from './pages/Home';"
+      },
+      {
+        "from": "src/App.jsx",
+        "to": "src/pages/SubmitComplaint.jsx",
+        "reason": "import SubmitComplaint from './pages/SubmitComplaint';"
+      },
+      {
+        "from": "src/App.jsx",
+        "to": "src/pages/TrackComplaint.jsx",
+        "reason": "import TrackComplaint from './pages/TrackComplaint';"
+      },
+      {
+        "from": "src/App.jsx",
+        "to": "src/pages/OfficerDashboard.jsx",
+        "reason": "import OfficerDashboard from './pages/OfficerDashboard';"
+      },
+      {
+        "from": "src/App.jsx",
+        "to": "src/pages/ComplaintDetail.jsx",
+        "reason": "import ComplaintDetail from './pages/ComplaintDetail';"
+      },
+      {
+        "from": "src/App.jsx",
+        "to": "src/pages/AnalyticsDashboard.jsx",
+        "reason": "import AnalyticsDashboard from './pages/AnalyticsDashboard';"
+      },
+      {
+        "from": "src/main.jsx",
+        "to": "src/App.jsx",
+        "reason": "import App from './App.jsx';"
+      },
+      {
+        "from": "src/components/AppShell.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { currentUser } from '../mockData';"
+      },
+      {
+        "from": "src/components/AppShell.jsx",
+        "to": "src/components/shared/Footer.jsx",
+        "reason": "import Footer from './shared/Footer';"
+      },
+      {
+        "from": "src/pages/FileComplaintWorkflow.jsx",
+        "to": "src/components/shared/Navbar.jsx",
+        "reason": "import Navbar from '../components/shared/Navbar'"
+      },
+      {
+        "from": "src/pages/FileComplaintWorkflow.jsx",
+        "to": "src/components/shared/Footer.jsx",
+        "reason": "import Footer from '../components/shared/Footer'"
+      },
+      {
+        "from": "src/pages/FileComplaintWorkflow.jsx",
+        "to": "src/components/file-complaint/StepIndicator.jsx",
+        "reason": "import StepIndicator from '../components/file-complaint/StepIndicator'"
+      },
+      {
+        "from": "src/pages/FileComplaintWorkflow.jsx",
+        "to": "src/components/file-complaint/DepartmentSelector.jsx",
+        "reason": "import DepartmentSelector from '../components/file-complaint/DepartmentSelector'"
+      },
+      {
+        "from": "src/pages/FileComplaintWorkflow.jsx",
+        "to": "src/components/file-complaint/ComplaintForm.jsx",
+        "reason": "import ComplaintForm from '../components/file-complaint/ComplaintForm'"
+      },
+      {
+        "from": "src/pages/FileComplaintWorkflow.jsx",
+        "to": "src/components/file-complaint/EvidenceUploader.jsx",
+        "reason": "import EvidenceUploader from '../components/file-complaint/EvidenceUploader'"
+      },
+      {
+        "from": "src/pages/FileComplaintWorkflow.jsx",
+        "to": "src/components/file-complaint/ReviewSubmitCard.jsx",
+        "reason": "import ReviewSubmitCard from '../components/file-complaint/ReviewSubmitCard'"
+      },
+      {
+        "from": "src/pages/OfficerComplaintDetail.jsx",
+        "to": "src/components/shared/Navbar.jsx",
+        "reason": "import Navbar from '../components/shared/Navbar'"
+      },
+      {
+        "from": "src/pages/OfficerComplaintDetail.jsx",
+        "to": "src/components/shared/StatusPill.jsx",
+        "reason": "import StatusPill from '../components/shared/StatusPill'"
+      },
+      {
+        "from": "src/pages/OfficerComplaintDetail.jsx",
+        "to": "src/components/officer/AIPanel.jsx",
+        "reason": "import AIPanel from '../components/officer/AIPanel'"
+      },
+      {
+        "from": "src/pages/OfficerComplaintDetail.jsx",
+        "to": "src/components/officer/EvidenceGallery.jsx",
+        "reason": "import EvidenceGallery from '../components/officer/EvidenceGallery'"
+      },
+      {
+        "from": "src/pages/OfficerComplaintDetail.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { complaints } from '../mockData'"
+      },
+      {
+        "from": "src/pages/ComplaintDetail.jsx",
+        "to": "src/services/api.js",
+        "reason": "import { api } from '../services/api';"
+      },
+      {
+        "from": "src/pages/ComplaintDetail.jsx",
+        "to": "src/components/Badges.jsx",
+        "reason": "import { StatusBadge, SeverityBadge } from '../components/Badges';"
+      },
+      {
+        "from": "src/pages/DirectorAnalytics.jsx",
+        "to": "src/components/shared/Navbar.jsx",
+        "reason": "import Navbar from '../components/shared/Navbar';"
+      },
+      {
+        "from": "src/pages/DirectorAnalytics.jsx",
+        "to": "src/components/shared/MetricCard.jsx",
+        "reason": "import MetricCard from '../components/shared/MetricCard';"
+      },
+      {
+        "from": "src/pages/DirectorAnalytics.jsx",
+        "to": "src/components/director/GeographicHeatmap.jsx",
+        "reason": "import GeographicHeatmap from '../components/director/GeographicHeatmap';"
+      },
+      {
+        "from": "src/pages/DirectorAnalytics.jsx",
+        "to": "src/components/director/RiskProfileTable.jsx",
+        "reason": "import RiskProfileTable from '../components/director/RiskProfileTable';"
+      },
+      {
+        "from": "src/pages/DirectorAnalytics.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { dashboardMetrics } from '../mockData';"
+      },
+      {
+        "from": "src/pages/OfficerDashboard.jsx",
+        "to": "src/services/api.js",
+        "reason": "import { api } from '../services/api';"
+      },
+      {
+        "from": "src/pages/OfficerDashboard.jsx",
+        "to": "src/components/Badges.jsx",
+        "reason": "import { StatusBadge, SeverityBadge } from '../components/Badges';"
+      },
+      {
+        "from": "src/pages/PublicHome.jsx",
+        "to": "src/components/shared/Navbar.jsx",
+        "reason": "import Navbar from '../components/shared/Navbar'"
+      },
+      {
+        "from": "src/pages/PublicHome.jsx",
+        "to": "src/components/shared/Footer.jsx",
+        "reason": "import Footer from '../components/shared/Footer'"
+      },
+      {
+        "from": "src/pages/PublicHome.jsx",
+        "to": "src/components/home/HeroSection.jsx",
+        "reason": "import HeroSection from '../components/home/HeroSection'"
+      },
+      {
+        "from": "src/pages/PublicHome.jsx",
+        "to": "src/components/home/FeatureCards.jsx",
+        "reason": "import FeatureCards from '../components/home/FeatureCards'"
+      },
+      {
+        "from": "src/pages/PublicHome.jsx",
+        "to": "src/components/home/StatCounter.jsx",
+        "reason": "import StatCounter from '../components/home/StatCounter'"
+      },
+      {
+        "from": "src/pages/TrackComplaint.jsx",
+        "to": "src/services/api.js",
+        "reason": "import { api } from '../services/api';"
+      },
+      {
+        "from": "src/pages/TrackComplaint.jsx",
+        "to": "src/components/Badges.jsx",
+        "reason": "import { StatusBadge } from '../components/Badges';"
+      },
+      {
+        "from": "src/pages/AnalyticsDashboard.jsx",
+        "to": "src/services/api.js",
+        "reason": "import { api } from '../services/api';"
+      },
+      {
+        "from": "src/pages/SubmitComplaint.jsx",
+        "to": "src/services/api.js",
+        "reason": "import { api } from '../services/api';"
+      },
+      {
+        "from": "src/services/api.js",
+        "to": "src/mockData.js",
+        "reason": "import { initialComplaints, analyticsData } from '../mockData';"
+      },
+      {
+        "from": "src/components/ItemCard.jsx",
+        "to": "src/components/shared/StatusPill.jsx",
+        "reason": "import StatusPill from './shared/StatusPill'"
+      },
+      {
+        "from": "src/components/director/GeographicHeatmap.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { departments } from '../../mockData';"
+      },
+      {
+        "from": "src/components/director/RiskProfileTable.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { departments } from '../../mockData'"
+      },
+      {
+        "from": "src/components/director/RiskProfileTable.jsx",
+        "to": "src/components/shared/StatusPill.jsx",
+        "reason": "import StatusPill from '../shared/StatusPill'"
+      },
+      {
+        "from": "src/components/file-complaint/DepartmentSelector.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { departments } from '../../mockData'"
+      },
+      {
+        "from": "src/components/home/StatCounter.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { dashboardMetrics } from '../../mockData';"
+      },
+      {
+        "from": "src/components/officer/ComplaintDataGrid.jsx",
+        "to": "src/components/shared/StatusPill.jsx",
+        "reason": "import StatusPill from '../shared/StatusPill'"
+      },
+      {
+        "from": "src/components/officer/EvidenceGallery.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { evidenceFiles } from '../../mockData';"
+      },
+      {
+        "from": "src/components/track/BlockchainTimeline.jsx",
+        "to": "src/mockData.js",
+        "reason": "import { timelineEvents } from '../../mockData';"
+      }
+    ],
+    "adjacency": {
+      "src/App.jsx": [
+        "src/components/Layout.jsx",
+        "src/pages/Home.jsx",
+        "src/pages/SubmitComplaint.jsx",
+        "src/pages/TrackComplaint.jsx",
+        "src/pages/OfficerDashboard.jsx",
+        "src/pages/ComplaintDetail.jsx",
+        "src/pages/AnalyticsDashboard.jsx"
+      ],
+      "src/main.jsx": [
+        "src/App.jsx"
+      ],
+      "src/components/AppShell.jsx": [
+        "src/mockData.js",
+        "src/components/shared/Footer.jsx"
+      ],
+      "src/pages/FileComplaintWorkflow.jsx": [
+        "src/components/shared/Navbar.jsx",
+        "src/components/shared/Footer.jsx",
+        "src/components/file-complaint/StepIndicator.jsx",
+        "src/components/file-complaint/DepartmentSelector.jsx",
+        "src/components/file-complaint/ComplaintForm.jsx",
+        "src/components/file-complaint/EvidenceUploader.jsx",
+        "src/components/file-complaint/ReviewSubmitCard.jsx"
+      ],
+      "src/pages/OfficerComplaintDetail.jsx": [
+        "src/components/shared/Navbar.jsx",
+        "src/components/shared/StatusPill.jsx",
+        "src/components/officer/AIPanel.jsx",
+        "src/components/officer/EvidenceGallery.jsx",
+        "src/mockData.js"
+      ],
+      "src/pages/ComplaintDetail.jsx": [
+        "src/services/api.js",
+        "src/components/Badges.jsx"
+      ],
+      "src/pages/DirectorAnalytics.jsx": [
+        "src/components/shared/Navbar.jsx",
+        "src/components/shared/MetricCard.jsx",
+        "src/components/director/GeographicHeatmap.jsx",
+        "src/components/director/RiskProfileTable.jsx",
+        "src/mockData.js"
+      ],
+      "src/pages/OfficerDashboard.jsx": [
+        "src/services/api.js",
+        "src/components/Badges.jsx"
+      ],
+      "src/pages/PublicHome.jsx": [
+        "src/components/shared/Navbar.jsx",
+        "src/components/shared/Footer.jsx",
+        "src/components/home/HeroSection.jsx",
+        "src/components/home/FeatureCards.jsx",
+        "src/components/home/StatCounter.jsx"
+      ],
+      "src/pages/TrackComplaint.jsx": [
+        "src/services/api.js",
+        "src/components/Badges.jsx"
+      ],
+      "src/pages/AnalyticsDashboard.jsx": [
+        "src/services/api.js"
+      ],
+      "src/pages/SubmitComplaint.jsx": [
+        "src/services/api.js"
+      ],
+      "src/services/api.js": [
+        "src/mockData.js"
+      ],
+      "src/components/ItemCard.jsx": [
+        "src/components/shared/StatusPill.jsx"
+      ],
+      "src/components/director/GeographicHeatmap.jsx": [
+        "src/mockData.js"
+      ],
+      "src/components/director/RiskProfileTable.jsx": [
+        "src/mockData.js",
+        "src/components/shared/StatusPill.jsx"
+      ],
+      "src/components/file-complaint/DepartmentSelector.jsx": [
+        "src/mockData.js"
+      ],
+      "src/components/home/StatCounter.jsx": [
+        "src/mockData.js"
+      ],
+      "src/components/officer/ComplaintDataGrid.jsx": [
+        "src/components/shared/StatusPill.jsx"
+      ],
+      "src/components/officer/EvidenceGallery.jsx": [
+        "src/mockData.js"
+      ],
+      "src/components/track/BlockchainTimeline.jsx": [
+        "src/mockData.js"
+      ]
+    },
+    "reverse_adjacency": {
+      "src/components/Layout.jsx": [
+        "src/App.jsx"
+      ],
+      "src/pages/Home.jsx": [
+        "src/App.jsx"
+      ],
+      "src/pages/SubmitComplaint.jsx": [
+        "src/App.jsx"
+      ],
+      "src/pages/TrackComplaint.jsx": [
+        "src/App.jsx"
+      ],
+      "src/pages/OfficerDashboard.jsx": [
+        "src/App.jsx"
+      ],
+      "src/pages/ComplaintDetail.jsx": [
+        "src/App.jsx"
+      ],
+      "src/pages/AnalyticsDashboard.jsx": [
+        "src/App.jsx"
+      ],
+      "src/App.jsx": [
+        "src/main.jsx"
+      ],
+      "src/mockData.js": [
+        "src/components/AppShell.jsx",
+        "src/pages/OfficerComplaintDetail.jsx",
+        "src/pages/DirectorAnalytics.jsx",
+        "src/services/api.js",
+        "src/components/director/GeographicHeatmap.jsx",
+        "src/components/director/RiskProfileTable.jsx",
+        "src/components/file-complaint/DepartmentSelector.jsx",
+        "src/components/home/StatCounter.jsx",
+        "src/components/officer/EvidenceGallery.jsx",
+        "src/components/track/BlockchainTimeline.jsx"
+      ],
+      "src/components/shared/Footer.jsx": [
+        "src/components/AppShell.jsx",
+        "src/pages/FileComplaintWorkflow.jsx",
+        "src/pages/PublicHome.jsx"
+      ],
+      "src/components/shared/Navbar.jsx": [
+        "src/pages/FileComplaintWorkflow.jsx",
+        "src/pages/OfficerComplaintDetail.jsx",
+        "src/pages/DirectorAnalytics.jsx",
+        "src/pages/PublicHome.jsx"
+      ],
+      "src/components/file-complaint/StepIndicator.jsx": [
+        "src/pages/FileComplaintWorkflow.jsx"
+      ],
+      "src/components/file-complaint/DepartmentSelector.jsx": [
+        "src/pages/FileComplaintWorkflow.jsx"
+      ],
+      "src/components/file-complaint/ComplaintForm.jsx": [
+        "src/pages/FileComplaintWorkflow.jsx"
+      ],
+      "src/components/file-complaint/EvidenceUploader.jsx": [
+        "src/pages/FileComplaintWorkflow.jsx"
+      ],
+      "src/components/file-complaint/ReviewSubmitCard.jsx": [
+        "src/pages/FileComplaintWorkflow.jsx"
+      ],
+      "src/components/shared/StatusPill.jsx": [
+        "src/pages/OfficerComplaintDetail.jsx",
+        "src/components/ItemCard.jsx",
+        "src/components/director/RiskProfileTable.jsx",
+        "src/components/officer/ComplaintDataGrid.jsx"
+      ],
+      "src/components/officer/AIPanel.jsx": [
+        "src/pages/OfficerComplaintDetail.jsx"
+      ],
+      "src/components/officer/EvidenceGallery.jsx": [
+        "src/pages/OfficerComplaintDetail.jsx"
+      ],
+      "src/services/api.js": [
+        "src/pages/ComplaintDetail.jsx",
+        "src/pages/OfficerDashboard.jsx",
+        "src/pages/TrackComplaint.jsx",
+        "src/pages/AnalyticsDashboard.jsx",
+        "src/pages/SubmitComplaint.jsx"
+      ],
+      "src/components/Badges.jsx": [
+        "src/pages/ComplaintDetail.jsx",
+        "src/pages/OfficerDashboard.jsx",
+        "src/pages/TrackComplaint.jsx"
+      ],
+      "src/components/shared/MetricCard.jsx": [
+        "src/pages/DirectorAnalytics.jsx"
+      ],
+      "src/components/director/GeographicHeatmap.jsx": [
+        "src/pages/DirectorAnalytics.jsx"
+      ],
+      "src/components/director/RiskProfileTable.jsx": [
+        "src/pages/DirectorAnalytics.jsx"
+      ],
+      "src/components/home/HeroSection.jsx": [
+        "src/pages/PublicHome.jsx"
+      ],
+      "src/components/home/FeatureCards.jsx": [
+        "src/pages/PublicHome.jsx"
+      ],
+      "src/components/home/StatCounter.jsx": [
+        "src/pages/PublicHome.jsx"
+      ]
+    }
+  },
+  "api_reference": [],
+  "database_schema": [],
+  "database_mermaid_erd": "",
+  "database_source_files": [],
+  "database_model_names": [],
+  "graph_summary": "",
+  "graph_architecture_overview": {},
+  "graph_repository_map": [],
+  "graph_key_components": [],
+  "graph_sequence_flows": [],
+  "graph_knowledge_gaps": [],
+  "graph_stats": {},
+  "env_var_names": [],
+  "readme_excerpt": "",
+  "instruction_files": [
+    {
+      "path": ".devhub/DEVHUB.md",
+      "content": "# DevHub Instructions\n\nProject: vigilance\nTech Stack: AI/ML, NLP, Blockchain, WhatsApp Business API, IVR, Android, iOS, REST APIs, SQL, NoSQL\nRuntime: node\n\n## Guidance\n- Preserve the existing project structure and runtime conventions.\n- Prefer editing existing files over creating duplicate parallel implementations.\n- Keep Blueprint, Features, Pipeline, and Onboarding aligned with real code changes.\n- Update related UI, logic, styles, and runtime wiring together when behavior changes.\n\n## Product Expectations\n- This project should remain runnable after changes.\n- New features should reflect the current codebase, not a generic starter.\n- Favor minimal, targeted edits and reuse existing architecture patterns.\n\n## Notes\n- Add project-specific architecture rules, conventions, and deployment constraints here over time.\n"
+    }
+  ],
+  "repo_tree": "vigilance/\n|- .devhub/\n|- src\n|  |- components\n|  |  |- director\n|  |  |  |- GeographicHeatmap.jsx\n|  |  |  `- RiskProfileTable.jsx\n|  |  |- file-complaint\n|  |  |  |- ComplaintForm.jsx\n|  |  |  |- DepartmentSelector.jsx\n|  |  |  |- EvidenceUploader.jsx\n|  |  |  |- ReviewSubmitCard.jsx\n|  |  |  `- StepIndicator.jsx\n|  |  |- home\n|  |  |  |- FeatureCards.jsx\n|  |  |  |- HeroSection.jsx\n|  |  |  `- StatCounter.jsx\n|  |  |- officer\n|  |  |  |- AIPanel.jsx\n|  |  |  |- ComplaintDataGrid.jsx\n|  |  |  |- EvidenceGallery.jsx\n|  |  |  `- FilterTabs.jsx\n|  |  |- shared\n|  |  |  |- Footer.jsx\n|  |  |  |- MetricCard.jsx\n|  |  |  |- Navbar.jsx\n|  |  |  `- StatusPill.jsx\n|  |  |- track\n|  |  |  |- BlockchainTimeline.jsx\n|  |  |  `- TrackingSearch.jsx\n|  |  |- AppShell.jsx\n|  |  |- Badges.jsx\n|  |  |- ItemCard.jsx\n|  |  |- Layout.jsx\n|  |  |- StatCard.jsx\n|  |  |- TabbedPanel.jsx\n|  |  `- TimelineList.jsx\n|  |- pages\n|  |  |- AnalyticsDashboard.jsx\n|  |  |- ComplaintDetail.jsx\n|  |  |- DirectorAnalytics.jsx\n|  |  |- FileComplaintWorkflow.jsx\n|  |  |- Home.jsx\n|  |  |- OfficerComplaintDetail.jsx\n|  |  |- OfficerDashboard.jsx\n|  |  |- PublicHome.jsx\n|  |  |- SubmitComplaint.jsx\n|  |  `- TrackComplaint.jsx\n|  |- services\n|  |  `- api.js\n|  |- App.jsx\n|  |- index.css\n|  |- main.jsx\n|  `- mockData.js\n|- index.html\n|- package.json\n|- postcss.config.js\n|- tailwind.config.js\n`- vite.config.js",
+  "repo_tree_nodes": [
+    {
+      "name": ".devhub",
+      "path": ".devhub",
+      "type": "directory",
+      "children": [],
+      "child_count": 0
+    },
+    {
+      "name": "src",
+      "path": "src",
+      "type": "directory",
+      "children": [
+        {
+          "name": "components",
+          "path": "src/components",
+          "type": "directory",
+          "children": [
+            {
+              "name": "director",
+              "path": "src/components/director",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "GeographicHeatmap.jsx",
+                  "path": "src/components/director/GeographicHeatmap.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "RiskProfileTable.jsx",
+                  "path": "src/components/director/RiskProfileTable.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 2
+            },
+            {
+              "name": "file-complaint",
+              "path": "src/components/file-complaint",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "ComplaintForm.jsx",
+                  "path": "src/components/file-complaint/ComplaintForm.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "DepartmentSelector.jsx",
+                  "path": "src/components/file-complaint/DepartmentSelector.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "EvidenceUploader.jsx",
+                  "path": "src/components/file-complaint/EvidenceUploader.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "ReviewSubmitCard.jsx",
+                  "path": "src/components/file-complaint/ReviewSubmitCard.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "StepIndicator.jsx",
+                  "path": "src/components/file-complaint/StepIndicator.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 5
+            },
+            {
+              "name": "home",
+              "path": "src/components/home",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "FeatureCards.jsx",
+                  "path": "src/components/home/FeatureCards.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "HeroSection.jsx",
+                  "path": "src/components/home/HeroSection.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "StatCounter.jsx",
+                  "path": "src/components/home/StatCounter.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 3
+            },
+            {
+              "name": "officer",
+              "path": "src/components/officer",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "AIPanel.jsx",
+                  "path": "src/components/officer/AIPanel.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "ComplaintDataGrid.jsx",
+                  "path": "src/components/officer/ComplaintDataGrid.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "EvidenceGallery.jsx",
+                  "path": "src/components/officer/EvidenceGallery.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "FilterTabs.jsx",
+                  "path": "src/components/officer/FilterTabs.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 4
+            },
+            {
+              "name": "shared",
+              "path": "src/components/shared",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "Footer.jsx",
+                  "path": "src/components/shared/Footer.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "MetricCard.jsx",
+                  "path": "src/components/shared/MetricCard.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "Navbar.jsx",
+                  "path": "src/components/shared/Navbar.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "StatusPill.jsx",
+                  "path": "src/components/shared/StatusPill.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 4
+            },
+            {
+              "name": "track",
+              "path": "src/components/track",
+              "type": "directory",
+              "children": [
+                {
+                  "name": "BlockchainTimeline.jsx",
+                  "path": "src/components/track/BlockchainTimeline.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                },
+                {
+                  "name": "TrackingSearch.jsx",
+                  "path": "src/components/track/TrackingSearch.jsx",
+                  "type": "file",
+                  "children": [],
+                  "child_count": 0
+                }
+              ],
+              "child_count": 2
+            },
+            {
+              "name": "AppShell.jsx",
+              "path": "src/components/AppShell.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "Badges.jsx",
+              "path": "src/components/Badges.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "ItemCard.jsx",
+              "path": "src/components/ItemCard.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "Layout.jsx",
+              "path": "src/components/Layout.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "StatCard.jsx",
+              "path": "src/components/StatCard.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "TabbedPanel.jsx",
+              "path": "src/components/TabbedPanel.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "TimelineList.jsx",
+              "path": "src/components/TimelineList.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            }
+          ],
+          "child_count": 13
+        },
+        {
+          "name": "pages",
+          "path": "src/pages",
+          "type": "directory",
+          "children": [
+            {
+              "name": "AnalyticsDashboard.jsx",
+              "path": "src/pages/AnalyticsDashboard.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "ComplaintDetail.jsx",
+              "path": "src/pages/ComplaintDetail.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "DirectorAnalytics.jsx",
+              "path": "src/pages/DirectorAnalytics.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "FileComplaintWorkflow.jsx",
+              "path": "src/pages/FileComplaintWorkflow.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "Home.jsx",
+              "path": "src/pages/Home.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "OfficerComplaintDetail.jsx",
+              "path": "src/pages/OfficerComplaintDetail.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "OfficerDashboard.jsx",
+              "path": "src/pages/OfficerDashboard.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "PublicHome.jsx",
+              "path": "src/pages/PublicHome.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "SubmitComplaint.jsx",
+              "path": "src/pages/SubmitComplaint.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            },
+            {
+              "name": "TrackComplaint.jsx",
+              "path": "src/pages/TrackComplaint.jsx",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            }
+          ],
+          "child_count": 10
+        },
+        {
+          "name": "services",
+          "path": "src/services",
+          "type": "directory",
+          "children": [
+            {
+              "name": "api.js",
+              "path": "src/services/api.js",
+              "type": "file",
+              "children": [],
+              "child_count": 0
+            }
+          ],
+          "child_count": 1
+        },
+        {
+          "name": "App.jsx",
+          "path": "src/App.jsx",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "index.css",
+          "path": "src/index.css",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "main.jsx",
+          "path": "src/main.jsx",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        },
+        {
+          "name": "mockData.js",
+          "path": "src/mockData.js",
+          "type": "file",
+          "children": [],
+          "child_count": 0
+        }
+      ],
+      "child_count": 7
+    },
+    {
+      "name": "index.html",
+      "path": "index.html",
+      "type": "file",
+      "children": [],
+      "child_count": 0
+    },
+    {
+      "name": "package.json",
+      "path": "package.json",
+      "type": "file",
+      "children": [],
+      "child_count": 0
+    },
+    {
+      "name": "postcss.config.js",
+      "path": "postcss.config.js",
+      "type": "file",
+      "children": [],
+      "child_count": 0
+    },
+    {
+      "name": "tailwind.config.js",
+      "path": "tailwind.config.js",
+      "type": "file",
+      "children": [],
+      "child_count": 0
+    },
+    {
+      "name": "vite.config.js",
+      "path": "vite.config.js",
+      "type": "file",
+      "children": [],
+      "child_count": 0
+    }
+  ],
+  "compact_summary": "Project: vigilance\nFingerprint: ecaeeea8eebf4d3d159daadc0a4df9ce2c88c152\nManifest files: 47\nIndexed files: 47\nTop directories:\n- src: 42 files\n- .: 5 files\nImportant files:\n- src/App.jsx: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 27 lines. Primary symbol: App. Key imports: import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';, import Layout from './components/Layout';, import Home from './pages/Home';, import SubmitComplaint from './pages/SubmitComplaint';, import TrackComplaint from './pages/TrackComplaint';.\n- vite.config.js: Build or bundling configuration that tells the toolchain how to compile, package, or emit artifacts for this project. It has about 9 lines. Key imports: import { defineConfig } from 'vite';, import react from '@vitejs/plugin-react';.\n- package.json: Node package manifest defining runtime metadata, scripts, dependencies, and package-manager behavior for the repo or workspace. It has about 25 lines. Top-level keys: name, private, version, type, scripts, dependencies.\n- src/main.jsx: Reusable UI component responsible for part of the interface. It has about 10 lines. Key imports: import React from 'react';, import ReactDOM from 'react-dom/client';, import App from './App.jsx';, import './index.css';.\n- postcss.config.js: Source file that contributes to the project root area of the repository. It has about 6 lines.\n- tailwind.config.js: Source file that contributes to the project root area of the repository. It has about 21 lines.\n- src/components/AppShell.jsx: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 184 lines. Primary symbol: AppShell. Key imports: import React, { useState, useEffect } from 'react';, import { NavLink, Link, useLocation, Outlet } from 'react-router-dom';, import {, import { currentUser } from '../mockData';, import Footer from './shared/Footer';. Representative commands: Shield,.\n- src/pages/FileComplaintWorkflow.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 224 lines. Primary symbol: FileComplaintWorkflow. Key imports: import { useState } from 'react', import Navbar from '../components/shared/Navbar', import Footer from '../components/shared/Footer', import StepIndicator from '../components/file-complaint/StepIndicator', import DepartmentSelector from '../components/file-complaint/DepartmentSelector'.\n- src/components/Layout.jsx: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 95 lines. Primary symbol: Layout. Key imports: import { Outlet, Link, useLocation } from 'react-router-dom';, import { Shield, FileText, Search, LayoutDashboard, BarChart3, Menu } from 'lucide-react';, import { useState } from 'react';.\n- src/components/shared/Navbar.jsx: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 117 lines. Primary symbol: Navbar. Key imports: import { Link, useLocation } from 'react-router-dom', import { Shield, Menu, X } from 'lucide-react', import { useState } from 'react', import { cn } from '../../utils/cn'.\n- src/components/TabbedPanel.jsx: Data model or type-definition file describing the shapes the application stores, exchanges, or validates. It has about 133 lines. Primary symbol: TabbedPanel. Key imports: import React from 'react';, import { cn } from '../utils/cn.js';.\n- src/pages/OfficerComplaintDetail.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 265 lines. Primary symbol: OfficerComplaintDetail. Key imports: import { useState } from 'react', import { useParams, useNavigate, Link } from 'react-router-dom', import Navbar from '../components/shared/Navbar', import StatusPill from '../components/shared/StatusPill', import AIPanel from '../components/officer/AIPanel'.\n- src/components/file-complaint/ReviewSubmitCard.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 122 lines. Primary symbol: ReviewSubmitCard. Key imports: import React from 'react';, import { ShieldCheck } from 'lucide-react';.\n- src/pages/ComplaintDetail.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 214 lines. Primary symbol: ComplaintDetail. Key imports: import { useState, useEffect } from 'react';, import { useParams, useNavigate } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge, SeverityBadge } from '../components/Badges';, import { BrainCircuit, Shield, FileText, Clock, Link as LinkIcon, UserX, UserCheck, AlertTriangle, CheckCircle } from 'lucide-react';.\n- src/pages/DirectorAnalytics.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 130 lines. Primary symbol: DirectorAnalytics. Key imports: import React, { useMemo } from 'react';, import Navbar from '../components/shared/Navbar';, import MetricCard from '../components/shared/MetricCard';, import GeographicHeatmap from '../components/director/GeographicHeatmap';, import RiskProfileTable from '../components/director/RiskProfileTable';.\n- src/pages/OfficerDashboard.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 137 lines. Primary symbol: OfficerDashboard. Key imports: import { useState, useEffect } from 'react';, import { Link } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge, SeverityBadge } from '../components/Badges';, import { Filter, Search, AlertCircle, BrainCircuit } from 'lucide-react';.\n- src/pages/PublicHome.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 22 lines. Primary symbol: PublicHome. Key imports: import React from 'react', import Navbar from '../components/shared/Navbar', import Footer from '../components/shared/Footer', import HeroSection from '../components/home/HeroSection', import FeatureCards from '../components/home/FeatureCards'.\n- src/pages/TrackComplaint.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 139 lines. Primary symbol: TrackComplaint. Key imports: import { useState, useEffect } from 'react';, import { useSearchParams } from 'react-router-dom';, import { api } from '../services/api';, import { StatusBadge } from '../components/Badges';, import { Search, CheckCircle2, Clock, AlertTriangle, Link as LinkIcon } from 'lucide-react';.\n- src/pages/AnalyticsDashboard.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 130 lines. Primary symbol: AnalyticsDashboard. Key imports: import { useState, useEffect } from 'react';, import { api } from '../services/api';, import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';, import { Map, AlertTriangle, TrendingUp, Users } from 'lucide-react';.\n- src/pages/Home.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 76 lines. Primary symbol: Home. Key imports: import { Link } from 'react-router-dom';, import { ShieldAlert, Search, MessageSquare, Smartphone, Lock, BrainCircuit } from 'lucide-react';.\n- src/pages/SubmitComplaint.jsx: Page-level UI module that usually composes other components and represents a route or large screen. It has about 168 lines. Primary symbol: SubmitComplaint. Key imports: import { useState } from 'react';, import { useNavigate } from 'react-router-dom';, import { api } from '../services/api';, import { UploadCloud, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';.\n- src/services/api.js: API-facing module that defines endpoints, handlers, or service integration behavior. It has about 90 lines. Primary symbol: delay. Key imports: import { initialComplaints, analyticsData } from '../mockData';.\n- src/components/Badges.jsx: Reusable UI component responsible for part of the interface. It has about 35 lines. Primary symbol: colors. Key imports: import React from 'react';.\n- src/components/ItemCard.jsx: Reusable UI component responsible for part of the interface. It has about 148 lines. Primary symbol: ItemCard. Key imports: import React from 'react', import { Calendar, ChevronRight, Tag, Hash, ArrowRight } from 'lucide-react', import StatusPill from './shared/StatusPill', import { cn } from '../utils/cn'.\n- src/components/StatCard.jsx: Reusable UI component responsible for part of the interface. It has about 140 lines. Primary symbol: StatCard. Key imports: import React from 'react', import { ArrowUpRight, ArrowDownRight, Minus } from 'lucide-react'.\n- src/components/TimelineList.jsx: Reusable UI component responsible for part of the interface. It has about 139 lines. Primary symbol: defaultEvents. Key imports: import React from 'react', import {. Representative commands: ShieldCheck,.\n- src/components/director/GeographicHeatmap.jsx: Reusable UI component responsible for part of the interface. It has about 166 lines. Primary symbol: KERALA_DISTRICTS. Key imports: import React, { useState, useMemo } from 'react';, import { MapPin, AlertOctagon } from 'lucide-react';, import { departments } from '../../mockData';.\n- src/components/director/RiskProfileTable.jsx: Reusable UI component responsible for part of the interface. It has about 101 lines. Primary symbol: RiskProfileTable. Key imports: import { departments } from '../../mockData', import StatusPill from '../shared/StatusPill', import { TrendingUp, TrendingDown, Minus } from 'lucide-react'.\n- src/components/file-complaint/ComplaintForm.jsx: Reusable UI component responsible for part of the interface. It has about 118 lines. Primary symbol: ComplaintForm. Key imports: import React from 'react';, import { AlertCircle } from 'lucide-react';.\n- src/components/file-complaint/DepartmentSelector.jsx: Reusable UI component responsible for part of the interface. It has about 93 lines. Primary symbol: DepartmentSelector. Key imports: import { departments } from '../../mockData', import { Search, Building2 } from 'lucide-react', import { useState } from 'react', import { cn } from '../../utils/cn'.\n- src/components/file-complaint/EvidenceUploader.jsx: Reusable UI component responsible for part of the interface. It has about 153 lines. Primary symbol: EvidenceUploader. Key imports: import React, { useState, useRef } from 'react', import { UploadCloud, FileText, X } from 'lucide-react'.\n- src/components/file-complaint/StepIndicator.jsx: Reusable UI component responsible for part of the interface. It has about 61 lines. Primary symbol: StepIndicator. Key imports: import { Check } from 'lucide-react', import { cn } from '../../utils/cn'.\n- src/components/home/FeatureCards.jsx: Reusable UI component responsible for part of the interface. It has about 58 lines. Primary symbol: FeatureCards. Key imports: import { Bot, Link as LinkIcon, UserX } from 'lucide-react';.\n- src/components/home/HeroSection.jsx: Reusable UI component responsible for part of the interface. It has about 104 lines. Primary symbol: HeroSection. Key imports: import { Link } from 'react-router-dom', import { ArrowRight, Search } from 'lucide-react'.\n- src/components/home/StatCounter.jsx: Reusable UI component responsible for part of the interface. It has about 57 lines. Primary symbol: getIcon. Key imports: import React from 'react';, import { dashboardMetrics } from '../../mockData';, import { ShieldCheck, Clock, FileText, Database } from 'lucide-react';.\n- src/components/officer/AIPanel.jsx: Reusable UI component responsible for part of the interface. It has about 82 lines. Primary symbol: AIPanel. Key imports: import React from 'reac",
+  "detected_css_frameworks": [
+    {
+      "name": "Tailwind CSS",
+      "evidence_file": "package.json",
+      "version": "^3.4.1"
+    }
+  ],
+  "detected_test_frameworks": [],
+  "detected_lint_tools": [],
+  "detected_websocket_services": [],
+  "detected_integration_clients": []
+}
