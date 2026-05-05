@@ -264,3 +264,9 @@ claude-code-main/
 gemini-cli/
 opencode/
 caveman/
+
+devhub_v2/backend/data/
+*.faiss
+*.pkl
+*.bin
+*.index
